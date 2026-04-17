@@ -542,19 +542,35 @@ function useActiveThemeTokens(): SemanticTokens;
 Components MUST consume theme values via CSS custom properties. Do not
 import token constants directly in component styles.
 
-```tsx
-// Correct
-const Panel = styled.div`
+Styling uses **CSS Modules + CSS custom properties** per ADR-012 decision
+#12. Each component has a sibling `*.module.css` file; the compiled class
+names are scoped per file.
+
+```css
+/* Panel.module.css — correct */
+.panel {
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
   color: var(--text-primary);
-`;
+}
+```
 
-// Wrong
+```tsx
+// Panel.tsx — correct
+import styles from './Panel.module.css';
+
+export function Panel({ children }: { children: React.ReactNode }) {
+  return <div className={styles.panel}>{children}</div>;
+}
+```
+
+```tsx
+// Wrong — do not import token constants directly in component styles
 import { dark } from '@portplanner/design-system';
-const Panel = styled.div`
-  background: ${dark.surface.raised};
-`;
+
+export function Panel({ children }: { children: React.ReactNode }) {
+  return <div style={{ background: dark.surface.raised }}>{children}</div>;
+}
 ```
 
 ### Canvas rendering
@@ -634,5 +650,6 @@ component library work begins.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.2.0 | 2026-04-18 | Replaced illustrative `styled.div` examples with CSS-module examples to align with ADR-012 decision #12 (CSS Modules + CSS custom properties). No change to semantic or theme-switching behaviour. Token values unchanged. |
 | 1.1.0 | 2026-04-16 | Added Icon Library section (Lucide). Added Theme Switching section. See ADR-011. |
 | 1.0.0 | 2026-04-16 | Initial specification extracted from prototype-v1.html |

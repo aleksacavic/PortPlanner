@@ -39,6 +39,9 @@ All files in `docs/adr/` are binding.
 | 009 | RBAC and Permissions | `docs/adr/009-rbac.md` |
 | 010 | Document Sync and Offline | `docs/adr/010-document-sync.md` |
 | 011 | UI Stack: Icon Library and Theme Switching | `docs/adr/011-ui-stack.md` |
+| 012 | Technology Stack | `docs/adr/012-technology-stack.md` |
+| 013 | 2D Rendering Pipeline | `docs/adr/013-2d-rendering-pipeline.md` |
+| 014 | Persistence Architecture | `docs/adr/014-persistence-architecture.md` |
 
 **ADR rules:**
 - ADRs MUST NOT be edited. Decision changes require a new ADR that

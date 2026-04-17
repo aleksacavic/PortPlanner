@@ -19,6 +19,9 @@ changes, a new ADR is written that references and supersedes the old one.
 | [009](009-rbac.md) | RBAC and Permission Model | ACCEPTED |
 | [010](010-document-sync.md) | Document Sync and Offline Model | ACCEPTED |
 | [011](011-ui-stack.md) | UI Stack: Icon Library and Theme Switching | ACCEPTED |
+| [012](012-technology-stack.md) | Technology Stack | ACCEPTED |
+| [013](013-2d-rendering-pipeline.md) | 2D Rendering Pipeline | ACCEPTED |
+| [014](014-persistence-architecture.md) | Persistence Architecture | ACCEPTED |
 
 ## Format
 
