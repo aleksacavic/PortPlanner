@@ -21,6 +21,9 @@ This is a **review/scrutiny task only**.
 - MUST NOT code.
 - MUST NOT modify source files.
 - MUST NOT commit.
+- Plan is read from `docs/plans/<branch-name>.md` on the feature
+  branch pushed to `origin` (per Procedure 01 §1.10). An uncommitted
+  plan cannot be reviewed — hand back to the plan author if missing.
 - Output is a review memo in chat, or appended to the plan file when
   requested.
 

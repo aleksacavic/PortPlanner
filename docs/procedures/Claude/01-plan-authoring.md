@@ -20,9 +20,13 @@ This is a **plan authoring task only**.
 
 - MUST NOT write code.
 - MUST NOT modify source files.
-- MUST NOT commit.
-- Output is the plan file at `docs/plans/<branch-name>.md` plus the
-  pre-response notification in chat.
+- MUST NOT commit source-code or binding-spec changes.
+- MUST commit the plan file itself to the feature branch and push it
+  to `origin` (see §1.10). An uncommitted plan is invisible to
+  reviewers running in separate sessions (Codex, other Claude
+  instances, remote humans).
+- Output is the plan file at `docs/plans/<branch-name>.md` (committed
+  and pushed) plus the pre-response notification in chat.
 
 The user will explicitly say "execute" or invoke Procedure 03 before any
 implementation begins.
@@ -272,6 +276,12 @@ The approved plan lives at `docs/plans/<branch-name>.md`.
 
 - Branch naming: `<category>/<short-descriptor>` e.g. `feature/rtg-block-extractor`, `fix/fillet-radius-zero`, `refactor/object-model-split`.
 - Plan filename: matches the branch. `docs/plans/feature/rtg-block-extractor.md`.
+- The plan file MUST be committed to the feature branch and pushed to
+  `origin` as part of plan-authoring closure (§1.16). Commit message
+  convention: `docs: author <plan-title> plan`. No PR is required at
+  this stage — reviewers pull the branch directly. PRs are opened only
+  after plan review + approval, typically at the point implementation
+  begins (Procedure 03).
 - Before starting execution (Procedure 03), any previous versioned drafts
   MUST be deleted. Examples:
   - `docs/plans/feature/rtg-block-extractor-v1.md` → delete.
@@ -445,3 +455,5 @@ Plan authoring is complete only when:
 8. Plan file written at `docs/plans/<branch-name>.md`.
 9. Reviewer handoff block (§1.11 Part A) present at the end of the plan.
 10. No versioned drafts remain per §1.10.
+11. Plan file committed to the feature branch and pushed to `origin`
+    per §1.1 and §1.10. Reviewers cannot see an uncommitted plan.

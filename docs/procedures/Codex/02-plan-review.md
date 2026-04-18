@@ -23,6 +23,10 @@ This is a **review/scrutiny task only**.
 - MUST NOT commit.
 - MUST NOT author or patch the plan. If the plan is deficient, the
   plan author fixes it — Codex does not edit.
+- Plan is read from `docs/plans/<branch-name>.md` on the feature
+  branch pushed to `origin` (per Claude Procedure 01 §1.10). An
+  uncommitted plan cannot be reviewed — hand back to the plan author
+  if missing.
 - Output is a review memo in chat.
 
 **Codex-specific posture:** Codex is a second-opinion reviewer. Claude
