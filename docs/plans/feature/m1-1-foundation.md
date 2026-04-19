@@ -676,9 +676,17 @@ main.
 **Mandatory completion gates:**
 
 ```
-G5.0 — CI workflow file is syntactically valid and action-lint-clean
-  Command: pnpm dlx actionlint .github/workflows/ci.yml
-  Expected: exit 0, no reported errors
+G5.0 — CI workflow file exists with required structural keys
+  Commands (all must exit 0):
+    test -f .github/workflows/ci.yml
+    rg -q "^on:" .github/workflows/ci.yml
+    rg -q "pull_request:" .github/workflows/ci.yml
+    rg -q "pnpm install" .github/workflows/ci.yml
+  Expected: every command exits 0
+  (Updated per PE-6: actionlint is a Go binary, not an npm package,
+  so `pnpm dlx actionlint` is not feasible. GitHub Actions itself
+  validates YAML at workflow-run time — this local gate verifies
+  structural presence only.)
 ```
 
 **Tests added in this phase:** none. The CI itself is the test.
@@ -1030,3 +1038,20 @@ project scaffold; not in the original file list but implicit
 requirement for CSS Modules + TS.
 
 **Classification:** Plan implicit prerequisite, not a deviation.
+
+### PE-6 — G5.0 gate command changed (actionlint not an npm package)
+
+**Discovered:** Phase 5 G5.0 was written as
+`pnpm dlx actionlint .github/workflows/ci.yml`. Execution revealed
+`actionlint` is a Go binary, not an npm package; `pnpm dlx` fails
+with ENOENT.
+
+**Resolution:** Replaced the gate command with a grep-based
+structural check (file exists + required keys present). GitHub
+Actions itself is the authoritative YAML validator at workflow-run
+time — the remote Done Criterion #8 (`gh run list … conclusion ==
+"success"`) covers full semantic validation.
+
+**Classification:** Plan correction, not a deviation. The intent of
+G5.0 — "don't ship a broken workflow file" — is preserved; the
+mechanism changes from hard validation to structural sanity check.
