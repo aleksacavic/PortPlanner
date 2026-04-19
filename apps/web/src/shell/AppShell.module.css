@@ -1,0 +1,14 @@
+.shell {
+  display: grid;
+  grid-template-columns: 240px 1fr 280px;
+  grid-template-rows: 48px 1fr 28px;
+  grid-template-areas:
+    "navbar navbar navbar"
+    "leftSidebar canvas rightSidebar"
+    "statusbar statusbar statusbar";
+  height: 100vh;
+  width: 100vw;
+  background: var(--surface-base);
+  color: var(--text-primary);
+  overflow: hidden;
+}

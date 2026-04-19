@@ -1,0 +1,35 @@
+.leftSidebar {
+  grid-area: leftSidebar;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.rightSidebar {
+  grid-area: rightSidebar;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border-default);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  font-family: var(--font-family-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  padding: 12px 16px 8px;
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+
+.body {
+  flex: 1;
+  padding: 16px;
+  overflow: auto;
+}

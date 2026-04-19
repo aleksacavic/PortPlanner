@@ -1,0 +1,9 @@
+/* apps/web-specific globals. Design-system's global.css is imported
+ * separately in main.tsx and provides the resets + token fallbacks for
+ * the dark theme. */
+
+html,
+body {
+  overflow: hidden;
+  height: 100vh;
+}

@@ -1,0 +1,17 @@
+.statusBar {
+  grid-area: statusbar;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-default);
+  font-family: var(--font-family-sans);
+  font-size: 10px;
+  color: var(--text-tertiary);
+}
+
+.left,
+.right {
+  letter-spacing: 0.05em;
+}

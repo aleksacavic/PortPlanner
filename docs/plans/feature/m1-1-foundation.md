@@ -999,3 +999,34 @@ decision for Phase 2 to either keep or delete `index.ts`.
 G1.3. Not a deviation; matches the same pattern used for empty
 `packages/domain/src/index.ts` and `packages/design-system/src/index.ts`
 scaffold stubs.
+
+### PE-4 — Testing-library cleanup setup files added (Phase 4)
+
+**Discovered:** Phase 4 G4.0 — apps/web tests initially failed with
+`getMultipleElementsFoundError` because `@testing-library/react` does
+not auto-cleanup between Vitest tests. DOM elements from prior tests
+accumulated, so `getByText` matched multiple nodes.
+
+**Resolution:**
+- Added `apps/web/tests/setup.ts` and
+  `packages/design-system/tests/setup.ts`, each calling `cleanup()`
+  (from `@testing-library/react`) inside `afterEach` and importing
+  `@testing-library/jest-dom/vitest` for extended matchers.
+- Both package `vitest.config.ts` files now reference the setup file
+  via `test.setupFiles: ['./tests/setup.ts']`.
+
+**Classification:** Plan gap (testing-library cleanup discipline not
+specified in Phase 3/4 steps). Not a deviation. Future plans using
+`@testing-library/react` should include a setup-file creation step.
+
+### PE-5 — `apps/web/src/vite-env.d.ts` added (Phase 4)
+
+**Discovered:** TypeScript could not resolve CSS-module imports
+(`import styles from './X.module.css'`) without Vite's ambient types.
+
+**Resolution:** Added `apps/web/src/vite-env.d.ts` with
+`/// <reference types="vite/client" />`. This is the standard Vite
+project scaffold; not in the original file list but implicit
+requirement for CSS Modules + TS.
+
+**Classification:** Plan implicit prerequisite, not a deviation.
