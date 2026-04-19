@@ -42,7 +42,7 @@ Other assumptions (not popped as questions because obvious defaults):
 - **Biome 1.x** as the sole formatter + linter. No Prettier. No ESLint.
 - **React 18+** (latest stable at execution time; the ADR-012 floor is 18).
 - **Package names for M1.1:** `@portplanner/domain`, `@portplanner/design-system`, `@portplanner/web`. `packages/domain` is scaffolded as an empty skeleton (types/extractors land in M1.2+).
-- **Reference prototype** at `reference/prototype-v1.html` is for **visual layout reference only**. MUST NOT port code. See `docs/procedures/Claude/00-architecture-contract.md` §0.3.
+- **Reference prototype** at `reference/prototype-v1.html` is for **visual layout reference only**. MUST NOT port code. See §0.3 of either architecture contract (`docs/procedures/Claude/00-architecture-contract.md` or `docs/procedures/Codex/00-architecture-contract.md` — the rule is mirrored).
 
 ## 3. Scope and Blast Radius
 
@@ -146,16 +146,25 @@ existing file edited, and only to append local-dev instructions.
 | Spec | Role in this plan |
 |---|---|
 | **ADR-012** Technology Stack | Implemented literally. All pinned choices applied. |
-| **`docs/design-tokens.md` v1.2.0** | Implemented literally. Three-layer tokens; `ThemeProvider`, `useTheme`, `useActiveThemeTokens`; CSS custom-property emission; CSS-Modules component styling. |
-| **ADR-011** UI Stack | Implemented literally. `lucide-react` not yet imported (no icons needed in M1.1 shell placeholders — naming "Tools", "Properties" in text). `ThemeProvider` with three states (`dark` / `light` / `system`); resolves to `dark` in M1.1 since only the dark palette exists. |
-| **Architecture contract** §0.4 GR-3 Module Isolation | Enforced via grep gates listed in §8 (Invariants). |
+| **`docs/design-tokens.md` v1.2.0** | Implemented literally for the **dark** theme. Three-layer tokens; `ThemeProvider`, `useTheme`, `useActiveThemeTokens`; CSS custom-property emission; CSS-Modules component styling. Light and system modes are unreachable at the type level in M1.1 — progressive implementation per §6. |
+| **ADR-011** UI Stack | Implemented literally. `lucide-react` not yet imported (no icons needed in M1.1 shell placeholders — section titles "Tools" and "Properties" are plain text). `ThemeProvider` type narrowed to `mode: 'dark'` in M1.1; widens to the full `'dark' \| 'light' \| 'system'` union in Milestone 5 (additive, backward-compatible). |
+| **Architecture contract** §0.4 GR-3 Module Isolation | Enforced via grep gates G1.1, G1.2, G3.3 covering every GR-3 boundary including the future `services/api` as `@portplanner/api`. |
 | **Architecture contract** §0.4 GR-1 Preproduction Clean-break | No migration shims. No compatibility code. |
 | **Architecture contract** §0.4 GR-2 Architecture-first | SSOT tokens; single source of truth for theme; no shortcut styling. |
-| **`reference/prototype-v1.html`** | Visual reference only. Layout shape (navbar + sidebars + canvas area) mirrors the prototype. **MUST NOT port code.** |
 
 Other binding specs (ADRs 001–010, 013, 014, extraction registry, glossary,
-coordinate-system.md) — **no change**. M1.1 does not touch them. M1.2–M1.4
-will.
+`coordinate-system.md`) — **no change**. M1.1 does not touch them.
+M1.2–M1.4 will.
+
+### Non-binding reference material consulted
+
+Per §0.3 of the architecture contract, the following is reference material
+only and is NOT a binding spec. Listed here for transparency, separate
+from the binding table above.
+
+| Material | Path | Role |
+|---|---|---|
+| Prototype HTML | `reference/prototype-v1.html` | Visual layout reference for Phase 4 (navbar + sidebars + canvas area + status bar shape). MUST NOT port code, CSS, or HTML structure. Anti-port enforced by grep gate G4.1 (no hardcoded hex colours in CSS modules) and by the general §0.3 rule. |
 
 ## 5. Architecture Doc Impact
 
@@ -175,6 +184,35 @@ will.
 
 **None.** This plan implements binding specs literally. No §0.7 deviation
 is proposed.
+
+### Explicit note on theme handling (Round 1 Codex review, item P2/SM1)
+
+Codex Round 1 flagged the original ThemeProvider handling of `light` /
+`system` modes (Proxy throwing on read; `console.warn` fallback) as a
+candidate §0.7 deviation. In response, Phase 3 was revised to implement
+`ThemeProvider` with `mode: 'dark'` only — a strict **narrower subset** of
+`design-tokens.md` v1.2.0's three-state contract
+(`'dark' | 'light' | 'system'`). This is **progressive implementation**,
+not a deviation, for the following reasons:
+
+1. The execution plan explicitly excludes the theme switcher and one of
+   the themes from M1 ("pick dark or light, ship one" —
+   `docs/execution-plan.md` Milestone 1 "Explicitly out of scope").
+2. The narrower type reflects what is implementable in M1.1. Milestone 5
+   widens the union additively. Consumers passing `mode="dark"` continue
+   to type-check after widening; no breaking change for M1.1 code.
+3. Per §0.7, a deviation **alters spec semantics**. A strict subset is
+   not an alteration — it is incomplete-but-forward-compatible
+   implementation, explicitly allowed by M1's exclusions.
+4. No runtime fallback behaviour is introduced. The previous
+   Proxy-throwing / warning-on-fallback design (revised out) *would* have
+   added spec-absent runtime semantics and warranted a deviation; the
+   revised narrow-type design does not.
+
+**User approval of this interpretation:** 2026-04-18,
+`aleksacavic@gmail.com`, via pre-plan question response confirming
+"Narrow type, no deviation" over "Declare §0.7 deviation, keep Proxy".
+Also recorded in Appendix A.
 
 ## 7. Object Model and Extraction Integration
 
@@ -250,12 +288,12 @@ G1.0 — pnpm install succeeds
   Command: pnpm install
   Expected: exit 0
 
-G1.1 — domain has zero cross-package imports
-  Command: rg -n "from '@portplanner/(design-system|web|editor-2d|viewer-3d)'" packages/domain/src
+G1.1 — domain has zero cross-package imports (incl. future services/api)
+  Command: rg -n "from '@portplanner/(design-system|web|editor-2d|viewer-3d|api)'" packages/domain/src
   Expected: zero matches
 
-G1.2 — design-system has zero cross-package imports
-  Command: rg -n "from '@portplanner/(domain|web|editor-2d|viewer-3d)'" packages/design-system/src
+G1.2 — design-system has zero cross-package imports (incl. future services/api)
+  Command: rg -n "from '@portplanner/(domain|web|editor-2d|viewer-3d|api)'" packages/design-system/src
   Expected: zero matches
 
 G1.3 — typecheck passes across all packages
@@ -374,17 +412,15 @@ user answer Q1.
    Tokens" with dark values per §"Dark theme". Import primitives. Expose
    `const dark: SemanticTokens`.
 3. **Theme mappings (`themes.ts`).** Define the `SemanticTokens` type (the
-   interface body shown in `design-tokens.md`). Export the dark theme.
-   **Light** is declared as a typed export that throws at runtime if read —
-   this keeps M5 expansion clean without shipping half-defined values.
+   interface body shown in `design-tokens.md`). Export **only** the `dark`
+   theme constant. `light` and `system` are **not** exported, not declared,
+   and not reachable at the type level in M1.1.
    ```ts
    export const dark: SemanticTokens = { /* … */ };
-   export const light: SemanticTokens = new Proxy({} as SemanticTokens, {
-     get() { throw new Error('Light theme not implemented in M1.1. See Milestone 5.'); }
-   });
    ```
-   Alternative implementation acceptable as long as reads of `light` fail
-   loudly at runtime and types remain exhaustive.
+   **No Proxy. No runtime fallback. No warning log.** Milestone 5 adds
+   `light` and `system` by widening the provider's mode type and adding
+   the missing semantic-token exports — a purely additive change.
 4. **CSS-var emitter (`css-vars.ts`).** A pure function
    `emitCSSVars(tokens: SemanticTokens): string` that produces a string
    of `--foo: value;` declarations flattening the semantic-token tree
@@ -397,15 +433,27 @@ user answer Q1.
    themes under class selectors. In M1.1 only `.theme-dark` is populated;
    `.theme-light` is omitted (Milestone 5). `global.css` is imported by
    `apps/web/src/global.css` in Phase 4.
-6. **`ThemeContext` + `ThemeProvider`.** Matches the contract in
-   `design-tokens.md` §"ThemeProvider contract":
+6. **`ThemeContext` + `ThemeProvider`.** M1.1 implements a **narrower
+   subset** of the final contract in `design-tokens.md` §"ThemeProvider
+   contract". The types widen progressively in later milestones.
    ```ts
-   type ThemeMode = 'dark' | 'light' | 'system';
-   type ActiveTheme = 'dark' | 'light';
+   // M1.1 — narrow
+   type ThemeMode = 'dark';
+   type ActiveTheme = 'dark';
+
+   // Milestone 5 widens additively (non-breaking for M1.1 consumers):
+   // type ThemeMode = 'dark' | 'light' | 'system';
+   // type ActiveTheme = 'dark' | 'light';
    ```
-   M1.1 behaviour: `mode = 'dark'` → `active = 'dark'`.
-   `mode = 'light'` or `'system' (which would resolve to light on a light-preferring OS)` → **resolve to `'dark'`** with a `console.warn` that only dark is implemented. This is the lightest-touch way to satisfy the
-   type contract while honouring the "ship one theme" M1 exclusion.
+   Consumers passing `mode="dark"` continue to type-check when the widening
+   lands — widening a union is backward-compatible. The narrowing is
+   **progressive implementation** aligned with the execution plan's M1
+   exclusion of the theme switcher and one of the themes; it is
+   **not a §0.7 deviation** (see §6 for the explicit rationale).
+
+   M1.1 behaviour: `mode="dark"` → `active="dark"`. No fallback logic,
+   no warnings, no Proxy. `light` and `system` are unreachable at the
+   type level.
 7. **`useTheme`.** Returns `{ mode, active, setMode }` from context.
 8. **`useActiveThemeTokens`.** Returns the semantic-tokens object for the
    active theme; always `dark` in M1.1.
@@ -415,15 +463,18 @@ user answer Q1.
    - `emitCSSVars(dark)` is deterministic: calling it twice produces
      byte-identical output.
    - `emitCSSVars(dark)` emits one declaration per leaf semantic token.
-   - Reading `light.surface.base` throws with a message mentioning
-     "Milestone 5".
+   - **Type-level check**: `ThemeMode` accepts `'dark'` and only `'dark'`.
+     A `// @ts-expect-error` assertion (or equivalent `tsd` / `expect-type`
+     assertion) confirms that passing `'light'` or `'system'` is a type
+     error in M1.1.
 10. **Tests (`theme-provider.test.tsx`):**
     - `<ThemeProvider mode="dark">` mounted via `@testing-library/react`
-      sets `html.theme-dark` class and `useActiveThemeTokens` returns
-      the dark token object.
-    - `<ThemeProvider mode="light">` still resolves `active` to `dark`
-      in M1.1 and emits a console warning (assert via
-      `vi.spyOn(console, 'warn')`).
+      sets `html.theme-dark` class on the document root, and
+      `useActiveThemeTokens()` returns the `dark` token object.
+    - `useTheme()` returns `{ mode: 'dark', active: 'dark', setMode }`.
+      `setMode('dark')` is a no-op (the only valid argument in M1.1);
+      the widening to accept `'light'`/`'system'` is deferred to
+      Milestone 5.
 
 **Invariants introduced:**
 
@@ -440,16 +491,16 @@ G3.0 — design-system tests pass
   Command: pnpm --filter @portplanner/design-system test
   Expected: exit 0, all tests pass
 
-G3.1 — primitives not leaked outside semantic-dark.ts
-  Command: rg -n "from '.*tokens/primitives'" packages/ apps/ | rg -v "tokens/(semantic-dark|semantic-light)"
+G3.1 — primitives not leaked outside semantic-token files
+  Command: rg -n "from '.*tokens/primitives'" packages/ apps/ -g '!packages/design-system/src/tokens/semantic-*.ts'
   Expected: zero matches
 
 G3.2 — no styled-components / emotion imports anywhere
   Command: rg -n "from 'styled-components'|from '@emotion/(styled|react)'" packages/ apps/
   Expected: zero matches
 
-G3.3 — design-system has zero cross-package imports (re-verify)
-  Command: rg -n "from '@portplanner/(domain|web|editor-2d|viewer-3d)'" packages/design-system/src
+G3.3 — design-system has zero cross-package imports (re-verify; incl. future services/api)
+  Command: rg -n "from '@portplanner/(domain|web|editor-2d|viewer-3d|api)'" packages/design-system/src
   Expected: zero matches
 
 G3.4 — typecheck still passes
@@ -604,14 +655,9 @@ main.
 **Mandatory completion gates:**
 
 ```
-G5.0 — CI workflow file exists and is syntactically valid YAML
-  Command: node -e "require('yaml').parse(require('fs').readFileSync('.github/workflows/ci.yml','utf8'))"
-  Expected: exit 0
-  (Alternative: `npx actionlint .github/workflows/ci.yml` if actionlint is installed)
-
-G5.1 — CI passes on this branch's PR
-  Command: (run the workflow via PR or `gh workflow run` and confirm green)
-  Expected: workflow completes with success status
+G5.0 — CI workflow file is syntactically valid and action-lint-clean
+  Command: pnpm dlx actionlint .github/workflows/ci.yml
+  Expected: exit 0, no reported errors
 ```
 
 **Tests added in this phase:** none. The CI itself is the test.
@@ -632,7 +678,7 @@ G5.1 — CI passes on this branch's PR
 | I8 | `emitCSSVars` is deterministic | 3 | Unit test `tokens.test.ts::emit-is-deterministic` |
 | I9 | apps/web component styles reference no hardcoded hex colours | 4 | G4.1 |
 | I10 | apps/web does not import token primitives | 4 | G4.2 |
-| I11 | CI runs on every PR to main | 5 | G5.0 + GitHub branch protection (manual step; recommended but not gated by this plan) |
+| I11 | CI runs on every PR to main | 5 | G5.0 (workflow file validity via `actionlint`) + Done Criterion #8 (remote: CI workflow conclusion == `"success"` via `gh run list`) |
 
 ## 11. Test strategy
 
@@ -643,7 +689,7 @@ G5.1 — CI passes on this branch's PR
 | File | Test count | Purpose |
 |------|-----------|---------|
 | `packages/design-system/tests/tokens.test.ts` | 4 | Token shape, CSS-var emission determinism, light-theme placeholder throws |
-| `packages/design-system/tests/theme-provider.test.tsx` | 2 | Provider sets correct class; light-mode falls back to dark with warning |
+| `packages/design-system/tests/theme-provider.test.tsx` | 2 | Provider sets correct class on document root; `useTheme` hook returns the expected `{ mode, active, setMode }` shape |
 | `apps/web/tests/app-shell.test.tsx` | 5 | Smoke test: App renders, sidebar titles present, status text present |
 
 Total: **11 test cases** by end of M1.1.
@@ -661,10 +707,12 @@ Additional test types:
 
 ## 12. Done Criteria
 
-All of the following MUST be true before M1.1 is considered complete:
+### Local — verifiable on a clean dev machine without external auth
 
-1. `git clone <repo> && cd portplanner && pnpm install && pnpm dev` starts
-   the dev server with no errors.
+All of the following MUST be true before M1.1 is considered locally complete:
+
+1. After cloning the repository and running `pnpm install` from the repo
+   root, `pnpm dev` starts the Vite dev server with no errors.
 2. Opening the dev URL in a browser shows the dark-themed shell: navbar
    with "PortPlanner" wordmark, left sidebar labeled "Tools", right
    sidebar labeled "Properties", empty canvas area, status bar with
@@ -675,11 +723,26 @@ All of the following MUST be true before M1.1 is considered complete:
 6. `pnpm build` exits 0 and produces `apps/web/dist/`.
 7. All grep gates G1.1, G1.2, G3.1, G3.2, G3.3, G4.1, G4.2 return zero
    matches.
-8. All binding specs in §4 remain unchanged (except the README append).
-9. CI workflow runs green on the PR for this branch.
+
+### Remote — requires push access + `gh` auth
+
+8. CI workflow `ci.yml` runs green on the feature branch's PR.
+   Verification command (requires `gh` authenticated):
+
+   ```
+   gh run list --workflow=ci.yml --branch=feature/m1-1-foundation --limit=1 --json conclusion -q '.[0].conclusion'
+   ```
+
+   Expected output: `"success"`.
+
+### Invariants preserved
+
+9. All binding specs in §4 remain unchanged beyond the `README.md` append
+   documented in §5.
 10. No edits to any ADR (001–014). No edits to `design-tokens.md` beyond
     v1.2.0 which is already on main. No edits to the extraction registry.
-    No deviations proposed.
+    No deviations proposed beyond the progressive-implementation note in
+    §6 (which is not classified as a deviation per §0.7).
 
 ## 13. Risks
 
@@ -715,7 +778,7 @@ this plan:
 
 **Plan:** `docs/plans/feature/m1-1-foundation.md`
 **Branch:** `feature/m1-1-foundation`
-**Status:** Plan authored — awaiting review
+**Status:** Plan revised for Round 2 — awaiting re-review (Codex Round 1 memo dated 2026-04-18 rated 5.5/10, No-Go; all Blockers and High-risk items addressed per Appendix A at end of file)
 
 ### Paste to Codex for plan review
 
@@ -750,3 +813,60 @@ this plan:
 >
 > Report findings as Blocker / High-risk / Quality gap per §0.8 of the
 > architecture contract.
+
+---
+
+## Appendix A — Scrutiny Assessment and Actions (Round 1 → Round 2)
+
+In response to Codex Round 1 review (memo dated 2026-04-18, reviewing
+plan at commit `7d3e2e1`). Per Procedure 02 §2.10, this appendix
+documents each review item's decision, rationale, and the plan updates
+made. History is preserved — prior plan text is updated in place, but
+the review itself is recorded here without rewriting.
+
+### Blockers
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| P2 / SM1 | Undeclared §0.7 deviation: theme Proxy fallback | **Agree** | Phase 3 Steps 3, 6, 9, 10 rewritten. `themes.ts` exports only `dark`. `ThemeProvider`'s `ThemeMode` narrowed to `'dark'`. Proxy removed. No runtime fallback. Type-level test added to confirm `'light'` / `'system'` are rejected. §6 adds the progressive-implementation note. | Narrow-type approach is cleaner than declaring a deviation. A strict subset of the spec is progressive implementation, not a deviation. Milestone 5 widens the union additively without breaking M1.1 consumers. User-approved 2026-04-18 (narrow-type selected over "Declare §0.7 deviation, keep Proxy"). |
+| P3 / SM2 | Phase 5 G5.1 narrative/manual, not a concrete command | **Agree** | G5.1 dropped. G5.0 reshaped to use `pnpm dlx actionlint` — single deterministic command. "CI green on PR" moved to Done Criteria §12 Remote bucket with a concrete `gh run list … conclusion` command. | Phase 5's scope is creating the workflow file. Whether CI runs green depends on Phases 1–4 and is a Done Criterion, not a phase gate. |
+| P4 / SM3 | GR-3 grep gates miss `services/api` boundary | **Agree** | Grep gates G1.1, G1.2, and G3.3 updated: rejection union becomes `(design-system\|web\|editor-2d\|viewer-3d\|api)`. User confirmed `@portplanner/api` as the future package name (2026-04-18). | Forward-looking rejection patterns prevent future imports from silently bypassing GR-3 when `services/api` ships post-M1. |
+
+### High-risk
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| P6 | Done Criteria mixes local + remote (CI green depends on GitHub auth) | **Agree** | §12 restructured into three buckets: **Local** (clean machine), **Remote** (requires push + `gh` auth), **Invariants preserved**. CI-green moves to Remote with a concrete `gh run list` command. | A clean-machine engineer can verify the Local bucket without external credentials. Remote is explicit about what requires push access. |
+| P9 | G3.1 pipe-based command may be fragile cross-shell | **Agree** | G3.1 rewritten to use `rg`'s native `-g '!…'` exclude flag. Single command, no shell pipe. Works identically on Windows (Git Bash / cmd / PowerShell) and Unix shells. | Eliminates cross-shell fragility by staying inside `rg`'s own flag surface. |
+
+### Quality gaps
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| P1 / SM4 | `reference/prototype-v1.html` listed under "Binding specs touched" | **Agree** | Row removed from §4 binding-spec table. New §4 subsection "Non-binding reference material consulted" documents the prototype's visual-reference-only role. | Prototype is reference material per §0.3 of the architecture contract, not a binding spec. The distinction matters — binding specs trigger §0.7 on deviation; reference material does not. |
+| — | Path cite in §2 Assumptions referenced only the Claude contract mirror | **Agree** | §2 cite now references both `docs/procedures/Claude/00-architecture-contract.md` and `docs/procedures/Codex/00-architecture-contract.md` §0.3, noting the rule is mirrored. | Plan is reviewed by Codex, which reads from the Codex mirror. Both should be cited since both contain the same rule. |
+| — | Done Criteria #1 `cd portplanner` (case-sensitive filesystem risk) | **Agree** | §12 Local #1 rewritten: "After cloning the repository and running `pnpm install` from the repo root, `pnpm dev` starts the Vite dev server…" Removes the case-sensitive `cd`. | Works across filesystems regardless of case sensitivity. |
+
+### Passed in Round 1 (retained unchanged in revision)
+
+- **P5** — No M1.2–M1.4 pre-introduction.
+- **P7** — Prototype-shell placeholder does not port code or CSS from `reference/prototype-v1.html`.
+- **P8** — Phase ordering correct.
+- **P10** — Reviewer Handoff block matches Procedure 01 §1.11 Part A format.
+
+### User approvals recorded (2026-04-18, aleksacavic@gmail.com)
+
+| # | Decision | Scope in plan | Source |
+|---|---|---|---|
+| 1 | Narrow-type ThemeProvider for M1.1 (no §0.7 deviation; progressive implementation) | Phase 3 Steps 3, 6, 9, 10; §6 | AskUserQuestion popup: selected "Narrow type, no deviation (Recommended)" |
+| 2 | `@portplanner/api` as the future package name for `services/api` | Grep gates G1.1, G1.2, G3.3 | AskUserQuestion popup: selected "@portplanner/api (Recommended)" |
+| 3 | All other Round 1 findings (Blockers, High-risk, Quality gaps) resolved as documented above | Multiple sections | Implicit in user request "ask me if any decisions need my input" + approval of triage table |
+
+### Round 2 closure checklist (against Codex §2.11)
+
+- [x] Zero Blockers: P2/SM1 (deviation) resolved by narrow-type approach; P3/SM2 (gate quality) resolved by dropping G5.1; P4/SM3 (GR-3 coverage) resolved by adding `api` to grep unions.
+- [x] Every High-risk item explicitly handled: P6 (done-criteria split), P9 (rg glob exclude).
+- [x] Enforceable gates for all critical claims: Phase 5 now has a concrete `actionlint` gate; all isolation gates use single rg commands; no narrative gates remain.
+- [x] Architecture-doc impact assessed and matches binding-spec realities: §4 is cleaner; non-binding prototype moved out; ADR-011 description updated for narrow type.
+- [x] GR-3 module isolation verified across all current and future packages (domain, design-system, web, editor-2d, viewer-3d, api).
+- [x] All deviations follow §0.7 protocol — none proposed in this plan; the narrow-type note in §6 is explicitly classified as progressive implementation with user approval recorded.
