@@ -214,6 +214,25 @@ not a deviation, for the following reasons:
 "Narrow type, no deviation" over "Declare §0.7 deviation, keep Proxy".
 Also recorded in Appendix A.
 
+### Progressive-implementation compliance check (architecture-contract §0.7)
+
+Per the §0.7 "Progressive implementation (distinct from deviation)"
+clause (landed on main in commit `a209ed9`, merged into this branch by
+merge commit `1c96ed5`), this plan satisfies all four conditions for
+non-deviation classification:
+
+| # | Condition | Status | Plan reference |
+|---|---|---|---|
+| 1 | No conflicting runtime semantics | **Satisfied** | Phase 3 Step 3: Proxy removed; Steps 3 and 6 both state "no Proxy, no fallback, no warning log". No runtime behaviour is added that is absent from `design-tokens.md` v1.2.0. |
+| 2 | Excluded features unreachable at the type level | **Satisfied** | Phase 3 Step 6 narrows `ThemeMode` to `'dark'` only in M1.1; the widening in Milestone 5 is additive (a union superset), so M1.1 consumers continue to type-check after widening. Phase 3 Step 9 adds a type-level test confirming `'light'` and `'system'` are rejected by the compiler. |
+| 3 | User approval recorded in plan file with identifier and date | **Satisfied** | §6 above records: 2026-04-18, `aleksacavic@gmail.com`, selected "Narrow type, no deviation" via pre-plan AskUserQuestion popup. Appendix A records the same approval. |
+| 4 | Widening plan explicitly stated | **Satisfied** | Phase 3 Step 3 names **Milestone 5** as the widening point: "Milestone 5 adds `light` and `system` by widening the provider's mode type and adding the missing semantic-token exports — a purely additive change." See also `docs/execution-plan.md` Milestone 5 scope. |
+
+**Classification: Progressive implementation, not deviation.** No §0.7
+Approved Deviation Protocol ceremony is required. The Codex Round 2
+reviewer verification expectation (per the §0.7 Codex-mirror note) is
+satisfied by this mapping table and the plan references above.
+
 ## 7. Object Model and Extraction Integration
 
 **Not applicable.**
@@ -688,7 +707,7 @@ G5.0 — CI workflow file is syntactically valid and action-lint-clean
 
 | File | Test count | Purpose |
 |------|-----------|---------|
-| `packages/design-system/tests/tokens.test.ts` | 4 | Token shape, CSS-var emission determinism, light-theme placeholder throws |
+| `packages/design-system/tests/tokens.test.ts` | 4 | Token shape completeness (every `SemanticTokens` path non-null in `dark`), `emitCSSVars` determinism, leaf-count match, type-level `ThemeMode` narrowness (`'light'`/`'system'` rejected by compiler) |
 | `packages/design-system/tests/theme-provider.test.tsx` | 2 | Provider sets correct class on document root; `useTheme` hook returns the expected `{ mode, active, setMode }` shape |
 | `apps/web/tests/app-shell.test.tsx` | 5 | Smoke test: App renders, sidebar titles present, status text present |
 
@@ -754,7 +773,6 @@ All of the following MUST be true before M1.1 is considered locally complete:
 | Biome rule coverage gaps surface late | Medium | ADR-012 already names the policy: ESLint adoption is a §0.7 deviation, not a silent fallback. Raise as finding if hit. |
 | Prototype-shell scope creeps (additional panels, bottom drawer) | Medium | This plan names exactly 5 shell components (Navbar, Sidebar×2, CanvasArea, StatusBar); adding more is a separate plan |
 | Reference-prototype code is accidentally ported into shell CSS/TSX | Medium | Gate G4.1 (no hardcoded colours) catches colour porting; reviewer specifically asked to check pattern re-use per §0.3 of the architecture contract |
-| Light-theme placeholder Proxy causes subtle bugs at mount | Low | Unit tests cover both reads and the warning-on-fallback path |
 
 ## 14. Execution notes
 
@@ -778,7 +796,7 @@ this plan:
 
 **Plan:** `docs/plans/feature/m1-1-foundation.md`
 **Branch:** `feature/m1-1-foundation`
-**Status:** Plan revised for Round 2 — awaiting re-review (Codex Round 1 memo dated 2026-04-18 rated 5.5/10, No-Go; all Blockers and High-risk items addressed per Appendix A at end of file)
+**Status:** Plan revised for Round 3 — awaiting re-review (Codex Round 2 memo dated 2026-04-18 rated 8.6/10, No-Go on N1; resolved by new architecture-contract §0.7 "Progressive implementation" clause landed in main commit `a209ed9` and four-condition compliance table added to §6. Q1 and Q2 stale-text quality gaps also fixed. All Round 1 resolutions verified still passing. See Appendix A.)
 
 ### Paste to Codex for plan review
 
@@ -870,3 +888,42 @@ the review itself is recorded here without rewriting.
 - [x] Architecture-doc impact assessed and matches binding-spec realities: §4 is cleaner; non-binding prototype moved out; ADR-011 description updated for narrow type.
 - [x] GR-3 module isolation verified across all current and future packages (domain, design-system, web, editor-2d, viewer-3d, api).
 - [x] All deviations follow §0.7 protocol — none proposed in this plan; the narrow-type note in §6 is explicitly classified as progressive implementation with user approval recorded.
+
+### Round 2 → Round 3 response
+
+In response to Codex Round 2 review (memo dated 2026-04-18, reviewing
+plan at commit `8f8d5bb`, rating **8.6/10 No-Go** with one open
+High-risk item and two Quality gaps).
+
+#### High-risk
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| N1 / H1 | Subset-vs-deviation classification ambiguity at milestone granularity | **Agree — root cause is procedure gap, not author error** | Formalised as a new subsection in architecture-contract §0.7 "Progressive implementation (distinct from deviation)" via chore commit `a209ed9` (both Claude and Codex mirrors), merged to main. Feature branch pulled that change in via merge commit `1c96ed5`. Plan §6 extended with an explicit four-condition compliance table referencing the new §0.7 clause with concrete plan-section references for each condition. | Codex correctly identified that the prior contract did not explicitly distinguish progressive implementation from deviation at milestone granularity. Codifying Codex's four-condition rule as a first-class concept in §0.7 closes the ambiguity for this plan and for every future milestone plan. |
+
+#### Quality gaps
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| Q1 | §11 test strategy still references "light-theme placeholder throws" after Round 1 revision removed the Proxy | **Agree** | `tokens.test.ts` row description rewritten to accurately describe the four current tests: token shape completeness, `emitCSSVars` determinism, leaf-count match, and type-level `ThemeMode` narrowness. | Author edit drift from Round 1 revision. Consistency sweep performed in Round 2 response. |
+| Q2 | §13 risks table row "Light-theme placeholder Proxy causes subtle bugs at mount" referenced behaviour that no longer exists | **Agree** | Row removed. No replacement risk added because the narrow-type approach introduces no new risk of its own beyond what is already covered by TypeScript strict mode and Phase 3 tests. | Author edit drift from Round 1 revision. |
+
+#### Passed in Round 2 (retained unchanged in Round 3 revision)
+
+All Round 1 resolutions (RR1–RR7) verified still passing; no
+regressions introduced by Round 2 response.
+
+#### User approvals recorded (2026-04-18, aleksacavic@gmail.com)
+
+| # | Decision | Scope | Source |
+|---|---|---|---|
+| 4 | Formalise "Progressive implementation" in architecture-contract §0.7 on its own chore branch, then reference from plan §6 | `docs/procedures/Claude/00-architecture-contract.md` and Codex mirror | User approved the Round 2 → Round 3 response plan ("One High-risk [N1]… Codex's four-condition rule becomes canonical. Separate chore branch, merge to main.") consistent with the prior-established chore-branch-for-procedure-changes pattern |
+
+#### Round 3 closure checklist (against Codex §2.11)
+
+- [x] N1 resolved: §0.7 now explicitly defines progressive implementation. §6 invokes it with a four-condition compliance table backed by plan references.
+- [x] Q1 resolved: §11 test-strategy description updated to match current tests.
+- [x] Q2 resolved: §13 stale risk row removed.
+- [x] No regressions: Round 1 items RR1–RR7 still passing; no new M1.2–M1.4 code pre-introduced.
+- [x] Architecture-contract change landed on main before the plan references it; the cross-reference (`a209ed9`, `1c96ed5`) is valid in both git history and on the feature branch's working tree.
+- [x] History preserved per §2.10: prior Round 1 plan text is updated in place, but the Round 1 review record in this appendix is untouched; Round 2 response is appended as a new subsection.
