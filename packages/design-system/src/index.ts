@@ -1,3 +1,9 @@
-// @portplanner/design-system — empty scaffold in Phase 1.
-// Phase 3 populates tokens and the ThemeProvider; re-exports land there.
-export {};
+// @portplanner/design-system — top-level re-exports.
+
+// Tokens
+export type { SemanticTokens, Color } from './tokens';
+export { dark, emitCSSVars, emitCSSVarEntries } from './tokens';
+
+// Theme — React provider + hooks
+export { ThemeProvider, useTheme, useActiveThemeTokens } from './theme';
+export type { ThemeMode, ActiveTheme, ThemeContextValue } from './theme';

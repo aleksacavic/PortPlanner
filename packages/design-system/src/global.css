@@ -1,0 +1,26 @@
+/* Base styles for consumers of @portplanner/design-system.
+ * Semantic-token CSS custom properties are injected at runtime on the
+ * <html> element by <ThemeProvider> (see ThemeProvider.tsx and
+ * css-vars.ts). This file only defines resets + root font setup, using
+ * tokens with sensible fallbacks for the pre-mount flash. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-family-sans, "Inter", "Segoe UI", system-ui, sans-serif);
+  background: var(--surface-base, #1a1a2e);
+  color: var(--text-primary, #c8d8f0);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
