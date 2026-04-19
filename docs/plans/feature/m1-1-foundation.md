@@ -400,8 +400,10 @@ will replace it with a real shell test.
 **Goal:** Implement the three-layer token architecture, the CSS custom
 property emission, and the `ThemeProvider` with `useTheme` and
 `useActiveThemeTokens` hooks — per `design-tokens.md` v1.2.0. Only the
-**dark** theme is implemented; light theme stays as a typed placeholder per
-user answer Q1.
+**dark** theme is implemented in M1.1; `light` and `system` are neither
+exported nor reachable at the type level (narrow `ThemeMode = 'dark'`) and
+widen additively in Milestone 5. See §6 for the progressive-implementation
+classification and user approval (Q1).
 
 **Files created in this phase:**
 
