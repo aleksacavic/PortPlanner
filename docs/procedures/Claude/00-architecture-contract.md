@@ -284,6 +284,33 @@ specification, the implementer MUST:
 - Changing the sync model from last-write-wins to CRDT-based.
 - Any change that would make an existing ADR incorrect.
 
+### Progressive implementation (distinct from deviation)
+
+An implementation that ships a **strict subset** of a binding
+specification at a given milestone is NOT classified as a deviation
+when ALL of the following conditions hold:
+
+1. **No conflicting runtime semantics.** The subset does not add
+   fallback logic, warnings, proxies, or runtime behaviour absent
+   from the spec.
+2. **Excluded features unreachable at the type level.** Type
+   narrowing MUST be additive-only so later widening (the full
+   superset) does not break current-milestone consumers.
+3. **User approval recorded in the plan file** with user identifier
+   and date.
+4. **Widening plan explicitly stated**: which milestone restores the
+   full spec, named in the plan.
+
+If any condition is not met, the change MUST follow the Approved
+Deviation Protocol above as a deviation.
+
+Progressive implementation is the legitimate path when the execution
+plan explicitly excludes a feature in the current milestone
+(e.g. `docs/execution-plan.md` Milestone 1: "pick dark or light, ship
+one"). Each plan applying this classification MUST include a mapping
+table demonstrating the four conditions hold, with references to the
+plan sections that satisfy each.
+
 ---
 
 ## 0.8) Verification expectation
