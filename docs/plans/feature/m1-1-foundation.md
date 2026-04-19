@@ -707,7 +707,7 @@ G5.0 — CI workflow file exists with required structural keys
 | I8 | `emitCSSVars` is deterministic | 3 | Unit test `tokens.test.ts::emit-is-deterministic` |
 | I9 | apps/web component styles reference no hardcoded hex colours | 4 | G4.1 |
 | I10 | apps/web does not import token primitives | 4 | G4.2 |
-| I11 | CI runs on every PR to main | 5 | G5.0 (workflow file validity via `actionlint`) + Done Criterion #8 (remote: CI workflow conclusion == `"success"` via `gh run list`) |
+| I11 | CI runs on every PR to main | 5 | G5.0 (workflow file structural checks: file exists + required YAML keys present via `test` + `rg -q`; see PE-6) + Done Criterion #8 (remote: CI workflow conclusion == `"success"` via `gh run list`) |
 
 ## 11. Test strategy
 
