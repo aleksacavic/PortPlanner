@@ -457,3 +457,14 @@ Plan authoring is complete only when:
 10. No versioned drafts remain per §1.10.
 11. Plan file committed to the feature branch and pushed to `origin`
     per §1.1 and §1.10. Reviewers cannot see an uncommitted plan.
+12. Section-consistency pass: before re-emitting a revised plan that
+    removes or renames a behaviour, type, file path, or artifact
+    (e.g. in response to review findings), the author MUST grep the
+    plan body for references to the removed/renamed concept and fix
+    every stale reference in the same commit as the revision. Sections
+    where stale text most commonly survives: §3 (Scope and Blast
+    Radius), §4 (Binding specs touched), §10 (Invariants summary),
+    §11 (Test strategy), §12 (Done Criteria), §13 (Risks), and phase
+    goal-sentence headers. This check is separate from §1.3 internal
+    review rounds (which verify the new content); this step verifies
+    the OLD content has been removed everywhere it appears.
