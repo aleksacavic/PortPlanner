@@ -282,7 +282,7 @@ ADR-012. Nothing runs yet; the scaffolding just validates.
 2. Create root `package.json` with:
    - `"private": true`
    - `"packageManager": "pnpm@9.15.0"` (or latest pnpm 9.x at execution time)
-   - `"engines": { "node": ">=20.0.0 <21.0.0" }`
+   - `"engines": { "node": ">=20.0.0" }` (open floor; `.nvmrc` still pins CI to Node 20 — see Post-execution notes "PE-1")
    - Scripts: `dev`, `build`, `test`, `typecheck`, `check`, `fix` (exact script bodies defined in Phase 2; placeholder `echo` bodies acceptable here if needed)
 3. Create `.nvmrc` containing `20`.
 4. Create `.gitignore` with: `node_modules/`, `dist/`, `.DS_Store`, `*.log`, `coverage/`, `.claude/`, `.idea/`, `.vscode/`.
@@ -929,3 +929,73 @@ regressions introduced by Round 2 response.
 - [x] No regressions: Round 1 items RR1–RR7 still passing; no new M1.2–M1.4 code pre-introduced.
 - [x] Architecture-contract change landed on main before the plan references it; the cross-reference (`a209ed9`, `1c96ed5`) is valid in both git history and on the feature branch's working tree.
 - [x] History preserved per §2.10: prior Round 1 plan text is updated in place, but the Round 1 review record in this appendix is untouched; Round 2 response is appended as a new subsection.
+
+---
+
+## Post-execution notes
+
+Per Procedure 03 §3.7, mid-execution plan corrections discovered during
+Procedure 03 execution are recorded here.
+
+### PE-1 — Relax Node `engines` upper bound (discovered during Phase 1)
+
+**Discovered:** Phase 1 G1.0 (`pnpm install`) context — developer machine
+had Node v24.12.0 installed but the plan's `engines` field
+`">=20.0.0 <21.0.0"` excluded it.
+
+**Patch applied** (same commit as Phase 1 implementation):
+- Plan §9 Phase 1 Step 2: `"engines": { "node": ">=20.0.0 <21.0.0" }` →
+  `"engines": { "node": ">=20.0.0" }`.
+- Rationale: ADR-012 #13 says *"Node 20 LTS pinned via `.nvmrc` +
+  `engines` field."* The `.nvmrc` pin (`20`) is preserved and is what CI
+  enforces. The `engines` field was over-encoded as a range lock; the
+  ADR intent is a floor (do not silently allow Node 18 or earlier), not
+  a ceiling (no pressure to refuse Node 22/24). Node 20 enters
+  maintenance 2026-04-30; widening to a floor matches reality without
+  weakening CI.
+- Classification: plan correction, not an ADR deviation. ADR-012's word
+  is "pinned"; `.nvmrc` remains the pin of record. No §0.7 protocol
+  required.
+- User approval: 2026-04-18, `aleksacavic@gmail.com`, response "go go
+  agreed" to Option B proposal.
+
+**Discovered:** pnpm not installed on developer machine at Phase 1 start.
+
+**Resolution:** Environment setup step performed outside the plan:
+developer ran `npm install -g pnpm@9.15.0` in an admin shell.
+No plan patch required — pnpm availability was an implicit
+prerequisite the plan did not name; future plans with pnpm as a
+prerequisite should include an environment-check step before Phase 1.
+(Candidate procedure enhancement, not logged here.)
+
+### PE-2 — Existing `.gitignore` preserved
+
+**Discovered:** Phase 1 Step 4 specified creating `.gitignore` with a
+named set of entries. Repository already had a more comprehensive
+`.gitignore` (covering `.pnpm-store/`, build outputs, test output,
+`.env*` patterns, editor files, coverage). Plan's set was a subset.
+
+**Resolution:** Kept the existing file. Appended the one missing entry
+(`.claude/` — Claude Code local state directory, per-user, should not
+be committed).
+
+**Classification:** Not a deviation. Plan's list was a floor, not a
+ceiling.
+
+### PE-3 — `apps/web/src/index.ts` placeholder added
+
+**Discovered:** G1.3 (`pnpm -r exec tsc --noEmit`) failed with TS18003
+"No inputs were found" because `apps/web/tsconfig.json` includes
+`src/**/*` but Phase 1 creates no files under `apps/web/src/` (Phase 2
+adds `main.tsx`).
+
+**Resolution:** Added `apps/web/src/index.ts` with a placeholder
+comment and `export {};`. Phase 2 will create `main.tsx` alongside or
+delete this placeholder — the plan's Phase 2 Step 5 wording
+("Add temporary `main.tsx`") is untouched; implementation-time
+decision for Phase 2 to either keep or delete `index.ts`.
+
+**Classification:** Minor scope addition within Phase 1 to unblock
+G1.3. Not a deviation; matches the same pattern used for empty
+`packages/domain/src/index.ts` and `packages/design-system/src/index.ts`
+scaffold stubs.
