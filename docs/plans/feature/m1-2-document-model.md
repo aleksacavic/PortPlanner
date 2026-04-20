@@ -3,7 +3,7 @@
 **Branch:** `feature/m1-2-document-model`
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-21
-**Status:** Revised for Round 2 — awaiting re-review (Codex Round 1 memo dated 2026-04-21 rated 4.5/10, No-Go; all 3 Blockers and 3 High-risk items addressed per Appendix A at end of file)
+**Status:** Revised for Round 3 — awaiting re-review (Codex Round 2 memo dated 2026-04-21 rated 6.0/10, No-Go on 2 Blockers + 2 High-risk; all addressed per Appendix A Round 2 → Round 3 response at end of file)
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after approval
 
 ---
@@ -202,7 +202,7 @@ Other assumptions:
 | **ADR-015** Document Store State Management | Apply literally: vanilla Zustand + zundo (document slice only) + Immer; ban `zustand-persist`; React as peerDependency in `doc-store-react`; canvas-no-React grep gate satisfied trivially (editor-2d/viewer-3d don't exist yet). |
 | **Architecture contract** §0.4 GR-3 | Consumes the freshly-extended dep graph (doc-store, doc-store-react). No boundary violations expected. |
 | **Design tokens v1.2.0** | All UI additions use existing semantic tokens. No new tokens required. |
-| **Coordinate system ref** `docs/coordinate-system.md` | Implementation introduces `CoordinateSystem` TS type. Doc may need a small clarification mapping TS field names (`origin`, `rotationDeg`) to conceptual terms (`project origin`, `true-north rotation`) — addressed in §6. |
+| **Coordinate system ref** `docs/coordinate-system.md` | Implementation introduces `CoordinateSystem` TS type matching the doc's §"Implementation requirements" interface **field-for-field** (`originLat`, `originLng`, `trueNorthRotation`, `utmZone`). Transform methods (`toProjectLocal`, etc.) arrive in M1.3. No doc change expected in M1.2. |
 
 ## 5. Architecture Doc Impact
 
@@ -217,7 +217,7 @@ per Procedure 01 §1.6 and §0.5 spec-update rule:
 | ADR-012 Technology Stack | `docs/adr/012-technology-stack.md` | **No change** | All library choices pin exactly; no versions bumped. |
 | ADR-014 Persistence | `docs/adr/014-persistence-architecture.md` | **No change** | `idb` wrapper + canonical JSON + per-project key all match ADR-014 M1 branch. |
 | ADR-015 Doc Store | `docs/adr/015-document-store-state-management.md` | **No change** | Just landed; implementation conforms. |
-| `docs/coordinate-system.md` | `docs/coordinate-system.md` | **Possible: patch to map TS field names** | When `CoordinateSystem.origin` and `CoordinateSystem.rotationDeg` land in TS, the reference doc may want a small section naming the field conventions. Only patched if a Codex reviewer or a fresh reader finds the mapping ambiguous. Handled per §0.5 (same-commit update if it happens). No version bump — the doc doesn't carry one. |
+| `docs/coordinate-system.md` | `docs/coordinate-system.md` | **No change expected** | The TS `CoordinateSystem` type implements the doc's interface field-for-field (`originLat`, `originLng`, `trueNorthRotation`, `utmZone`). Field names match the binding interface with a cosmetic camelCase shift (snake_case → camelCase is a TS convention convention, not a semantic change). Transform methods on the interface are class methods implemented separately in M1.3, not part of the stored document. If execution surfaces a genuine mismatch, pause per §3.10. |
 | `docs/glossary.md` | `docs/glossary.md` | **Possible: append new terms** | Candidate additions: "canonical JSON form" (deterministic key-order + number format); "document dirty state" (transient unsaved flag). Only appended if Phase 1 or 5 introduces the term in code/UI. Handled per §0.5 (append + date in-line). |
 | `docs/design-tokens.md` | `docs/design-tokens.md` | **No change** | All UI additions (NewProjectDialog, buttons, dirty indicator) use existing semantic tokens. No new tokens proposed. |
 | Extraction registry | `docs/extraction-registry/*.md` | **No change** | No extractors in M1.2. |
@@ -257,9 +257,16 @@ mutations (canvas interactions, object create/update/delete) exist.
 ### PI-2 — Geodetic coordinate-input UI deferred to M1.3
 
 M1.2's New Project dialog collects only the project name. Documents
-are initialized with `coordinateSystem: { origin: { x: 0, y: 0 }, rotationDeg: 0, unit: 'meters' }`. User-chosen origin and true-north
-rotation UI lands in M1.3 when the 2D canvas exists and can show an
-origin marker + north arrow for immediate visual feedback.
+are initialized with `coordinateSystem: null` — consistent with
+`docs/coordinate-system.md` §"Project origin selection" which
+states "the origin is chosen by the user as a meaningful point on
+the site… The origin is immutable once set." Null means not-yet-set
+(the user hasn't chosen yet). User-chosen origin + true-north
+rotation + UTM-zone UI lands in M1.3 when the 2D canvas exists and
+can show an origin marker + north arrow for immediate visual
+feedback. M1.3 also enforces: `coordinateSystem` MUST be non-null
+before the first object is placed (compile-time and/or runtime
+guard).
 
 | # | Condition | Status | Evidence |
 |---|---|---|---|
@@ -434,13 +441,49 @@ All under `packages/domain/`:
 **Steps:**
 
 1. Define `OwnershipState` enum (`'AUTHORED' | 'GENERATED' | 'FROZEN' | 'DETACHED'` — string literals, not TS enum).
-2. Define `CoordinateSystem` interface (`origin: { x: number; y: number }`; `rotationDeg: number`; `unit: 'meters'`).
+2. Define `CoordinateSystem` interface **matching `docs/coordinate-system.md` §"Implementation requirements" field-for-field**: `originLat: number` (WGS84 latitude of project origin), `originLng: number` (WGS84 longitude), `trueNorthRotation: number` (degrees clockwise from grid north), `utmZone: string` (e.g. `"40N"`). M1.2 stores DATA only; the transform methods (`toProjectLocal`, `toWGS84`, `projectLocalToMapPixel`, `mapPixelToProjectLocal`) are implemented in M1.3 when the canvas actually needs them (they're class behaviour, not document data). TS naming uses camelCase; the wire/JSON form is the same (no snake_case conversion needed since we're client-only in M1).
 3. Define `Object` base contract per ADR-002: `id: ObjectId`, `type: string`, `classification?: string`, `geometry: unknown` (typed-by-union in M1.4), `parameters: Record<string, unknown>`, `ownership: OwnershipState`, `libraryRef?: { source: string; version: string }`.
-4. Define `ProjectDocument`: `id: ProjectId`, `schemaVersion: '1.0.0'`, `name: string`, `createdAt: string` (ISO-8601), `updatedAt: string`, `coordinateSystem: CoordinateSystem`, `objects: Record<ObjectId, Object>`, `scenarioId: string | null`.
-5. Define `Operation` per ADR-010: `id: OperationId`, `timestamp: string`, `type: string`, `userId?: string`, `objectId?: ObjectId`, `before?: unknown`, `after?: unknown`.
-6. Branded types for IDs: `ProjectId = string & { readonly __brand: 'ProjectId' }` and `ObjectId`, `OperationId` similarly.
+4. Define `ProjectDocument`: `id: ProjectId`, `schemaVersion: '1.0.0'`, `name: string`, `createdAt: string` (ISO-8601), `updatedAt: string`, `coordinateSystem: CoordinateSystem | null` (**nullable** — null means "origin not yet chosen"; consistent with `docs/coordinate-system.md` §"Project origin selection" language that "the origin is chosen by the user… immutable once set." In M1.2, New Project creates a doc with `null`; M1.3 UI forces the user to choose real values before any object placement.), `objects: Record<ObjectId, Object>`, `scenarioId: string | null`.
+5. Define `Operation` per ADR-010 **field-for-field** (earlier Round 2 Review Miss — prior version weakened required fields to optional; fixed here):
+   ```ts
+   export type OperationType =
+     | 'CREATE' | 'UPDATE' | 'DELETE'
+     | 'GENERATE' | 'FREEZE' | 'DETACH' | 'UNFREEZE';
+
+   export interface Operation {
+     id: OperationId;
+     projectId: ProjectId;
+     sequence: number;                     // monotonic per-client counter
+     timestamp: string;                    // ISO-8601
+     userId: UserId;                       // see placeholder note below
+     type: OperationType;
+     objectId: ObjectId;
+     before: ObjectSnapshot | null;        // pre-state, null on CREATE
+     after: ObjectSnapshot | null;         // post-state, null on DELETE
+   }
+
+   export type ObjectSnapshot = Object;    // structural alias for M1.2
+   ```
+
+   All fields REQUIRED per ADR-010. `before`/`after` are non-optional
+   but nullable (e.g., `before: null` on CREATE; `after: null` on
+   DELETE). No weakening through `?`.
+
+   **`userId` placeholder for M1 (progressive implementation):**
+   M1 has no auth per the execution plan's "Authentication beyond
+   simplest possible stub" exclusion. `userId` uses a fixed
+   placeholder UUID:
+   ```ts
+   export const LOCAL_USER_ID = '00000000-0000-0000-0000-000000000000' as UserId;
+   ```
+   Stored on every Operation emitted in M1. When auth lands (M3+),
+   operations emitted after auth get real user IDs; historical
+   operations keep the placeholder. No deviation from ADR-010 —
+   `userId` is present and well-typed; the value is just a known
+   sentinel.
+6. Branded types for IDs: `ProjectId = string & { readonly __brand: 'ProjectId' }` and `ObjectId`, `OperationId`, `UserId` similarly. Export `LOCAL_USER_ID` constant per step 5.
 7. UUIDv7 generator in `ids.ts`: `newProjectId()`, `newObjectId()`, `newOperationId()`. Validate-UUIDv7 helpers.
-8. Zod schemas matching each type. `ProjectDocumentSchema` uses `.strict()`. `Object.parameters` uses `.passthrough()` per JSONB semantics.
+8. Zod schemas matching each type. **Unknown-field policy (aligned with §8 Hydration):** `ProjectDocumentSchema` uses **Zod's default behaviour (strip)** at the root — unknown fields are silently removed on parse, trading version-forward tolerance against strictness. `Object.parameters` uses `.passthrough()` per ADR-002 JSONB semantics (extensible bag). **Do NOT use `.strict()`** anywhere in the document's schema chain — `.strict()` REJECTS on unknown keys and would make forward-compatible loads impossible. `schemaVersion: '1.0.0'` is validated via Zod's `.literal('1.0.0')` which rejects future versions with a clear migration message.
 9. Canonical serializer:
    - `serialize(doc: ProjectDocument): string` — sort object keys recursively, emit minified JSON.
    - `deserialize(str: string): ProjectDocument` — `JSON.parse` + `ProjectDocumentSchema.parse`.
@@ -912,7 +955,7 @@ GU.6 — manual exit-criterion walkthrough (not gated; recorded in
 | `packages/domain/tests/schemas.test.ts` | 8 | Valid/invalid branches for each Zod schema |
 | `packages/domain/tests/serialize.test.ts` | 5 | Canonical round-trip, key-order, number-format, deserialize safety |
 | `packages/doc-store/tests/store.test.ts` | 4 | setDocument (set), setDocument (clear), markSaved (flips dirty + timestamp), subscribe listeners fire |
-| `packages/doc-store/tests/zundo.test.ts` | 3 | Undo reverts mutation; temporal slice excludes non-document state; redo re-applies |
+| `packages/doc-store/tests/zundo.test.ts` | 3 | Temporal slice scope: `docStore.temporal.getState()` exposes ONLY fields from the document slice (not dirty, lastSavedAt, or future UI state); `setDocument` resets `pastStates` to empty per Zundo whole-state-replacement semantics; `undo()` / `redo()` on empty history is a no-op (M1.2 has zero mutations — see §6 PI-1 + §8 Undo/Redo — so these tests verify infrastructure, not behaviour). Full undo/redo behaviour tests arrive in M1.3 when real mutations land. |
 | `packages/doc-store/tests/persistence-bridge.test.ts` | 2 | Dirty flag flips on mutation, clears on markSaved |
 | `packages/doc-store-react/tests/hooks.test.tsx` | 6 | One per hook + null/missing-id edge cases |
 | `apps/web/tests/persistence.test.ts` | 6 | roundTripIdentity, loadMostRecent, listProjectsByRecency, rejectsMalformedBlob, rejectsNonExistentId, schemaVersionMismatch |
@@ -1185,3 +1228,64 @@ in-place, but the review record here is untouched.
 - [x] GR-3 module isolation verified: doc-store stays vanilla (S1/S2); doc-store-react peer-React (R1); apps/web imports doc-store-react only (U2/GU.2).
 - [x] All deviations follow §0.7 protocol — none proposed; both deferrals classified as progressive implementation with full four-condition mapping per architecture-contract §0.7.
 - [x] History preserved per §2.10: prior §6 / §8 / Phase 2 text updated in place; Round 1 review record in this appendix untouched; no retroactive rewrites.
+
+### Round 2 → Round 3 response
+
+In response to Codex Round 2 review (memo dated 2026-04-21,
+reviewing plan at commit `fb2f512`, rating **6.0/10 No-Go** with 2
+Blockers, 2 High-risk items including one regression, and 2
+acknowledged Quality gaps).
+
+#### Blockers
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| R2-B1 | PI-2 condition #1 over-claimed compatibility with `docs/coordinate-system.md`. Plan's TS shape `(origin{x,y}, rotationDeg, unit)` did NOT match the binding interface (`origin_lat`, `origin_lng`, `true_north_rotation`, `utm_zone` + transform methods). | **Agree — root cause was author error in §6 PI-2 plus Phase 1 Step 2** | **CoordinateSystem type redefined field-for-field from `docs/coordinate-system.md` §"Implementation requirements"**: `originLat`, `originLng`, `trueNorthRotation`, `utmZone` (camelCase per TS convention; semantic 1:1 with snake_case fields in the binding doc). Transform methods (`toProjectLocal`, `toWGS84`, etc.) arrive in M1.3 as class methods, not on the stored data. `ProjectDocument.coordinateSystem` is `CoordinateSystem \| null` — null at creation per the binding doc's "origin is chosen by the user… immutable once set" language. §6 PI-2 rewritten with the corrected shape and null-at-creation rationale. §4 and §5 rows updated. | The previous `(origin{x,y}, rotationDeg, unit)` shape was fabricated — it didn't trace to any binding document. Field-for-field alignment with the actual `docs/coordinate-system.md` interface resolves the compatibility claim. Nullable coord-system at creation is consistent with the binding doc's "immutable once set" language (null = not-yet-chosen). |
+| R2-B2 (Review Miss) | ADR-010 `Operation` shape mismatch — plan's Operation omitted `project_id`, `sequence`, and weakened `user_id` / `object_id` / `before` / `after` to optional. | **Agree — author error on spec fidelity; should have been caught Round 1** | **Operation type rewritten field-for-field from ADR-010**: `id`, `projectId`, `sequence`, `timestamp`, `userId`, `type` (typed union of the 7 ADR-010 OperationTypes), `objectId`, `before: ObjectSnapshot \| null`, `after: ObjectSnapshot \| null`. All fields non-optional; `before` and `after` are nullable (null on CREATE/DELETE respectively) per ADR-010. `userId` uses a fixed `LOCAL_USER_ID` placeholder UUID in M1 (documented as progressive implementation of auth — ADR-010 requires the field; value is a known sentinel until auth lands M3+). `OperationType` is the full union (`CREATE | UPDATE | DELETE | GENERATE | FREEZE | DETACH | UNFREEZE`). Phase 1 Step 5 shows the exact TS code block. | Hard spec-fidelity fix. The placeholder userId is the smallest deviation-free choice — ADR-010 says UUID, we provide a UUID (`00000000-0000-0000-0000-000000000000`); the execution-plan exclusion of auth is already accommodated. |
+
+#### High-risk
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| R2-H1 (H2 regression) | §8 correctly said default-strip; Phase 1 Step 8 still said `.strict()` | **Agree — section-consistency miss** | Phase 1 Step 8 rewritten: `ProjectDocumentSchema` uses **Zod default (strip)** at the root; `Object.parameters` uses `.passthrough()`. **Do NOT use `.strict()`** stated explicitly with rationale. `schemaVersion: '1.0.0'` validated via `.literal('1.0.0')`. Aligns Phase 1 with §8. | Classic drift: fixed §8 in Round 1 response but didn't cross-check Phase 1 Step 8. Addressed by explicit re-statement in the phase step plus the §1.16.12 consistency pass now re-run. |
+| R2-H2 | §11 zundo test row said "Undo reverts mutation; redo re-applies" — stale given M1.2 has zero mutations | **Agree** | §11 `zundo.test.ts` row rewritten: three tests now verify *infrastructure* (temporal slice scope, `setDocument` resets `pastStates`, `undo()/redo()` no-op on empty history) rather than *behaviour* (mutation reverting). Full mutation-undo tests land in M1.3 when real mutations exist. | Matches the zero-mutations stance and avoids false assertions. |
+
+#### Quality gaps
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| R2-Q1 | `node -e` GR.1 gate brittleness (still open) | **Accept as open; non-blocking** | No change. PE escape remains available. | Codex categorised as acceptable-but-tracked. |
+| R2-Q2 | Concurrent-tab behaviour deferred without hard gate | **Accept; deferred by design** | No change. Documented as residual risk in §13 with M2 widening target. | Codex categorised as acceptable for M1.2 scope. |
+
+#### Section-consistency pass (§1.16.12) — Round 2 → Round 3
+
+After the above edits, grep for stale references:
+
+- `rotationDeg` — only remains in historical Appendix A Round 1 → Round 2 narrative (intentional).
+- `{ x: 0, y: 0 }` / `origin: { x` — 0 matches (correctly replaced with the binding-doc shape).
+- `.strict()` alone (as a prescription rather than explanation) — 0 matches in Phase 1 / §4; remaining mentions in §8 are the correct "REJECTS" explanation; in PI-1 tables are intentional cross-reference.
+- `Undo reverts mutation` — 0 matches (fixed in §11).
+- Operation with `userId?` or `objectId?` optional — 0 matches in current Phase 1 Step 5 code block.
+- Operation without `projectId` / `sequence` — 0 matches.
+
+#### User approvals recorded (2026-04-21, aleksacavic@gmail.com)
+
+Extends Round 1 → Round 2 list:
+
+| # | Decision | Source |
+|---|---|---|
+| 7 | `CoordinateSystem` TS type matches `docs/coordinate-system.md` §"Implementation requirements" field-for-field (camelCase); transform methods deferred to M1.3 | Round 2 → Round 3 response to Codex B1 |
+| 8 | `ProjectDocument.coordinateSystem` is nullable; null at creation ("origin not yet chosen"); M1.3 UI requires real values before placing objects | Round 2 → Round 3 response to Codex B1 |
+| 9 | `Operation` type restated field-for-field from ADR-010; all fields non-optional; `before`/`after` nullable; `LOCAL_USER_ID` placeholder UUID for M1 | Round 2 → Round 3 response to Codex B2 |
+| 10 | Phase 1 Step 8 explicitly forbids `.strict()` on the document schema chain; uses default (strip) at root for version-forward tolerance; `.passthrough()` on `Object.parameters` | Round 2 → Round 3 response to Codex H2 regression |
+| 11 | §11 zundo test row reframed as infrastructure verification (scope, reset, no-op) rather than mutation-behaviour tests, matching zero-mutations stance | Round 2 → Round 3 response to Codex H2/stale-undo-language |
+
+#### Round 3 closure checklist (against Codex §2.11)
+
+- [x] Zero Blockers: R2-B1 (coord shape) + R2-B2 (op shape) both resolved with field-for-field binding alignment.
+- [x] Every High-risk item explicitly handled: R2-H1 (`.strict()` regression) fixed; R2-H2 (stale undo language) fixed.
+- [x] Enforceable gates unchanged in character; the spec-fidelity fixes tighten TS types, caught at compile time by existing GD.3 (typecheck).
+- [x] Binding specs: `docs/coordinate-system.md` and ADR-010 are cited correctly and implementation now matches. §4 + §5 rows updated.
+- [x] All deviations follow §0.7 protocol — none proposed; PI-1 and PI-2 remain the only progressive-implementation classifications, now with corrected evidence.
+- [x] Section-consistency pass executed (see above): no stale fabricated shapes remain anywhere in the plan.
+- [x] History preserved per §2.10: prior plan text updated in place where values changed; Round 1 and Round 2 review records in this appendix untouched; Round 3 response appended as a new subsection.
