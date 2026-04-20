@@ -42,6 +42,7 @@ All files in `docs/adr/` are binding.
 | 012 | Technology Stack | `docs/adr/012-technology-stack.md` |
 | 013 | 2D Rendering Pipeline | `docs/adr/013-2d-rendering-pipeline.md` |
 | 014 | Persistence Architecture | `docs/adr/014-persistence-architecture.md` |
+| 015 | Document Store and State Management Scope | `docs/adr/015-document-store-state-management.md` |
 
 **ADR rules:**
 - ADRs MUST NOT be edited. If a decision changes, a new ADR MUST be written
@@ -138,23 +139,42 @@ Every decision MUST be:
 **Module boundaries for this project:**
 
 ```
-packages/domain/       Pure logic. Types, extractors, validators, generators.
-                       MUST NOT depend on any other package.
+packages/domain/         Pure logic. Types, extractors, validators, generators.
+                         MUST NOT depend on any other package.
+                         MUST NOT import React, Zustand, or any stateful lib.
 
-packages/editor-2d/    2D canvas editor. Depends on domain.
-                       MUST NOT depend on viewer-3d.
+packages/doc-store/      Document state (vanilla Zustand + zundo + Immer).
+                         Depends on domain. MUST NOT import React.
+                         MUST NOT own persistence (ADR-014 is authoritative).
 
-packages/viewer-3d/    3D derived viewer. Depends on domain.
-                       MUST NOT depend on editor-2d.
+packages/doc-store-react/ React bindings for doc-store (hooks, context).
+                         Depends on doc-store + domain. React as
+                         peerDependency only (never a direct dependency —
+                         see ADR-015).
 
-packages/design-system/ Tokens and components.
-                       MUST NOT depend on domain or any app.
+packages/editor-2d/      2D canvas editor. Depends on domain + doc-store
+                         (and design-system for UI elements).
+                         MAY depend on doc-store-react inside React chrome
+                         subdirectories (inspector panels, overlays).
+                         Canvas paint loops MUST NOT import doc-store-react.
+                         MUST NOT depend on viewer-3d.
 
-apps/web/              Integrates packages. Depends on all packages.
-                       MUST NOT be imported from anywhere.
+packages/viewer-3d/      3D derived viewer. Depends on domain + doc-store
+                         (and design-system).
+                         MAY depend on doc-store-react inside React chrome.
+                         Scene rendering code MUST NOT import doc-store-react.
+                         MUST NOT depend on editor-2d.
 
-services/api/          Backend. Shares types from domain only.
-                       MUST NOT import UI-specific code.
+packages/design-system/  Tokens and components.
+                         MUST NOT depend on domain or any app.
+
+apps/web/                Integrates packages. Depends on all packages
+                         including doc-store-react for chrome hooks.
+                         MUST NOT be imported from anywhere.
+
+services/api/            Backend. Shares types from domain only.
+                         MUST NOT import UI-specific code, doc-store,
+                         or doc-store-react.
 ```
 
 **Isolation rules:**
@@ -164,6 +184,19 @@ services/api/          Backend. Shares types from domain only.
   graph above.
 - Shared utilities that serve multiple packages MUST live in an
   appropriately owned package — never in a cross-cutting "utils" dump.
+- **Canvas paint loops and 3D scene rendering MUST NOT import from
+  `@portplanner/doc-store-react`.** They import `@portplanner/doc-store`
+  directly and use `store.subscribe()` / `store.getState()`. This keeps
+  React out of the rendering hot path.
+
+  Enforcement grep gate (applies when the subdirectories exist):
+  ```
+  rg -n "from '@portplanner/doc-store-react'" \
+     packages/editor-2d/src/canvas/ \
+     packages/viewer-3d/src/scene/
+  ```
+  Expected: zero matches. Until those subdirectories exist, the gate
+  passes trivially.
 
 **Folder structure and modularity:**
 - Every folder MUST have a clear single owner (one domain concept, one

@@ -22,6 +22,7 @@ changes, a new ADR is written that references and supersedes the old one.
 | [012](012-technology-stack.md) | Technology Stack | ACCEPTED |
 | [013](013-2d-rendering-pipeline.md) | 2D Rendering Pipeline | ACCEPTED |
 | [014](014-persistence-architecture.md) | Persistence Architecture | ACCEPTED |
+| [015](015-document-store-state-management.md) | Document Store and State Management Scope | ACCEPTED |
 
 ## Format
 

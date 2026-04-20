@@ -13,7 +13,7 @@ implementation.
   semantic tokens, theme mappings, icon library, theme switching)
 - `execution-plan.md` — milestone-based execution plan
 - `working-with-agents.md` — how to prompt AI coding agents against this pack
-- `adr/` — architecture decision records (014 ADRs currently)
+- `adr/` — architecture decision records (015 ADRs currently)
 - `extraction-registry/` — parameter extraction contracts per object type
 - `procedures/` — operating procedures for Claude and Codex
   - `Claude/` — plan authoring, review, execution, audit, remediation
