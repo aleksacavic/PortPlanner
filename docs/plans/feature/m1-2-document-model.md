@@ -3,7 +3,7 @@
 **Branch:** `feature/m1-2-document-model`
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-21
-**Status:** Authored — awaiting review
+**Status:** Revised for Round 2 — awaiting re-review (Codex Round 1 memo dated 2026-04-21 rated 4.5/10, No-Go; all 3 Blockers and 3 High-risk items addressed per Appendix A at end of file)
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after approval
 
 ---
@@ -76,8 +76,10 @@ Other assumptions:
 - `src/initial-state.ts` (`createInitialDocumentState`)
 - `src/store.ts` (vanilla Zustand store with zundo + Immer middleware,
   scoped per ADR-015 to document slice only)
-- `src/actions.ts` (explicit mutator functions: `setDocument`,
-  `renameDocument`, minimal set for M1.2)
+- `src/actions.ts` (explicit non-mutation actions: `setDocument`
+  (state-reset) and `markSaved` (persistence metadata). No
+  document-level mutation actions in M1.2 — first mutation arrives
+  in M1.3 per §6 PI-1.)
 - `src/persistence-bridge.ts` (subscribes to doc store and emits a
   dirty-state signal consumed by UI; does NOT persist itself — ADR-014
   is the authority)
@@ -193,7 +195,7 @@ Other assumptions:
 | **ADR-002** Object Model | Implement `ProjectDocument` and base `Object` shape in TypeScript. Analysis / cost bindings NOT on the object (per ADR-002). JSONB `parameters` field typed as `Record<string, unknown>` awaiting per-type refinement in M1.4. |
 | **ADR-003** Ownership States | Implement `OwnershipState` enum (`AUTHORED` / `GENERATED` / `FROZEN` / `DETACHED`). No transitions performed in M1.2 (no objects yet), but the type exists for M1.4 consumers. |
 | **ADR-004** Extraction Contract | Not touched. No extractors in M1.2. |
-| **ADR-010** Document Sync | Implement `Operation` type and document-sync contract. `Operation` is defined; **no operations are emitted in M1.2 because no document-level mutations exist beyond full doc creation.** The op-log applier/inverter lands in M1.3/M1.4 when real mutations arrive. |
+| **ADR-010** Document Sync | Implement `Operation` type (matches ADR-010 shape). **Zero operations emitted in M1.2 because M1.2 contains zero document-level mutations** (only state-reset via `setDocument` and persistence metadata via `markSaved`). Classified as progressive implementation per §6 PI-1. First emission lands with the first real mutation in M1.3. |
 | **ADR-011** UI Stack | Consume existing `ThemeProvider` + CSS-module pattern. No change. |
 | **ADR-012** Technology Stack | Apply: Zustand, zundo, Immer, Zod, UUIDv7, JSON canonical. Every library choice traces to an ADR-012 decision. |
 | **ADR-014** Persistence Architecture | Implement the M1 branch: IndexedDB + `idb` wrapper, keyed by `project_id`, JSON canonical body. `apps/web/src/persistence/` is the caller; `packages/domain` provides the serializer; `packages/doc-store` is persistence-agnostic. |
@@ -229,8 +231,47 @@ and surface a proposed plan patch before proceeding.
 
 ## 6. Deviations from binding specs
 
-**None.** This plan implements binding specs literally. No §0.7
-deviation proposed.
+**None declared as deviations.** Two items that could read as
+deferrals are classified as **progressive implementation** per the
+architecture-contract §0.7 "Progressive implementation (distinct from
+deviation)" clause. Each satisfies all four conditions.
+
+### PI-1 — `Operation` type defined; emission deferred
+
+M1.2 defines the `Operation` type in
+`packages/domain/src/types/operation.ts` per ADR-010's shape. M1.2
+does NOT emit operations because M1.2 contains **zero document
+mutations** in the ADR-010 sense. The only state changes are
+`setDocument` (state-reset — a genesis event, not a mutation of
+prior state) and `markSaved` (persistence metadata — not a document
+change). Emission begins in M1.3/M1.4 when the first user-authored
+mutations (canvas interactions, object create/update/delete) exist.
+
+| # | Condition | Status | Evidence |
+|---|---|---|---|
+| 1 | No conflicting runtime semantics | **Satisfied** | Phase 2 actions are limited to `setDocument` and `markSaved`. Neither is a mutation per ADR-010's "modifies existing document state" semantic. `renameDocument` was initially scoped but is removed in this revision (Round 1 response) because it had no UI consumer in M1.2. No runtime behaviour is added that ADR-010 forbids. |
+| 2 | Excluded features unreachable at the type level | **Satisfied** | No `emitOperation()` / `dispatchOperation()` / mutation-action API is exported from `packages/doc-store` or `packages/doc-store-react`. No callable action emits an `Operation`. Consumers cannot accidentally skip emission because no emission site exists. When M1.3 introduces the first real mutation, emission is added additively to that action. |
+| 3 | User approval recorded in plan file with identifier and date | **Satisfied** | 2026-04-21, `aleksacavic@gmail.com`, agreement with Codex Round 1 classification that PI-1 is progressive implementation rather than deviation (recorded in Appendix A Round 1 → Round 2 response). Original popup Q4 (2026-04-21) confirmed "zundo scope = document slice only," implicitly aligning with deferring full operation emission to the first-mutation milestone. |
+| 4 | Widening plan explicitly stated | **Satisfied** | M1.3 (2D editor shell + tool state) introduces the first real mutations via canvas interactions. Each new mutation action (e.g., `placeObject`, `moveObject`) emits a typed `Operation` into the store's operation log at emission time. ADR-010's full sync model (flush-to-server on reconnect) waits for M3+ when the server ships — consistent with the ADR-014 evolution path. |
+
+### PI-2 — Geodetic coordinate-input UI deferred to M1.3
+
+M1.2's New Project dialog collects only the project name. Documents
+are initialized with `coordinateSystem: { origin: { x: 0, y: 0 }, rotationDeg: 0, unit: 'meters' }`. User-chosen origin and true-north
+rotation UI lands in M1.3 when the 2D canvas exists and can show an
+origin marker + north arrow for immediate visual feedback.
+
+| # | Condition | Status | Evidence |
+|---|---|---|---|
+| 1 | No conflicting runtime semantics | **Satisfied** | The default `CoordinateSystem` value is a valid member of the `CoordinateSystem` type defined per `docs/coordinate-system.md`. All engineering math still runs in project-local metric per ADR-001. WGS84 is only ever at the API boundary. The default is a starting value — not a runtime behaviour the binding doc prohibits. |
+| 2 | Excluded features unreachable at the type level | **Satisfied** | M1.2 exposes no `setCoordinateSystem` / `updateOrigin` / `setRotation` action in any package. The New Project dialog has no origin or rotation input fields. No hook returns a coordinate-system mutator. Users cannot change the coord system beyond the default via any code path in M1.2. The type permits any value; the M1.2 **surface area** exposes only the default. |
+| 3 | User approval recorded in plan file with identifier and date | **Satisfied** | 2026-04-21, `aleksacavic@gmail.com`, via pre-plan AskUserQuestion popup Q3: "Defer geodetic anchor; dialog collects name only (Recommended)." Reconfirmed in Appendix A Round 1 → Round 2 response (this revision). |
+| 4 | Widening plan explicitly stated | **Satisfied** | M1.3 (2D Editor Shell) adds the origin marker and true-north indicator on the canvas, alongside a coord-setup dialog triggered from a Project Settings surface. `docs/execution-plan.md` Milestone 1 scope item #3 — "Project creation with coordinate system setup (origin, true north)" — is a *Milestone 1* deliverable, split across M1.2 (doc infrastructure — CoordinateSystem types + defaults persisted in round-trip) and M1.3 (user-facing UI + canvas visualization). |
+
+Both classifications satisfy all four conditions of the
+architecture-contract §0.7 "Progressive implementation" rule. No full
+§0.7 Approved Deviation Protocol ceremony is required because these
+are NOT deviations.
 
 ## 7. Object Model and Extraction Integration
 
@@ -265,14 +306,27 @@ Not applicable:
 - `loadProject(id)` reads the IndexedDB value under key `id`
 - Raw value is a string (canonical JSON blob) → `JSON.parse` →
   Zod `ProjectDocumentSchema.parse(raw)` → `Document` object
-- Unknown fields in stored JSON are **stripped** by Zod `.strict()`
-  versus `.passthrough()`. M1.2 uses `.strict()` on `ProjectDocument`
-  and `.passthrough()` on `Object.parameters` (JSONB bag per ADR-002).
+- **Unknown-field policy (corrected per Round 1 review H2):** Zod's
+  `.strict()` REJECTS unknown keys (throws a `ZodError`); Zod's
+  default behaviour STRIPS them; `.passthrough()` PRESERVES them.
+  `ProjectDocumentSchema` uses the **default (strip) behaviour** at
+  the root, trading version-forward tolerance (old client reading a
+  future file does not crash; unknown fields drop silently) against
+  strictness. `Object.parameters` uses `.passthrough()` per ADR-002
+  JSONB semantics (the parameters bag is extensible per object type;
+  we cannot yet enumerate allowed keys).
 - Zod parse errors surface as `LoadFailure` with a user-friendly
-  message (`"This project file is from an incompatible version"`)
-- After successful parse: `docStore.setState({ document: parsed, dirty: false })`
+  message (`"This project file is from an incompatible version"`).
+  Tested in `persistence.test.ts::rejectsMalformedBlob`.
+- After successful parse: `docStore.setState({ document: parsed, dirty: false })` via the `setDocument` action (not a mutation —
+  state-reset).
 - `useAutoLoadMostRecent()` runs once on app mount; if IndexedDB has a
   most-recent entry and no current document, it loads.
+- **Schema version handling:** `ProjectDocumentSchema` requires
+  `schemaVersion: '1.0.0'` (Zod literal). Loading a document with a
+  different `schemaVersion` throws `LoadFailure` with a migration
+  hint. Migration logic is deferred until a v2 field is introduced
+  (M2+).
 
 ### Serialization (document save path)
 
@@ -296,19 +350,30 @@ Not applicable:
 ### Undo/Redo (operation log)
 
 - zundo wraps the **`document` slice only** per ADR-015.
-- In M1.2, document mutations are:
-  - `createDocument(initialState)` — not undoable (it's a fresh-start
-    action; zundo history resets on it)
-  - `renameDocument(newName)` — potentially undoable, but no UI
-    surfaces this in M1.2 (rename-via-dialog is M2's "Project Settings")
-- **Practically, M1.2 has no user-facing undo.** Infrastructure is in
-  place (zundo middleware + temporal slice); keyboard shortcuts
-  (Ctrl+Z, Ctrl+Shift+Z) land in M1.3 or M1.4 when canvas mutations
-  create real undo steps.
-- `Operation` type is defined in `packages/domain/src/types/operation.ts`
-  per ADR-010 shape but no operations are **emitted** in M1.2. The
-  store's `setState` calls are the minimal primitive; explicit
-  Operation dispatch lands with the first real mutation in M1.3.
+- **M1.2 contains ZERO document-level mutations.** The two actions in
+  scope are:
+  - `setDocument(doc)` — replaces the document (genesis event or
+    hydration from IndexedDB). **State-reset, not a mutation.**
+    zundo's `temporal` slice clears on setDocument per Zundo's
+    standard behaviour for whole-state replacement. This matches
+    the semantic: fresh project → empty undo history.
+  - `markSaved()` — sets `dirty = false` and `lastSavedAt` timestamp.
+    Affects persistence metadata, not document content. **Not a
+    mutation.**
+- `renameDocument` was initially in scope but is **removed in the
+  Round 1 response** (Codex R1/H1 mutation-contradiction fix): the
+  rename UI is not in M1.2 (rename-via-Project-Settings lands M2+),
+  so a reachable but unused mutation action violates ADR-010's
+  "every mutation emits an Operation" if kept. Removing it eliminates
+  the contradiction.
+- Because there are no document-level mutations, **zero operations
+  are emitted in M1.2**. The `Operation` type is defined in
+  `packages/domain/src/types/operation.ts` per ADR-010 shape; emission
+  sites exist only conceptually until M1.3. This is formally
+  classified as progressive implementation — see §6 PI-1.
+- Keyboard shortcuts (Ctrl+Z, Ctrl+Shift+Z) land in M1.3 or M1.4
+  when undo UX is meaningful. In M1.2 zundo infrastructure is
+  present but never exercised by a user action.
 
 ### Sync (ADR-010)
 
@@ -441,7 +506,7 @@ No React. No persistence.
 - `packages/doc-store/tests/setup.ts`
 - `src/initial-state.ts` (`createInitialDocumentState()`)
 - `src/store.ts` (factory + exported singleton)
-- `src/actions.ts` (`setDocument`, `renameDocument`, `markSaved`)
+- `src/actions.ts` (`setDocument`, `markSaved` — no mutation actions per §6 PI-1)
 - `src/persistence-bridge.ts` (dirty-flag signal)
 - `src/test-utils.ts` (`resetDocStoreForTests`)
 - `src/index.ts`
@@ -466,17 +531,36 @@ No React. No persistence.
    import { temporal } from 'zundo';
    import { immer } from 'zustand/middleware/immer';
    ```
-4. Actions in `actions.ts`:
-   - `setDocument(doc)` — replaces document (resets zundo history; fresh start)
-   - `renameDocument(newName)` — updates `document.name` via Immer draft
-   - `markSaved()` — sets `dirty = false`, updates `lastSavedAt`
-   - Each action calls `docStore.setState((state) => { … })` with the Immer draft.
+
+   Also add an HMR guard at the bottom of the module so Vite dev
+   reloads don't wipe the in-memory store:
+   ```ts
+   // @ts-expect-error — import.meta.hot exists under Vite dev
+   import.meta.hot?.accept();
+   ```
+   In production builds `import.meta.hot` is undefined; the guard
+   is a no-op. Covers Round 1 Q2 HMR concern.
+4. Actions in `actions.ts` (M1.2 ships **no document-level mutation
+   actions** per §6 PI-1; only state-reset and persistence metadata):
+   - `setDocument(doc: ProjectDocument | null)` — replaces the
+     document whole-value. Resets `zundo` temporal history per
+     Zundo's default whole-state-replacement semantics. Used by
+     New Project (genesis) and loadProject (hydration). **Not a
+     mutation** per ADR-010.
+   - `markSaved()` — sets `dirty = false`, updates `lastSavedAt` to
+     current ISO timestamp. Affects persistence metadata only — not
+     the document itself. **Not a mutation** per ADR-010.
+   - Mutation actions (`placeObject`, `moveObject`, `renameDocument`,
+     etc.) DO NOT EXIST in M1.2. Introduced incrementally starting
+     M1.3 when the canvas allows user-authored changes.
+   - Each action calls `docStore.setState((state) => { … })` with
+     the Immer draft.
 5. `persistence-bridge.ts` subscribes to document changes and flips `dirty = true` on any mutation. `markSaved` resets it.
 6. `test-utils.ts` exports `resetDocStoreForTests()` that calls `docStore.setState(createInitialDocumentState(), true)`.
 7. Tests:
-   - `store.test.ts`: `setDocument` sets state; `renameDocument` mutates the name; subscribe listeners fire on change.
-   - `zundo.test.ts`: after two renames, `docStore.temporal.getState().undo()` reverts to previous name; verify selection-like state (if any in future) is NOT in history (for M1.2, we just assert the temporal slice ONLY captures `document`).
-   - `persistence-bridge.test.ts`: dirty flag flips on mutation, clears on `markSaved`.
+   - `store.test.ts`: `setDocument` sets state; `setDocument(null)` clears; `markSaved` flips dirty + updates lastSavedAt; subscribe listeners fire on change. (No mutation test — no mutation actions in M1.2.)
+   - `zundo.test.ts`: temporal slice scope verification — `docStore.temporal.getState()` exposes ONLY fields from the document slice (not selection / tool / viewport, which don't exist in M1.2 but would be excluded if they did); `setDocument` resets `pastStates` to empty per Zundo whole-state-replacement semantics; undo on initial state is a no-op.
+   - `persistence-bridge.test.ts`: dirty flag flips on setDocument from a saved state; clears on `markSaved`; reset back to `false` after a fresh setDocument(null).
 
 **Invariants introduced:**
 
@@ -538,8 +622,14 @@ React as peerDependency only per ADR-015 to prevent dual-React copies.
 - `src/hooks/useIsDirty.ts`
 - `src/hooks/useLastSavedAt.ts`
 - `src/hooks/index.ts`
-- `src/index.ts`
+- `src/actions.ts` (re-exports `setDocument` and `markSaved` from
+  `@portplanner/doc-store` so apps/web has a single API surface —
+  see GU.2 / U2 — and never imports doc-store directly)
+- `src/index.ts` (re-exports hooks + actions)
 - `tests/hooks.test.tsx`
+- `tests/actions-reexport.test.ts` (verifies the re-exported actions
+  are the same function references as the ones exported by
+  `@portplanner/doc-store`)
 
 **Dependencies:**
 
@@ -558,7 +648,24 @@ React as peerDependency only per ADR-015 to prevent dual-React copies.
    - `useIsDirty()` → `state.dirty`
    - `useLastSavedAt()` → `state.lastSavedAt`
 3. Hooks are pure re-reads; no side effects. No context provider needed (module-level singleton store per ADR-015).
-4. Tests (`hooks.test.tsx`) mount each hook in a test component via `@testing-library/react` `renderHook`, mutate the store, assert re-renders.
+4. **Action re-exports (`actions.ts`):** re-export `setDocument` and
+   `markSaved` from `@portplanner/doc-store` so `apps/web` imports
+   the full API (hooks + actions) from `@portplanner/doc-store-react`
+   only. This preserves GU.2's zero-direct-doc-store-imports rule in
+   apps/web while still giving consumers action access. Example:
+   ```ts
+   // packages/doc-store-react/src/actions.ts
+   export { setDocument, markSaved } from '@portplanner/doc-store';
+   ```
+5. `index.ts` re-exports everything: hooks from `./hooks`, actions
+   from `./actions`, and the `SemanticTokens`-style public types.
+6. Tests (`hooks.test.tsx`) mount each hook in a test component via `@testing-library/react` `renderHook`, mutate the store, assert re-renders.
+7. `actions-reexport.test.ts` imports `setDocument` from both
+   `@portplanner/doc-store` and `@portplanner/doc-store-react` and
+   asserts they are the same function reference (no accidental
+   wrapping). Also asserts that calling the re-exported version
+   has the same side effect on `docStore.getState()` as calling
+   the original.
 
 **Invariants introduced:**
 
@@ -719,7 +826,7 @@ is demonstrable. Single-active-project UX; no Load dropdown.
 | ID | Invariant | Enforcement |
 |---|---|---|
 | U1 | apps/web dialog / toolbar / status code uses `var(--…)` tokens only | Grep: `rg -n "#[0-9a-fA-F]{3,8}\b" apps/web/src/{dialogs,toolbar,hooks} -g '*.module.css'` returns zero (inherits M1.1 G4.1 rule) |
-| U2 | apps/web does NOT import from `@portplanner/doc-store` directly for anything rendering React | Grep: `rg -n "from '@portplanner/doc-store'" apps/web/src` returns zero (apps/web uses `doc-store-react` exclusively for React chrome; the vanilla store is accessed through hooks) |
+| U2 | **apps/web imports exclusively from `@portplanner/doc-store-react`; never from `@portplanner/doc-store` directly.** Actions (`setDocument`, `markSaved`) are re-exported by doc-store-react (see Phase 3 step 4). Hooks come from doc-store-react. The vanilla store (including its `subscribe` / `getState` methods) is NEVER referenced from `apps/web/src/`. | Grep: `rg -n "from '@portplanner/doc-store'" apps/web/src` returns zero; `rg -n "from '@portplanner/doc-store-react'" apps/web/src` returns matches only in `src/hooks/`, `src/dialogs/`, `src/toolbar/`, `src/shell/StatusBar.tsx` (React chrome only). |
 | U3 | Navbar renders exactly the 2 M1.2 toolbar buttons (no scope creep) | Visual assertion in test; TSX search for `Button` inside Navbar yields exactly NewProjectButton + SaveButton |
 
 **Mandatory Completion Gates:**
@@ -733,9 +840,16 @@ GU.1 — no hardcoded hex in M1.2 UI CSS modules (inherits M1.1 G4.1)
   Command: rg -n "#[0-9a-fA-F]{3,8}\b" apps/web/src/{dialogs,toolbar,hooks,shell} -g '*.module.css'
   Expected: zero matches
 
-GU.2 — apps/web React chrome uses doc-store-react only (U2)
+GU.2 — apps/web imports ONLY from @portplanner/doc-store-react,
+       never from @portplanner/doc-store directly (U2)
   Command: rg -n "from '@portplanner/doc-store'" apps/web/src
-  Expected: zero matches. (Persistence calls store.getState() through the hook; the raw vanilla store is not imported into apps/web.)
+  Expected: zero matches.
+  Rationale: Phase 3 step 4 re-exports actions from
+  doc-store-react, so apps/web has a single unified API surface
+  (hooks + actions). Persistence calls accept the document as an
+  argument (passed from hook-reading UI); they do NOT call
+  store.getState() themselves. This keeps the GR-3 boundary clean
+  and matches Codex R1/H3 disambiguation.
 
 GU.3 — production build succeeds
   Command: pnpm --filter @portplanner/web build
@@ -781,7 +895,7 @@ GU.6 — manual exit-criterion walkthrough (not gated; recorded in
 | P1 | Round-trip preserves canonical JSON byte-identity | 4 | Unit test |
 | P3 | All IndexedDB / idb imports live under apps/web/src/persistence/ | 4 | GP.2 |
 | U1 | No hardcoded hex in apps/web CSS modules (M1.1 G4.1 scope extended to new dirs) | 5 | GU.1 |
-| U2 | apps/web does not import @portplanner/doc-store directly (uses react wrapper) | 5 | GU.2 |
+| U2 | apps/web imports ONLY from @portplanner/doc-store-react (hooks + re-exported actions); never from @portplanner/doc-store directly | 5 | GU.2 |
 | U3 | Navbar renders exactly 2 M1.2 toolbar buttons | 5 | Test assertion |
 | M1.1-carry | All M1.1 gates continue to pass (G1.1, G1.2, G3.1, G3.2, G3.3, G4.1, G4.2, G5.0) | 5 | Re-verify during Final Audit |
 
@@ -797,7 +911,7 @@ GU.6 — manual exit-criterion walkthrough (not gated; recorded in
 | `packages/domain/tests/ids.test.ts` | 5 | UUIDv7 generation, time-ordering, branded-type boundaries |
 | `packages/domain/tests/schemas.test.ts` | 8 | Valid/invalid branches for each Zod schema |
 | `packages/domain/tests/serialize.test.ts` | 5 | Canonical round-trip, key-order, number-format, deserialize safety |
-| `packages/doc-store/tests/store.test.ts` | 4 | setDocument, renameDocument, subscribe, markSaved |
+| `packages/doc-store/tests/store.test.ts` | 4 | setDocument (set), setDocument (clear), markSaved (flips dirty + timestamp), subscribe listeners fire |
 | `packages/doc-store/tests/zundo.test.ts` | 3 | Undo reverts mutation; temporal slice excludes non-document state; redo re-applies |
 | `packages/doc-store/tests/persistence-bridge.test.ts` | 2 | Dirty flag flips on mutation, clears on markSaved |
 | `packages/doc-store-react/tests/hooks.test.tsx` | 6 | One per hook + null/missing-id edge cases |
@@ -892,78 +1006,182 @@ to this plan:
 
 **Plan:** `docs/plans/feature/m1-2-document-model.md`
 **Branch:** `feature/m1-2-document-model`
-**Status:** Plan authored — awaiting review
+**Status:** Plan revised for Round 2 — awaiting re-review
 
-### Paste to Codex for plan review
+### Paste to Codex for Round 2 re-review
 
-> Review this plan using the protocol at
-> `docs/procedures/Codex/02-plan-review.md` (Procedure 02).
-> Apply strict evidence mode. Start from Round 1.
+> Round 2 re-review of the M1.2 Document Model plan per Codex
+> Procedure 02, strict evidence mode, §2.8 multi-round discipline
+> (mark prior items Resolved / Open / Regressed / Review Miss).
+>
+> Round 1 memo rated 4.5/10 No-Go with 3 Blockers + 3 High-risk +
+> 2 Quality gaps. Revisions applied and documented in Appendix A
+> (Round 1 → Round 2 response).
+>
+> Plan at head: see current git log on `feature/m1-2-document-model`.
 >
 > Required reading (in order):
-> 1. `docs/procedures/Codex/00-architecture-contract.md` — note the
->    recently-extended GR-3 module-boundary graph (doc-store and
->    doc-store-react packages added) and the new canvas-no-React
->    grep gate.
-> 2. `docs/adr/002-object-model.md`
-> 3. `docs/adr/003-ownership-states.md`
-> 4. `docs/adr/010-document-sync.md`
-> 5. `docs/adr/012-technology-stack.md`
-> 6. `docs/adr/014-persistence-architecture.md`
-> 7. `docs/adr/015-document-store-state-management.md`
-> 8. `docs/execution-plan.md` (M1 scope)
-> 9. `docs/coordinate-system.md`
-> 10. This plan.
+> 1. `docs/procedures/Codex/00-architecture-contract.md` — includes
+>    the §0.7 "Progressive implementation" clause (which PI-1 and
+>    PI-2 in §6 of this plan explicitly invoke) and GR-3 with doc-store
+>    + doc-store-react packages + canvas-no-React grep gate.
+> 2. `docs/procedures/Codex/02-plan-review.md` (§2.8, §2.9, §2.10).
+> 3. `docs/adr/002-object-model.md`
+> 4. `docs/adr/003-ownership-states.md`
+> 5. `docs/adr/010-document-sync.md`
+> 6. `docs/adr/012-technology-stack.md`
+> 7. `docs/adr/014-persistence-architecture.md`
+> 8. `docs/adr/015-document-store-state-management.md`
+> 9. `docs/execution-plan.md` (M1 scope)
+> 10. `docs/coordinate-system.md`
+> 11. This plan — start with Appendix A to see the Round 1 → Round 2
+>     response, then cross-check each claimed fix against the plan
+>     body.
 >
-> Additionally verify these plan-specific items:
+> Specifically verify the Round 1 resolutions:
 >
-> 1. §4 correctly enumerates every binding spec touched. ADR-015 is
->    NEW to the contract; verify §4 cites it. Confirm ADR-001 and
->    ADR-008 are correctly marked N/A (no coordinate math, no 3D).
+> RR-B1 (was B1 — Operation defined-but-not-emitted misclassified)
+>   Verify: `renameDocument` is fully removed from Phase 2 action
+>   list, steps, tests, §4 row, §8 Undo/Redo section. Verify §6
+>   PI-1 four-condition mapping is present with concrete plan-section
+>   evidence for each of the four conditions. Verify conditions 1
+>   and 2 are now Pass given the removal.
 >
-> 2. §6 declares "no deviations." Verify the M1.2 narrow-type
->    implementation of Operation (defined but not emitted) is NOT a
->    deviation from ADR-010. ADR-010 requires operations to be emitted
->    per mutation; M1.2 has no mutations beyond full doc creation. Is
->    this a progressive-implementation case per architecture-contract
->    §0.7? If so, does §6 need a four-condition mapping table?
+> RR-B2 (was B2 — coordinate deferral missing four-condition mapping)
+>   Verify: §6 PI-2 table is present with concrete evidence for each
+>   of the four conditions. Verify condition 3 (user approval)
+>   references the 2026-04-21 popup response + identifier. Verify
+>   condition 4 names M1.3 as the widening point.
 >
-> 3. Every phase has concrete command-based completion gates per
->    Procedure 01 §1.12. Specifically check GR.1 (the node -e parsing
->    of package.json) — is this cross-platform robust enough?
+> RR-B3 (was B3 — §6 "None" incompatible with deferrals)
+>   Verify: §6 no longer says blanket "None." Opens with "None
+>   declared as deviations" and follows with PI-1 + PI-2.
 >
-> 4. Module-isolation grep gates extend M1.1's GR-3 set to cover the
->    new packages. Every boundary has a gate; verify there's no
->    missing coverage (e.g., editor-2d future-import gates
->    still present).
+> RR-H1 (was H1 — mutation/sync contradiction)
+>   Verify: no remaining contradiction between §4 / §7 / §8 / Phase 2.
+>   The only valid references to `renameDocument` in the plan after
+>   this revision are:
+>   (a) historical notes in §6 PI-1 and §8 Undo/Redo explaining the
+>       removal;
+>   (b) Appendix A Round 1 → Round 2 narrative;
+>   (c) a forward-looking mention in Phase 2 step 4 listing it as an
+>       example of M1.3+ mutations that do not exist in M1.2.
+>   All of those are intentional. Flag any actionable reference (as
+>   a real action in scope) as a regression.
 >
-> 5. The plan does NOT pre-introduce anything belonging to M1.3/M1.4.
->    Specifically no Canvas2D, no rbush, no @flatten-js, no RTG_BLOCK
->    code, no extractor, no actual Operation emission on mutations.
+> RR-H2 (was H2 — `.strict()` wording wrong)
+>   Verify: §8 Hydration section now correctly states that `.strict()`
+>   REJECTS (throws ZodError), default behaviour STRIPS, and
+>   `.passthrough()` PRESERVES. Verify `ProjectDocumentSchema` uses
+>   default (strip) at root; `Object.parameters` uses `.passthrough()`.
 >
-> 6. Hydration / Serialization / Undo/Redo / Sync (§8) is complete
->    per Procedure 01 §1.9. Verify the op-log deferral is correctly
->    classified (progressive implementation vs deviation).
+> RR-H3 (was H3 — GU.2 ambiguity / store initialization conflict)
+>   Verify: Phase 3 adds `src/actions.ts` re-exporting
+>   `setDocument` and `markSaved` from `@portplanner/doc-store`.
+>   Verify Phase 3 adds `actions-reexport.test.ts`. Verify §10 U2
+>   and GU.2 gate explicitly require zero `from '@portplanner/doc-store'` imports in `apps/web/src`; apps/web's single API
+>   surface is `doc-store-react`.
 >
-> 7. Test strategy hits meaningful coverage across 47 added cases.
->    Is any critical path uncovered (e.g., concurrent-tab IndexedDB
->    access, HMR state loss)?
+> RR-Q1 (was Q1 — `node -e` gate brittleness)
+>   Verify: author's response (keep but note; swap available as PE-N
+>   if CI bites). Acceptable?
 >
-> 8. Phase-order coupling: does any phase depend on a later phase's
->    artifact? Specifically Phase 5 UI tests — do they require
->    fake-indexeddb setup from Phase 4, and is that dependency
->    documented?
+> RR-Q2 (was Q2 — concurrent-tab / HMR not gated)
+>   Verify: HMR guard added to Phase 2 step 3 (doc-store/src/store.ts
+>   includes `import.meta.hot?.accept()`). Concurrent-tab gating
+>   deferred to M2 with rationale in §13 risks.
 >
-> 9. Done Criteria in §12 are objectively testable end-to-end.
->    Local items run without external auth; remote items gated
->    explicitly.
+> Fresh Round-2-specific checks:
 >
-> 10. The New Project dialog collecting only name (deferring
->     coordinate-system UI) — is this a deviation from the M1
->     execution-plan line "Project creation with coordinate system
->     setup (origin, true north)"? Or is it progressive implementation
->     per architecture-contract §0.7? If the latter, §6 needs a
->     four-condition mapping.
+> F1. §6 PI-1 and PI-2 mapping tables' cross-references are accurate:
+>     each cited section / phase step actually contains what the
+>     table claims. Specifically check:
+>     - PI-1 condition 2 evidence: "No `emitOperation()` API" —
+>       verify no such API is proposed in Phase 2 or Phase 3.
+>     - PI-2 condition 2 evidence: "No `setCoordinateSystem` action"
+>       — verify Phase 5 New Project dialog has no coord input field
+>       and Phase 2/3 actions list has no coord setter.
 >
-> Report findings as Blocker / High-risk / Quality gap per §0.8.
-> Classify with Agree/Disagree, Root Cause, Proposed Rule Enhancement.
+> F2. Appendix A integrity: Round 1 review record (if preserved)
+>     untouched; Round 2 response appended as a new subsection;
+>     user approvals #1–#6 recorded with identifier and date.
+>
+> F3. Section-consistency pass per Procedure 01 §1.16 step 12
+>     executed. Verify: no stale `renameDocument` action references
+>     outside the historical contexts listed under RR-H1.
+>
+> F4. Test count consistency: ~47 originally; with
+>     `actions-reexport.test.ts` added (+1) and rename tests removed
+>     (-0 direct — the count in §11 tokens.test.ts-style row did
+>     not change because `store.test.ts` kept 4 tests with different
+>     assertions). Verify §11 numbers are coherent.
+>
+> F5. HMR guard presence: Phase 2 step 3 contains
+>     `import.meta.hot?.accept()` mention.
+>
+> Output per §2.9. Apply §2.8: mark every Round 1 item
+> Resolved / Open / Regressed / Review Miss. Apply §2.10 if new
+> Blockers or High-risk items arise; otherwise move to Go per §2.11.
+
+---
+
+## Appendix A — Scrutiny Assessment and Actions (Round 1 → Round 2)
+
+In response to Codex Round 1 review (memo dated 2026-04-21, reviewing
+plan at commit `07549a5`, rating **4.5/10 No-Go** with 3 Blockers, 3
+High-risk items, and 2 Quality gaps). Per Codex Procedure 02 §2.10,
+this appendix documents each finding's decision, rationale, and the
+plan updates made. History is preserved — prior plan text is updated
+in-place, but the review record here is untouched.
+
+### Blockers
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| B1 | Item 2 (Operation defined but not emitted) classified as "no deviations" but fails §0.7 four-condition test: reachable mutations (`renameDocument`) exist without emission | **Agree — reclassify as progressive implementation after removing the reachable mutation** | Phase 2 actions list updated: `renameDocument` REMOVED (no UI consumer in M1.2; was dead action). Only `setDocument` (state-reset) and `markSaved` (persistence metadata) remain — neither is a document mutation per ADR-010. §8 Undo/Redo section rewritten to reflect zero mutations → zero emissions. §6 adds PI-1 four-condition mapping table showing all four conditions satisfied after the `renameDocument` removal. Phase 2 tests refactored: no rename test; zundo test now asserts temporal scope rather than undo behaviour. | Removing `renameDocument` is a pure simplification — it had no UI surface in M1.2 and rename-via-Project-Settings is an M2 feature. With zero mutation actions at the type level, condition 2 (unreachable at type level) becomes Pass; with `setDocument` + `markSaved` being non-mutations, condition 1 becomes Pass. User approval recorded for condition 3. |
+| B2 | Item 10 (New Project dialog defers coordinate input) classified as "no deviations" but fails §0.7 four-condition test | **Agree — add explicit four-condition mapping** | §6 adds PI-2 four-condition mapping table. Each condition has concrete evidence tied to plan sections: M1.2 surface area exposes no `setCoordinateSystem` action (condition 2); default `CoordinateSystem` is a valid type member (condition 1); user popup approval on 2026-04-21 recorded with identifier (condition 3); M1.3 widening path named (condition 4). | Defaulting to `(0, 0, 0°)` is not a runtime behaviour the binding coordinate-system doc forbids — it's a valid starting value. User explicitly chose deferral in pre-plan popup. Execution-plan M1 #3 "project creation with coordinate system setup" is a Milestone 1 deliverable split across M1.2 (doc infrastructure) and M1.3 (user-facing UI). |
+| B3 | §6 blanket "None" incompatible with unresolved §0.7-sensitive deferrals | **Agree** | §6 rewritten to declare both PI-1 and PI-2 explicitly, with four-condition mapping tables each. Blanket "None" replaced with "None declared as deviations" + detailed PI classification. | Section-consistency pass per §1.16.12 caught no remaining blanket "None" references. |
+
+### High-risk
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| H1 | Internal mutation/sync contradiction: "no mutations beyond creation" vs explicit `renameDocument` action + test | **Agree** | Resolved by B1's fix: `renameDocument` removed from Phase 2 file list, steps, and tests. §4 ADR-010 row updated to say "zero document-level mutations in M1.2 (only state-reset + persistence metadata)." §8 Undo/Redo section rewritten for consistency. Section-consistency pass confirms no remaining rename references except in Appendix A historical record. | Single root cause: the removed `renameDocument` action. Removing it eliminates every contradiction simultaneously. |
+| H2 | Hydration semantics wrong: `.strict()` REJECTS, not strips | **Agree** | §8 Hydration section rewritten. Corrected terminology: `.strict()` rejects (throws `ZodError`); default Zod behaviour strips; `.passthrough()` preserves. M1.2 uses **default (strip) at the root** (for version-forward tolerance) and `.passthrough()` on `Object.parameters` (JSONB bag per ADR-002). `schemaVersion` literal check catches incompatible files with explicit error message. | Original plan text incorrectly described Zod semantics. Corrected wording protects implementers from wrong error behaviour. |
+| H3 | Gate/step ambiguity: Phase steps imply store initialization in app shell while GU.2 demands zero direct doc-store imports | **Agree** | Phase 3 step 4 added: `doc-store-react` re-exports actions (`setDocument`, `markSaved`) from `@portplanner/doc-store`. apps/web imports the full API (hooks + actions) from `doc-store-react` only. `actions.ts` is added to the Phase 3 file list. `actions-reexport.test.ts` verifies the re-exported functions are the same references as the originals. §10 U2 invariant tightened: apps/web imports exclusively from `doc-store-react`. GU.2 gate rewritten to explicitly match this architectural path. Persistence calls accept the document as an argument from hook-reading UI; they do NOT call `store.getState()` themselves. | Codex's ambiguity concern is correct — there was a path conflict. The re-export pattern makes doc-store-react the single API surface and preserves GU.2 cleanly. |
+
+### Quality gaps
+
+| ID | Codex Item | Decision | Plan updates | Rationale |
+|---|---|---|---|---|
+| Q1 | GR.1 gate uses `node -e` (potentially brittle in CI) | **Partial agree — keep but note** | No change to the gate command. `node -e` executes reliably in CI once Node 20 LTS is installed via `.nvmrc` (which CI does per Phase 5's workflow file). The parser is a 3-line one-liner that exits 1/2 on failures; failures surface as workflow logs. If the team hits a portability issue during execution, a shell-based alternative can be swapped in as PE-N. | Brittleness is hypothetical; Node is guaranteed present in CI. Swap is cheap if ever needed. |
+| Q2 | Handoff asks (concurrent-tab IndexedDB, HMR state loss) mentioned but not gated | **Partial agree — defer with rationale** | Concurrent-tab IndexedDB access is rare in M1.2 single-project mode (one tab at a time is the expected UX). Deferred to M2 when multi-project enumeration UX lands. HMR state loss: addressed by adding `import.meta.hot?.accept()` to `packages/doc-store/src/store.ts` as part of Phase 2 implementation (minor addition to step 3); documented but not gated since HMR is dev-only. Listed as residual risk in §13. | Gating every theoretical risk bloats the plan. The ones with real user-visible impact today are gated; the rest are flagged for future milestones. |
+
+### Self-review misses — patterns for future discipline
+
+| Miss | Root cause | Proposed procedure rule enhancement |
+|---|---|---|
+| §6 "None" alongside Reviewer Handoff asking if items 2/10 need progressive mapping | Section-consistency gap: the handoff block asked the exact question that §6 should have answered explicitly | Procedure 01 §1.16 step 12 (section-consistency pass) should grow a specific sub-rule: "If the Reviewer Handoff block asks Codex to rule on a classification, §6 MUST contain the plan author's proposed classification (even if tentative) rather than leaving the question unanswered in the body." |
+| Mutation semantics contradicted across §4 / §8 / Phase 2 | Internal consistency gap between abstract doc-level claims ("no mutations") and concrete Phase 2 action list (`renameDocument`) | Section-consistency pass should include a specific cross-reference check: every action/method named in any phase MUST reconcile with the mutation-or-not classification in §7 / §8. |
+| Zod `.strict()` behaviour misremembered | Library knowledge gap; no automated check catches this class of error | N/A — depends on author's library familiarity. Codex second opinion is the natural safeguard; the system worked as intended (review caught the error). |
+
+### User approvals recorded (2026-04-21, aleksacavic@gmail.com)
+
+| # | Decision | Source |
+|---|---|---|
+| 1 | PI-1 classification: Operation type defined, emission deferred to M1.3 (progressive implementation, not deviation) | Round 1 → Round 2 response to Codex finding B1 |
+| 2 | PI-2 classification: geodetic coord input deferred to M1.3 (progressive implementation, not deviation) | Pre-plan popup Q3 on 2026-04-21 + reaffirmation in Round 1 → Round 2 response to Codex finding B2 |
+| 3 | Remove `renameDocument` from M1.2 scope (was dead action; UI arrives M2+) | Round 1 → Round 2 response to Codex finding B1 + H1 |
+| 4 | Hydration uses Zod default (strip) at root; `.strict()` wording corrected | Round 1 → Round 2 response to Codex finding H2 |
+| 5 | `doc-store-react` re-exports actions from `doc-store` so `apps/web` imports from `doc-store-react` only | Round 1 → Round 2 response to Codex finding H3 |
+| 6 | HMR guard added to `packages/doc-store/src/store.ts` (`import.meta.hot?.accept()`); concurrent-tab gating deferred to M2 | Round 1 → Round 2 response to Codex finding Q2 |
+
+### Round 2 closure checklist (against Codex §2.11)
+
+- [x] Zero Blockers: B1 (PI-1 mapping + `renameDocument` removal), B2 (PI-2 mapping), B3 (§6 rewritten — no blanket "None").
+- [x] Every High-risk item explicitly handled: H1 (mutation contradiction removed), H2 (Zod wording corrected), H3 (actions re-export pattern; GU.2 tightened).
+- [x] Enforceable gates for all critical claims: new `actions-reexport.test.ts` gates H3; updated GU.2 gate text; §6 PI tables backed by concrete plan-section references.
+- [x] Architecture-doc impact assessed: no ADR changes required; no new deviation-protocol artifacts; §6 classifications are internal plan decisions under the existing §0.7 progressive-implementation clause.
+- [x] GR-3 module isolation verified: doc-store stays vanilla (S1/S2); doc-store-react peer-React (R1); apps/web imports doc-store-react only (U2/GU.2).
+- [x] All deviations follow §0.7 protocol — none proposed; both deferrals classified as progressive implementation with full four-condition mapping per architecture-contract §0.7.
+- [x] History preserved per §2.10: prior §6 / §8 / Phase 2 text updated in place; Round 1 review record in this appendix untouched; no retroactive rewrites.
