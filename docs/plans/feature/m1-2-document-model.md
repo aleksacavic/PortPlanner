@@ -18,7 +18,7 @@ weight.)*
 
 Deliver the project model plumbing so a user can create a project,
 save it, hard-refresh the browser, auto-load it back, and verify the
-document is byte-identical. No canvas, no geometry, no object types
+project is byte-identical. No canvas, no geometry, no object types
 yet — that's M1.3 and M1.4.
 
 This is the second of four M1 slices (M1.1 Foundation shipped ✓ →
@@ -31,9 +31,9 @@ Answered via pre-plan user decisions and Codex second-opinion review:
 | # | Question | Decision |
 |---|---|---|
 | 1 | Store placement | **Two-package split per ADR-015**: `packages/project-store` (vanilla Zustand + zundo + Immer, no React) and `packages/project-store-react` (React hooks wrapping project-store). React as peerDependency in `project-store-react`. Rationale: lets editor-2d (M1.3) and viewer-3d (M5) subscribe to the store from canvas paint loops without transitively importing React. Codex's recommendation, agreed. |
-| 2 | Coordinate-system input in New Project dialog | **Defer geodetic anchor to M1.3+.** M1.2 initialises documents with origin `(0, 0)` project-local metres and rotation `0°`. Geodetic UI (lat/lon, UTM, basemap anchor) lands when the canvas exists and can show an origin marker / north arrow. |
+| 2 | Coordinate-system input in New Project dialog | **Defer geodetic anchor to M1.3+.** M1.2 initialises projects with `coordinateSystem: null` — "origin not yet chosen" per the binding doc's "immutable once set" language. Geodetic UI (lat/lon, UTM, basemap anchor) lands when the canvas exists and can show an origin marker / north arrow. |
 | 3 | Multi-project UX in M1.2 | **Deferred to M2 per execution plan.** M1.2 is single-active-project: New Project replaces the current (with unsaved-changes confirm); Save writes under current project id; cold start auto-loads the most recently saved project. No Load dropdown, no project enumeration UI. |
-| 4 | zundo scope | **Document slice only** per ADR-015. Selection, active tool, viewport — out of undo history. Not yet applicable in M1.2 (no canvas, no ephemeral UI state). |
+| 4 | zundo scope | **Project slice only** per ADR-015. Selection, active tool, viewport — out of undo history. Not yet applicable in M1.2 (no canvas, no ephemeral UI state). |
 
 Other assumptions:
 
@@ -221,9 +221,9 @@ per Procedure 01 §1.6 and §0.5 spec-update rule:
 | ADR-010 Project Sync | `docs/adr/010-project-sync.md` | **No change** | `Operation` type + op log shape follow ADR-010. If implementation reveals a genuine gap (e.g., a field ADR-010 doesn't enumerate), pause per §3.10 and follow §0.7. |
 | ADR-012 Technology Stack | `docs/adr/012-technology-stack.md` | **No change** | All library choices pin exactly; no versions bumped. |
 | ADR-014 Persistence | `docs/adr/014-persistence-architecture.md` | **No change** | `idb` wrapper + canonical JSON + per-project key all match ADR-014 M1 branch. |
-| ADR-015 Doc Store | `docs/adr/015-project-store-state-management.md` | **No change** | Just landed; implementation conforms. |
-| `docs/coordinate-system.md` | `docs/coordinate-system.md` | **No change expected** | The TS `CoordinateSystem` type implements the doc's interface field-for-field (`originLat`, `originLng`, `trueNorthRotation`, `utmZone`). Field names match the binding interface with a cosmetic camelCase shift (snake_case → camelCase is a TS convention convention, not a semantic change). Transform methods on the interface are class methods implemented separately in M1.3, not part of the stored document. If execution surfaces a genuine mismatch, pause per §3.10. |
-| `docs/glossary.md` | `docs/glossary.md` | **Possible: append new terms** | Candidate additions: "canonical JSON form" (deterministic key-order + number format); "document dirty state" (transient unsaved flag). Only appended if Phase 1 or 5 introduces the term in code/UI. Handled per §0.5 (append + date in-line). |
+| ADR-015 Project Store | `docs/adr/015-project-store-state-management.md` | **No change** | Just landed; implementation conforms. |
+| `docs/coordinate-system.md` | `docs/coordinate-system.md` | **No change expected** | The TS `CoordinateSystem` type implements the doc's interface field-for-field (`originLat`, `originLng`, `trueNorthRotation`, `utmZone`). Field names match the binding interface with a cosmetic camelCase shift (snake_case → camelCase is a TS convention convention, not a semantic change). Transform methods on the interface are class methods implemented separately in M1.3, not part of the stored project. If execution surfaces a genuine mismatch, pause per §3.10. |
+| `docs/glossary.md` | `docs/glossary.md` | **Possible: append new terms** | Candidate additions: "canonical JSON form" (deterministic key-order + number format); "project dirty state" (transient unsaved flag). Only appended if Phase 1 or 5 introduces the term in code/UI. Handled per §0.5 (append + date in-line). |
 | `docs/design-tokens.md` | `docs/design-tokens.md` | **No change** | All UI additions (NewProjectDialog, buttons, dirty indicator) use existing semantic tokens. No new tokens proposed. |
 | Extraction registry | `docs/extraction-registry/*.md` | **No change** | No extractors in M1.2. |
 | Procedures | `docs/procedures/**` | **No change** | No procedure gaps anticipated. If one surfaces during execution, it goes on its own chore branch per the established pattern. |
@@ -245,10 +245,10 @@ deviation)" clause. Each satisfies all four conditions.
 
 M1.2 defines the `Operation` type in
 `packages/domain/src/types/operation.ts` per ADR-010's shape. M1.2
-does NOT emit operations because M1.2 contains **zero document
+does NOT emit operations because M1.2 contains **zero project
 mutations** in the ADR-010 sense. The only state changes are
 `createNewProject` (genesis) and `hydrateProject` (load) — neither is a mutation of
-prior state) and `markSaved` (persistence metadata — not a document
+prior state) and `markSaved` (persistence metadata — not a project
 change). Emission begins in M1.3/M1.4 when the first user-authored
 mutations (canvas interactions, object create/update/delete) exist.
 
@@ -261,7 +261,7 @@ mutations (canvas interactions, object create/update/delete) exist.
 
 ### PI-2 — Geodetic coordinate-input UI deferred to M1.3
 
-M1.2's New Project dialog collects only the project name. Documents
+M1.2's New Project dialog collects only the project name. Projects
 are initialized with `coordinateSystem: null` — consistent with
 `docs/coordinate-system.md` §"Project origin selection" which
 states "the origin is chosen by the user as a meaningful point on
@@ -317,7 +317,7 @@ Not applicable:
 
 - `loadProject(id)` reads the IndexedDB value under key `id`
 - Raw value is a string (canonical JSON blob) → `JSON.parse` →
-  Zod `ProjectSchema.parse(raw)` → `Document` object
+  Zod `ProjectSchema.parse(raw)` → `Project` object
 - **Unknown-field policy (corrected per Round 1 review H2):** Zod's
   `.strict()` REJECTS unknown keys (throws a `ZodError`); Zod's
   default behaviour STRIPS them; `.passthrough()` PRESERVES them.
@@ -332,9 +332,9 @@ Not applicable:
   Tested in `persistence.test.ts::rejectsMalformedBlob`.
 - After successful parse: call `hydrateProject(parsed, record.updatedAt)` (from `@portplanner/project-store`) which atomically sets `state.project`, clears `dirty`, stamps `lastSavedAt` from the IndexedDB record, and clears zundo's temporal history. Not a mutation — hydration restores previously-saved state.
 - `useAutoLoadMostRecent()` runs once on app mount; if IndexedDB has a
-  most-recent entry and no current document, it loads.
+  most-recent entry and no current project, it loads.
 - **Schema version handling:** `ProjectSchema` requires
-  `schemaVersion: '1.0.0'` (Zod literal). Loading a document with a
+  `schemaVersion: '1.0.0'` (Zod literal). Loading a project with a
   different `schemaVersion` throws `LoadFailure` with a migration
   hint. Migration logic is deferred until a v2 field is introduced
   (M2+).
@@ -345,13 +345,13 @@ Not applicable:
   - Sort object keys recursively before stringifying
   - Numbers serialised via `String(n)` (preserves integer representation;
     floats use default JS formatting — M1.2 does not yet have floats in
-    the document since no geometry exists; revisit if floats introduced
+    the project since no geometry exists; revisit if floats introduced
     before M1.4's geometry)
   - Arrays preserve order (array order is meaningful)
   - Output: single-line, minified canonical JSON
 - Round-trip: `serialize(deserialize(serialize(doc))) === serialize(doc)`
   is the determinism invariant. Tested.
-- NOT written: nothing. In M1.2 the document is leaf-only (no
+- NOT written: nothing. In M1.2 the project is leaf-only (no
   extracted quantities, no mesh descriptors, no validation results
   exist yet). ADR-002's "derived fields stay off the object" is
   trivially satisfied.
@@ -360,7 +360,7 @@ Not applicable:
 
 ### Undo/Redo (operation log)
 
-- zundo wraps the **`document` slice only** per ADR-015.
+- zundo wraps the **`project` slice only** per ADR-015.
 - **M1.2 contains ZERO project-level mutations.** The two actions in
   scope are:
   - `createNewProject(project)` — genesis; creates initial state.
@@ -487,9 +487,9 @@ All under `packages/domain/`:
    sentinel.
 6. Branded types for IDs: `ProjectId = string & { readonly __brand: 'ProjectId' }` and `ObjectId`, `OperationId`, `UserId` similarly. Export `LOCAL_USER_ID` constant per step 5.
 7. UUIDv7 generator in `ids.ts`: `newProjectId()`, `newObjectId()`, `newOperationId()`. Validate-UUIDv7 helpers.
-8. Zod schemas matching each type. **Unknown-field policy (aligned with §8 Hydration):** `ProjectSchema` uses **Zod's default behaviour (strip)** at the root — unknown fields are silently removed on parse, trading version-forward tolerance against strictness. `Object.parameters` uses `.passthrough()` per ADR-002 JSONB semantics (extensible bag). **Do NOT use `.strict()`** anywhere in the document's schema chain — `.strict()` REJECTS on unknown keys and would make forward-compatible loads impossible. `schemaVersion: '1.0.0'` is validated via Zod's `.literal('1.0.0')` which rejects future versions with a clear migration message.
+8. Zod schemas matching each type. **Unknown-field policy (aligned with §8 Hydration):** `ProjectSchema` uses **Zod's default behaviour (strip)** at the root — unknown fields are silently removed on parse, trading version-forward tolerance against strictness. `Object.parameters` uses `.passthrough()` per ADR-002 JSONB semantics (extensible bag). **Do NOT use `.strict()`** anywhere in the project's schema chain — `.strict()` REJECTS on unknown keys and would make forward-compatible loads impossible. `schemaVersion: '1.0.0'` is validated via Zod's `.literal('1.0.0')` which rejects future versions with a clear migration message.
 9. Canonical serializer:
-   - `serialize(doc: Project): string` — sort object keys recursively, emit minified JSON.
+   - `serialize(project: Project): string` — sort object keys recursively, emit minified JSON.
    - `deserialize(str: string): Project` — `JSON.parse` + `ProjectSchema.parse`.
 10. Tests: deterministic UUIDv7 time-ordering; schema accept/reject branches; serialize round-trip byte-identical on structurally-identical input.
 11. `package.json` test script points at `vitest run`.
@@ -1039,9 +1039,9 @@ Combined with M1.1's 13, the full suite is ~57 cases at end of M1.2.
 |---|---|---|
 | Vitest + `fake-indexeddb` + jsdom interaction breaks in CI | Low | `fake-indexeddb/auto` is a well-trodden path; smoke-test early in Phase 4 |
 | Canonical JSON determinism fails due to locale-dependent number formatting | Low | Use plain `String(n)` for numbers; add test that asserts locale-independence by setting `process.env.LC_ALL` in test env |
-| zundo middleware scoping accidentally widens to UI state later | Medium | ADR-015 is explicit; Phase 2 gates assert the temporal slice only contains `document`; Codex enforces during audit |
+| zundo middleware scoping accidentally widens to UI state later | Medium | ADR-015 is explicit; Phase 2 gates assert the temporal slice only contains `project`; Codex enforces during audit |
 | `project-store-react` accidentally lists `react` under `dependencies` | Medium | GR.1 gate parses `package.json` and rejects. Caught before merge. |
-| Auto-load on cold start races with user clicking "New" immediately | Low | Auto-load runs in a `useEffect` on mount with a guard: only loads if store has `document === null`. If user clicks "New" before load resolves, the guard prevents overwrite. Covered by `auto-load.test.tsx`. |
+| Auto-load on cold start races with user clicking "New" immediately | Low | Auto-load runs in a `useEffect` on mount with a guard: only loads if `useProject()` returns null. If user clicks "New" before load resolves, the guard prevents overwrite. Covered by `auto-load.test.tsx`. |
 | IndexedDB quota exceeded (QuotaExceededError) | Very low in M1.2 (docs are tiny — no objects yet) | Catch and surface to UI later when doc sizes grow. For M1.2, unhandled — acceptable because triggering it requires malicious input. |
 | Circular type dependency between `project-store` and `project-store-react` | Medium | `project-store-react` is one-way — consumes `project-store`, never imported by `project-store`. Enforced by grep gate (R2). |
 | Plan's `schemaVersion: '1.0.0'` ossifies before we know we need versioning | Low | Single string constant; adding migration handling later is a well-known upgrade path (ADR supersede if it becomes load-bearing). |
