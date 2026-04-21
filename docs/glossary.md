@@ -24,7 +24,7 @@ direction.
 
 ## Object terms
 
-**Object** — any spatial element in the project document. Has identity,
+**Object** — any spatial element in the project. Has identity,
 geometry, classification, parameters, and ownership state.
 
 **Object type** — the formal category of an object: `RTG_BLOCK`, `ROAD`,
@@ -108,11 +108,13 @@ drawn against.
 
 ## Document and sync terms
 
-**Project document** — the authoritative, serializable value representing the
+**Project** — the authoritative, serializable value representing the
 entire project state. Includes objects, settings, library snapshots, and
-scenarios.
+scenarios. Previously called "project document" (pre-2026-04-22); renamed
+for simplicity and consistency with the user-facing word. Semantics
+unchanged.
 
-**Operation** — a single mutation to the project document. Logged with id,
+**Operation** — a single mutation to the project. Logged with id,
 timestamp, user, and payload. Used for sync.
 
 **Operation log** — the append-only sequence of operations since last sync.

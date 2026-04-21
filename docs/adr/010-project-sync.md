@@ -1,4 +1,4 @@
-# ADR-010 — Document Sync and Offline Model
+# ADR-010 — Project Sync and Offline Model
 
 **Status:** ACCEPTED
 **Date:** 2026-04-16
@@ -20,11 +20,11 @@ Fails the use case.
 
 **B. Full CRDT-based multi-user collaboration from day one (Yjs or
 Automerge).** Maximum capability. Large implementation investment.
-Distorts document model around synchronization complexity. Not justified
+Distorts the project model around synchronization complexity. Not justified
 by V1 use cases (small teams, rarely simultaneous editing).
 
-**C. Single-writer offline with deterministic merge on reconnect. Document
-is a serializable value type. Changes are operations. Object-level
+**C. Single-writer offline with deterministic merge on reconnect. The
+project is a serializable value type. Changes are operations. Object-level
 last-write-wins on conflicts.** Supports offline. Handles low-contention
 multi-user. CRDT-compatible upgrade path for future.
 
@@ -32,11 +32,11 @@ multi-user. CRDT-compatible upgrade path for future.
 
 **Option C for V1. Option B design-compatible for V2.**
 
-### Document as serializable value
+### Project as serializable value
 
-The project document is a **serializable value type**. At any moment it is
+The project is a **serializable value type**. At any moment it is
 a map `object_id → ObjectSnapshot`. Every mutation produces a new valid
-document state. The document is never mutated in place at the architectural
+project state. The project is never mutated in place at the architectural
 level (implementation may use in-place mutation for performance; what
 matters is that externally it behaves as immutable).
 
@@ -71,7 +71,7 @@ enum OperationType {
 ### Offline behaviour
 
 1. Client maintains a local operation log since last sync.
-2. Operations apply immediately to local document state.
+2. Operations apply immediately to local project state.
 3. On reconnect, client sends its operation log to the server.
 4. Server applies operations in sequence, resolving conflicts at object level.
 
@@ -94,7 +94,7 @@ of the same project.
 The operation log structure is compatible with CRDT adoption. CRDTs refine
 how conflicts resolve; the operation log model persists. Migrating to a
 CRDT-based model in V2 is an upgrade of the merge resolution layer, not a
-rewrite of the document model.
+rewrite of the project model.
 
 ## Consequences
 
@@ -102,7 +102,7 @@ rewrite of the document model.
 - Clean sync for low-contention multi-user workflows.
 - Explicit conflict notification for high-contention cases — user knows
   when their change was overwritten.
-- Document remains a serializable value type: testable, snapshotable,
+- The project remains a serializable value type: testable, snapshotable,
   migratable.
 - Undo/redo is a natural consequence of the operation log (reverse the
   last N operations).
@@ -120,3 +120,10 @@ rewrite of the document model.
   clearly-communicated UI: user can undo locally, which generates new
   operations that reverse earlier ones, rather than trying to literally
   reverse time on the server.
+
+## Naming note (2026-04-22)
+
+Earlier drafts of this ADR used "document" / "project document" as the
+term for the serializable value type. That term has been retired in favour
+of "project" — the simpler, user-facing word. Semantics are unchanged; the
+vocabulary is consistent with the glossary's "Project" entry.

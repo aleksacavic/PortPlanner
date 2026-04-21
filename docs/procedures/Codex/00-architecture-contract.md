@@ -37,12 +37,12 @@ All files in `docs/adr/` are binding.
 | 007 | Validation Engine | `docs/adr/007-validation-engine.md` |
 | 008 | 3D Derivation Cache | `docs/adr/008-3d-cache.md` |
 | 009 | RBAC and Permissions | `docs/adr/009-rbac.md` |
-| 010 | Document Sync and Offline | `docs/adr/010-document-sync.md` |
+| 010 | Project Sync and Offline | `docs/adr/010-project-sync.md` |
 | 011 | UI Stack: Icon Library and Theme Switching | `docs/adr/011-ui-stack.md` |
 | 012 | Technology Stack | `docs/adr/012-technology-stack.md` |
 | 013 | 2D Rendering Pipeline | `docs/adr/013-2d-rendering-pipeline.md` |
 | 014 | Persistence Architecture | `docs/adr/014-persistence-architecture.md` |
-| 015 | Document Store and State Management Scope | `docs/adr/015-document-store-state-management.md` |
+| 015 | Project Store and State Management Scope | `docs/adr/015-project-store-state-management.md` |
 
 **ADR rules:**
 - ADRs MUST NOT be edited. Decision changes require a new ADR that
@@ -141,37 +141,37 @@ packages/domain/         Pure logic. Types, extractors, validators, generators.
                          MUST NOT depend on any other package.
                          MUST NOT import React, Zustand, or any stateful lib.
 
-packages/doc-store/      Document state (vanilla Zustand + zundo + Immer).
+packages/project-store/      Project state (vanilla Zustand + zundo + Immer).
                          Depends on domain. MUST NOT import React.
                          MUST NOT own persistence (ADR-014 is authoritative).
 
-packages/doc-store-react/ React bindings for doc-store (hooks, context).
-                         Depends on doc-store + domain. React as
+packages/project-store-react/ React bindings for project-store (hooks, context).
+                         Depends on project-store + domain. React as
                          peerDependency only (never a direct dependency —
                          see ADR-015).
 
-packages/editor-2d/      2D canvas editor. Depends on domain + doc-store
+packages/editor-2d/      2D canvas editor. Depends on domain + project-store
                          (and design-system).
-                         MAY depend on doc-store-react inside React chrome
+                         MAY depend on project-store-react inside React chrome
                          subdirectories (inspector panels, overlays).
-                         Canvas paint loops MUST NOT import doc-store-react.
+                         Canvas paint loops MUST NOT import project-store-react.
                          MUST NOT depend on viewer-3d.
 
-packages/viewer-3d/      3D derived viewer. Depends on domain + doc-store.
-                         MAY depend on doc-store-react inside React chrome.
-                         Scene rendering code MUST NOT import doc-store-react.
+packages/viewer-3d/      3D derived viewer. Depends on domain + project-store.
+                         MAY depend on project-store-react inside React chrome.
+                         Scene rendering code MUST NOT import project-store-react.
                          MUST NOT depend on editor-2d.
 
 packages/design-system/  Tokens and components.
                          MUST NOT depend on domain or any app.
 
 apps/web/                Integrates packages. Depends on all packages
-                         including doc-store-react for chrome hooks.
+                         including project-store-react for chrome hooks.
                          MUST NOT be imported from anywhere.
 
 services/api/            Backend. Shares types from domain only.
-                         MUST NOT import UI-specific code, doc-store,
-                         or doc-store-react.
+                         MUST NOT import UI-specific code, project-store,
+                         or project-store-react.
 ```
 
 **Isolation rules:**
@@ -180,10 +180,10 @@ services/api/            Backend. Shares types from domain only.
 - Shared utilities that serve multiple packages MUST live in an
   appropriately owned package.
 - **Canvas paint loops and 3D scene rendering MUST NOT import from
-  `@portplanner/doc-store-react`.** They import `@portplanner/doc-store`
+  `@portplanner/project-store-react`.** They import `@portplanner/project-store`
   directly. Enforcement grep (applies when subdirectories exist):
   ```
-  rg -n "from '@portplanner/doc-store-react'" \
+  rg -n "from '@portplanner/project-store-react'" \
      packages/editor-2d/src/canvas/ \
      packages/viewer-3d/src/scene/
   ```

@@ -15,10 +15,10 @@ ADR-012, the `packages/design-system` package with the three-layer token
 pipeline and `ThemeProvider` per `design-tokens.md` v1.2.0, an `apps/web`
 shell matching the prototype layout (navbar + sidebars + empty canvas area)
 styled under the dark theme, and a minimal GitHub Actions CI workflow.
-No document model, no canvas rendering, no RTG_BLOCK — those are subsequent
+No project model, no canvas rendering, no RTG_BLOCK — those are subsequent
 M1 slices.
 
-This is the first of four M1 slices (M1.1 Foundation → M1.2 Document Model
+This is the first of four M1 slices (M1.1 Foundation → M1.2 Project Model
 → M1.3 2D Editor Shell → M1.4 RTG_BLOCK).
 
 ## 2. Assumptions and scope clarifications
@@ -238,14 +238,14 @@ satisfied by this mapping table and the plan references above.
 **Not applicable.**
 
 M1.1 does not introduce any object types, extractors, validation rules,
-ownership-state transitions, mesh descriptors, or document-sync behaviour.
+ownership-state transitions, mesh descriptors, or project-sync behaviour.
 Those land in M1.2–M1.4.
 
 ## 8. Hydration, Serialization, Undo/Redo, Sync
 
 **Not applicable.**
 
-M1.1 does not touch the document model. No load/save paths are implemented;
+M1.1 does not touch the project model. No load/save paths are implemented;
 no operations are logged; no undo/redo; no sync. First introduced in M1.2.
 
 ## 9. Implementation phases

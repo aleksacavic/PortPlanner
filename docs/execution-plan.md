@@ -12,7 +12,7 @@ saved output. Nothing else matters until this works.
 
 ### In scope
 
-1. A document model that serialises to disk and reloads deterministically
+1. A project model that serialises to disk and reloads deterministically
 2. A minimal editor shell — functional, not polished — with a 2D canvas
 3. Project creation with coordinate system setup (origin, true north)
 4. RTG_BLOCK as the only drawable object type
@@ -198,4 +198,4 @@ architecture got wrong, update the ADRs and move on. Do not pre-solve problems
 that have not appeared yet.
 
 The first PR should create the repo structure and a README pointing to this
-architecture pack. The second PR should be the minimum document model. Move.
+architecture pack. The second PR should be the minimum project model. Move.

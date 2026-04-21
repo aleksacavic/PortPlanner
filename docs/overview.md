@@ -24,7 +24,7 @@ deprioritised.
 
 ## What is authoritative vs derived
 
-**Authoritative:** the 2D project document. Object geometry, classification,
+**Authoritative:** the 2D project. Object geometry, classification,
 parameters, and ownership state. Nothing else is source of truth.
 
 **Derived:** extracted quantities, operational analysis, cost computations,

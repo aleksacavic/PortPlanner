@@ -17,12 +17,12 @@ changes, a new ADR is written that references and supersedes the old one.
 | [007](007-validation-engine.md) | Validation Engine | ACCEPTED |
 | [008](008-3d-cache.md) | 3D Derivation Cache | ACCEPTED |
 | [009](009-rbac.md) | RBAC and Permission Model | ACCEPTED |
-| [010](010-document-sync.md) | Document Sync and Offline Model | ACCEPTED |
+| [010](010-project-sync.md) | Project Sync and Offline Model | ACCEPTED |
 | [011](011-ui-stack.md) | UI Stack: Icon Library and Theme Switching | ACCEPTED |
 | [012](012-technology-stack.md) | Technology Stack | ACCEPTED |
 | [013](013-2d-rendering-pipeline.md) | 2D Rendering Pipeline | ACCEPTED |
 | [014](014-persistence-architecture.md) | Persistence Architecture | ACCEPTED |
-| [015](015-document-store-state-management.md) | Document Store and State Management Scope | ACCEPTED |
+| [015](015-project-store-state-management.md) | Project Store and State Management Scope | ACCEPTED |
 
 ## Format
 
