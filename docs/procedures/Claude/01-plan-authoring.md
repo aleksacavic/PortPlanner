@@ -468,3 +468,25 @@ Plan authoring is complete only when:
     goal-sentence headers. This check is separate from §1.3 internal
     review rounds (which verify the new content); this step verifies
     the OLD content has been removed everywhere it appears.
+13. **Revisions follow the same closure discipline as initial
+    authoring.** Steps 1–12 above are NOT limited to the first
+    emission of a plan. Every revised emission (in response to
+    Procedure 02 review findings, Procedure 04 post-commit findings,
+    or mid-execution §3.10 patches) MUST also:
+    - Re-run §1.3 three-round internal self-audit (Chief Architect /
+      Sceptical Reader / Blast Radius personas) against the REVISED
+      plan text. Reacting to review findings is not a substitute for
+      independent self-audit — reviewers miss things too, and fresh
+      errors can be introduced by the revision itself.
+    - Emit a §1.13 pre-response notification in chat BEFORE
+      committing / pushing the revised plan file. This gives the
+      user a tabulated summary of what changed, what stayed, and
+      whether any fresh deviations or risks were introduced during
+      the revision. "I already addressed the review findings" is
+      not sufficient justification to skip this step.
+    - Complete step 12 section-consistency pass.
+    Skipping any of the above on a revision is a **procedure
+    violation** and reduces the probability that the next review
+    round reaches Go. The absence of §1.3 + §1.13 rigour on
+    revisions is a leading indicator of Review Misses slipping past
+    into post-commit audit.

@@ -252,6 +252,53 @@ revision:
   Procedure 01 scrutiny response protocol.
 - Codex performs the next review round on the revised plan.
 
+### Mandatory revision-discipline reminder (every handback memo)
+
+Every Codex handback memo that produces Blockers or High-risk items
+MUST close with an explicit reminder directing Claude to re-read the
+revision-discipline rules before responding. The reminder is NOT
+optional; its absence is a procedure miss on the reviewer side and
+reduces the probability of reaching Go in the next round.
+
+Reminder template (copy into the handback memo verbatim or paraphrase
+while preserving every point):
+
+> **Before revising the plan in response to these findings, Claude
+> MUST:**
+>
+> 1. Re-read Procedure 01 §1.3 (Three internal review rounds —
+>    Chief Architect / Sceptical Reader / Blast Radius) and run the
+>    self-audit on the REVISED plan text, not just on the original.
+> 2. Re-read Procedure 01 §1.13 (Pre-response notification) and
+>    emit the tabulated notification in chat BEFORE committing and
+>    pushing the revised plan file. The user must see the
+>    notification before wading through the revised plan.
+> 3. Re-read Procedure 01 §1.16 step 12 (Section-consistency pass)
+>    and grep the plan body for references to any removed or
+>    renamed concept after the revision.
+> 4. Re-read Procedure 01 §1.16 step 13 (Revisions follow the same
+>    closure discipline as initial authoring) — confirming that
+>    §1.3 + §1.13 + §1.16 step 12 all apply to revised emissions,
+>    not only to the first authoring.
+> 5. Re-read Procedure 02 §2.10 (Scrutiny Response Protocol) and
+>    append the Appendix — Scrutiny Assessment and Actions
+>    section to the plan file with per-finding Decision /
+>    Rationale / Plan-updates entries.
+>
+> Reacting to review findings is not a substitute for independent
+> self-audit. Reviewers miss things; revisions can introduce fresh
+> errors. The ceremony above exists to catch both before the next
+> review round.
+
+### Reviewer self-check
+
+Before emitting the handback memo, Codex MUST verify:
+
+- The reminder above appears at the end of the memo (or its
+  equivalent in the reviewer's own words covering every point).
+- The reminder references the specific procedure sections by
+  number, not just topic.
+
 ---
 
 ## 2.11) Closure Discipline
