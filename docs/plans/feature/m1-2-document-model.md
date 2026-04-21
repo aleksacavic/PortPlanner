@@ -16,7 +16,7 @@ weight.)*
 
 ## 1. Request summary
 
-Deliver the document model plumbing so a user can create a project,
+Deliver the project model plumbing so a user can create a project,
 save it, hard-refresh the browser, auto-load it back, and verify the
 document is byte-identical. No canvas, no geometry, no object types
 yet — that's M1.3 and M1.4.
@@ -93,7 +93,6 @@ Other assumptions:
 - `src/index.ts`
 - `tests/store.test.ts`
 - `tests/zundo.test.ts`
-- `tests/persistence-bridge.test.ts`
 - `tests/setup.ts`
 
 **Files to be created — `packages/project-store-react/`** (new package):
@@ -135,7 +134,7 @@ Other assumptions:
 
 - `src/main.tsx` — initialise projectStore, call `useAutoLoadMostRecent`
   before first render (or in a mount effect)
-- `src/App.tsx` — wire DocStore + ConfirmDialog outlet
+- `src/App.tsx` — wire `<ConfirmDialog>` outlet (projectStore is a module-level singleton; no provider wiring needed)
 - `src/shell/Navbar.tsx` — populate `controls` region with
   NewProjectButton + SaveButton (previously empty per M1.1 plan)
 - `src/shell/Navbar.module.css` — adjust controls flex layout
@@ -276,8 +275,8 @@ guard).
 
 | # | Condition | Status | Evidence |
 |---|---|---|---|
-| 1 | No conflicting runtime semantics | **Satisfied** | The default `CoordinateSystem` value is a valid member of the `CoordinateSystem` type defined per `docs/coordinate-system.md`. All engineering math still runs in project-local metric per ADR-001. WGS84 is only ever at the API boundary. The default is a starting value — not a runtime behaviour the binding doc prohibits. |
-| 2 | Excluded features unreachable at the type level | **Satisfied** | M1.2 exposes no `setCoordinateSystem` / `updateOrigin` / `setRotation` action in any package. The New Project dialog has no origin or rotation input fields. No hook returns a coordinate-system mutator. Users cannot change the coord system beyond the default via any code path in M1.2. The type permits any value; the M1.2 **surface area** exposes only the default. |
+| 1 | No conflicting runtime semantics | **Satisfied** | `coordinateSystem: CoordinateSystem \| null` with `null` at creation (not a "default" value — the field is unset until the user chooses). `null` represents "origin not yet chosen" which is directly consistent with `docs/coordinate-system.md` §"Project origin selection": *"the origin is chosen by the user… The origin is immutable once set."* An unchosen origin is a valid pre-selection state; the binding doc does not mandate a default value. All engineering math still runs in project-local metric per ADR-001; WGS84 remains at the API boundary. No runtime behaviour that the binding doc prohibits. |
+| 2 | Excluded features unreachable at the type level | **Satisfied** | M1.2 exposes no `setCoordinateSystem` / `updateOrigin` / `setRotation` / similar action in any package. The New Project dialog has no origin / rotation / UTM-zone input fields. No hook returns a coordinate-system mutator. The only way `coordinateSystem` can transition from `null` → non-null is via M1.3's forthcoming UI (outside M1.2 surface area). Users cannot set coordinates via any code path in M1.2. |
 | 3 | User approval recorded in plan file with identifier and date | **Satisfied** | 2026-04-21, `aleksacavic@gmail.com`, via pre-plan AskUserQuestion popup Q3: "Defer geodetic anchor; dialog collects name only (Recommended)." Reconfirmed in Appendix A Round 1 → Round 2 response (this revision). |
 | 4 | Widening plan explicitly stated | **Satisfied** | M1.3 (2D Editor Shell) adds the origin marker and true-north indicator on the canvas, alongside a coord-setup dialog triggered from a Project Settings surface. `docs/execution-plan.md` Milestone 1 scope item #3 — "Project creation with coordinate system setup (origin, true north)" — is a *Milestone 1* deliverable, split across M1.2 (doc infrastructure — CoordinateSystem types + defaults persisted in round-trip) and M1.3 (user-facing UI + canvas visualization). |
 
@@ -314,7 +313,7 @@ Not applicable:
 
 ## 8. Hydration, Serialization, Undo/Redo, Sync
 
-### Hydration (document load path)
+### Hydration (project load path)
 
 - `loadProject(id)` reads the IndexedDB value under key `id`
 - Raw value is a string (canonical JSON blob) → `JSON.parse` →
@@ -340,7 +339,7 @@ Not applicable:
   hint. Migration logic is deferred until a v2 field is introduced
   (M2+).
 
-### Serialization (document save path)
+### Serialization (project save path)
 
 - `serialize(doc): string` in `packages/domain/src/serialize.ts`:
   - Sort object keys recursively before stringifying
@@ -542,7 +541,7 @@ cases covering valid/invalid branches for each schema), `serialize.test.ts`
 
 ### Phase 2 — `packages/project-store` (vanilla Zustand + zundo + Immer)
 
-**Goal:** Create the document store as a vanilla Zustand store with
+**Goal:** Create the project store as a vanilla Zustand store with
 zundo temporal middleware and Immer-based mutations, per ADR-015.
 No React. No persistence.
 
