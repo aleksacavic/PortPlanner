@@ -8,7 +8,7 @@
 The `packages/editor-2d` package is the primary surface area in Milestones 1
 and 2. It must:
 
-- Render the authoritative 2D project document (ADR-001 project-local metric
+- Render the authoritative 2D project (ADR-001 project-local metric
   geometry, ADR-002 typed objects).
 - Support interactive authoring (draw, select, move, rotate, reshape).
 - Support CAD-style interactions: object snap (OSNAP) to endpoints,
@@ -19,7 +19,7 @@ and 2. It must:
 - Scale to Milestone 3 generated RTG blocks — potentially 10k+ container-level
   shapes per project.
 - Honor the theme system (`useActiveThemeTokens()` bridge per ADR-011).
-- Work within the op-log-driven document model (ADR-010) without introducing
+- Work within the op-log-driven project model (ADR-010) without introducing
   a parallel source of truth for object state.
 
 Choosing the wrong rendering foundation is expensive to undo. Once components
@@ -132,7 +132,7 @@ zoom; click-drag pan; keyboard shortcuts.
 
 | Aspect | Choice |
 |---|---|
-| Renderer | **Plain Canvas2D**, imperative `paint(ctx, state)` pattern, driven by the op-log-backed document state (ADR-010). `devicePixelRatio` handled at canvas init. |
+| Renderer | **Plain Canvas2D**, imperative `paint(ctx, state)` pattern, driven by the op-log-backed project state (ADR-010). `devicePixelRatio` handled at canvas init. |
 | Geometry math | **`@flatten-js/core`** for 2D Euclidean primitives. Revisit only if it becomes a measured bottleneck or a better-typed alternative emerges. |
 | Spatial index | **`rbush`** (R-tree) over object bounding boxes for hit testing, snap targeting, and frustum culling. |
 | View transform | **Roll our own** view-transform layer (~100 LOC). No `d3-zoom` dependency. |
@@ -149,7 +149,7 @@ paint(ctx, documentState, viewState, overlayState):
   drawOverlays(ctx, overlayState, theme)       // snap markers, guides, dimensions
 ```
 
-- `documentState` is a Zustand selector on the document store (ADR-012).
+- `projectState` is a Zustand selector on the project store (ADR-012).
 - `viewState` is a separate slice (zoom, pan). Not undoable.
 - `overlayState` is ephemeral UI state (active snap target, alignment lines,
   dimension preview). Not undoable.
@@ -216,7 +216,7 @@ remedy is a superseding ADR via §0.7, not silent drift.
 - **ADR-008** 3D Derivation Cache — uses fingerprint-keyed descriptors; 2D
   rendering follows the same philosophy (derive from authoritative state;
   don't retain a parallel scene).
-- **ADR-010** Document Sync — the document is the single source of truth;
+- **ADR-010** Project Sync — the project is the single source of truth;
   paint reads a selector, never mutates.
 - **ADR-011** UI Stack — `ThemeProvider` and `useActiveThemeTokens()` feed
   canvas draw state.

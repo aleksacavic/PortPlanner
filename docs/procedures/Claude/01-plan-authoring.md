@@ -237,7 +237,7 @@ not acceptable.
 
 ## 1.9) Hydration, Serialization, Undo/Redo, Sync
 
-For every plan that touches the document model, MUST cover:
+For every plan that touches the project model, MUST cover:
 
 ### Hydration (document load path)
 
@@ -265,7 +265,7 @@ For every plan that touches the document model, MUST cover:
   behaviour?
 - What happens on reconnect with a backlog of operations?
 
-If the plan does not touch the document model, state this explicitly in
+If the plan does not touch the project model, state this explicitly in
 a "Not applicable" subsection with the reason.
 
 ---

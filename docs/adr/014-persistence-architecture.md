@@ -9,7 +9,7 @@ ADR-010 defines the **document sync model** — serializable value type,
 operation log, object-level last-write-wins, CRDT-compatible V2 path. It
 does not fully pin the persistence *implementation*:
 
-- Where is the document persisted in M1 (no server exists)?
+- Where is the project persisted in M1 (no server exists)?
 - What is the server-side store when the server ships?
 - How does persistence evolve across M1 → M2 → M3+?
 
@@ -197,7 +197,7 @@ M1 which the M1 exit criterion does not require.
   not in client IndexedDB.
 - **ADR-009** RBAC — permission checks happen server-side; M1 has no server,
   so no RBAC in M1.
-- **ADR-010** Document Sync — authoritative sync model; this ADR is the
+- **ADR-010** Project Sync — authoritative sync model; this ADR is the
   implementation path beneath it.
 - **ADR-012** Technology Stack — JSON serialization primitive and UUIDv7 ID
   generation are decided there and applied here.

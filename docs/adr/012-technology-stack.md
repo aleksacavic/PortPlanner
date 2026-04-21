@@ -45,7 +45,7 @@ superseded independently of this stack ADR.
 
 ### State management
 
-- **A. Zustand with `zundo` middleware, scoped to the document-state slice.**
+- **A. Zustand with `zundo` middleware, scoped to the project-state slice.**
   `store.subscribe` works outside the React tree (ADR-013's canvas draw loop
   needs this); tiny; no providers; undo/redo middleware fits the ADR-010
   operation log.
@@ -130,7 +130,7 @@ superseded independently of this stack ADR.
 |---|---|---|---|
 | 1 | Language | **TypeScript 5.x, `strict: true`** | Every ADR uses TS signatures; cross-package type sharing |
 | 2 | Frontend framework | **React 18+** | Aligns with ADR-011 + design-tokens.md implicit commitment |
-| 3 | State management | **Zustand** with **`zundo` middleware scoped to the document-state slice** | Works outside React tree (ADR-013 canvas draw); undo/redo fits ADR-010 op log |
+| 3 | State management | **Zustand** with **`zundo` middleware scoped to the project-state slice** | Works outside React tree (ADR-013 canvas draw); undo/redo fits ADR-010 op log |
 | 4 | Schema validation | **Zod** | TS-ecosystem default; extractor registry + API boundary validation |
 | 5 | Build tool | **Vite 5+** | Native TS + CSS Modules; fast HMR |
 | 6 | Test runner | **Vitest** (unit + integration); Playwright added when editor e2e is needed | Vite-native; Jest-compatible |
@@ -198,7 +198,7 @@ We do NOT run both tools concurrently by default.
 
 - **ADR-004** Parameter Extraction — Zod enforces extractor parameter shapes
   at the API boundary.
-- **ADR-010** Document Sync — the op log is the undo unit; `zundo` wraps the
+- **ADR-010** Project Sync — the op log is the undo unit; `zundo` wraps the
   document store.
 - **ADR-011** UI Stack — already picks `lucide-react` and the React
   `ThemeProvider`. This ADR makes the React decision explicit.

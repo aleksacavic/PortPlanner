@@ -79,7 +79,7 @@ finding for human review, not a code change.
 - Architectural deviations from an ADR
 - Changes to the extraction registry
 - New object types
-- Changes to the document model shape
+- Changes to the project model shape
 - Changes to the RBAC model
 - Library model modifications
 - Coordinate system changes
