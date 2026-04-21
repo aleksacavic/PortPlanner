@@ -277,6 +277,8 @@ Use this exact structure:
 10. **Done Criteria Checklist** (objective pass/fail)
 11. **Final Rating (1-10)**
 12. **Go / No-Go**
+13. **Revision-discipline reminder** (mandatory when output is
+    No-Go — see §2.10)
 
 ---
 
@@ -299,6 +301,41 @@ Rules:
 - Ensure accepted items are reflected in updated phases/gates/tests.
 - If accepted items change scope, verify architecture doc impact list is
   updated.
+
+### Mandatory revision-discipline reminder (every No-Go handback)
+
+Every review memo that classifies the plan as No-Go MUST close with
+an explicit reminder directing the plan author to re-read the
+revision-discipline rules before responding. The reminder is NOT
+optional; its absence is a procedure miss on the reviewer side.
+
+Reminder template (copy verbatim or paraphrase while preserving
+every point):
+
+> **Before revising the plan in response to these findings, the plan
+> author MUST:**
+>
+> 1. Re-read Procedure 01 §1.3 (Three internal review rounds —
+>    Chief Architect / Sceptical Reader / Blast Radius) and run
+>    the self-audit on the REVISED plan text, not just on the
+>    original.
+> 2. Re-read Procedure 01 §1.13 (Pre-response notification) and
+>    emit the tabulated notification in chat BEFORE committing
+>    and pushing the revised plan file.
+> 3. Re-read Procedure 01 §1.16 step 12 (Section-consistency
+>    pass) and grep the plan body for references to any removed
+>    or renamed concept after the revision.
+> 4. Re-read Procedure 01 §1.16 step 13 (Revisions follow the
+>    same closure discipline as initial authoring) — confirming
+>    that §1.3 + §1.13 + §1.16 step 12 all apply to revised
+>    emissions, not only to the first authoring.
+> 5. Re-read Procedure 02 §2.10 (Scrutiny Response Protocol) and
+>    append the Appendix — Scrutiny Assessment and Actions to
+>    the plan file with per-finding Decision / Rationale /
+>    Plan-updates entries.
+>
+> Reacting to review findings is not a substitute for independent
+> self-audit.
 
 ---
 
