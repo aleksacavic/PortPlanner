@@ -1,0 +1,21 @@
+.button {
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 2px;
+  border: 1px solid var(--accent-primary);
+  background: var(--accent-primary);
+  color: var(--text-inverse);
+  cursor: pointer;
+}
+
+.button:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+
+.button:disabled {
+  background: var(--interactive-disabled);
+  border-color: var(--interactive-disabled);
+  color: var(--text-tertiary);
+  cursor: not-allowed;
+}

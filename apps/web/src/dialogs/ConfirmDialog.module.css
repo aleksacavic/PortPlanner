@@ -1,0 +1,66 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.dialog {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  padding: 20px;
+  min-width: 320px;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-family: var(--font-family-sans);
+  color: var(--text-primary);
+}
+
+.title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.message {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.cancel,
+.confirm {
+  font-family: var(--font-family-sans);
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 2px;
+  border: 1px solid var(--border-default);
+  background: var(--interactive-default);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.cancel:hover,
+.confirm:hover {
+  background: var(--interactive-hover);
+}
+
+.confirm {
+  background: var(--accent-danger);
+  border-color: var(--accent-danger);
+  color: var(--text-inverse);
+}

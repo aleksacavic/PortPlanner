@@ -1,5 +1,5 @@
 {
-  "name": "@portplanner/domain",
+  "name": "@portplanner/project-store",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -11,10 +11,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "uuid": "^11.0.5",
-    "zod": "^3.23.8"
-  },
-  "devDependencies": {
-    "@types/uuid": "^10.0.0"
+    "@portplanner/domain": "workspace:*",
+    "immer": "^10.1.1",
+    "zundo": "^2.3.0",
+    "zustand": "^5.0.2"
   }
 }
