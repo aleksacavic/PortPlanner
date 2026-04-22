@@ -11,6 +11,10 @@
   },
   "dependencies": {
     "@portplanner/design-system": "workspace:*",
+    "@portplanner/domain": "workspace:*",
+    "@portplanner/project-store": "workspace:*",
+    "@portplanner/project-store-react": "workspace:*",
+    "idb": "^8.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -20,6 +24,7 @@
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "fake-indexeddb": "^6.0.0",
     "jsdom": "^25.0.1",
     "vite": "^6.0.0"
   }
