@@ -92,6 +92,21 @@ importers:
         specifier: ^10.0.0
         version: 10.0.0
 
+  packages/project-store:
+    dependencies:
+      '@portplanner/domain':
+        specifier: workspace:*
+        version: link:../domain
+      immer:
+        specifier: ^10.1.1
+        version: 10.2.0
+      zundo:
+        specifier: ^2.3.0
+        version: 2.3.0(zustand@5.0.12(@types/react@19.2.14)(immer@10.2.0)(react@19.2.5))
+      zustand:
+        specifier: ^5.0.2
+        version: 5.0.12(@types/react@19.2.14)(immer@10.2.0)(react@19.2.5)
+
 packages:
 
   '@adobe/css-tools@4.4.4':
@@ -1015,6 +1030,9 @@ packages:
     resolution: {integrity: sha512-4fCk79wshMdzMp2rH06qWrJE4iolqLhCUH+OiuIgU++RB0+94NlDL81atO7GX55uUKueo0txHNtvEyI6D7WdMw==}
     engines: {node: '>=0.10.0'}
 
+  immer@10.2.0:
+    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
+
   indent-string@4.0.0:
     resolution: {integrity: sha512-EdDDZu4A2OyIK7Lr/2zG+w5jmbuk1DVBnEwREQvBzspBJkCEbRa8GxU1lghYcaGJCnRWibjDXlq779X1/y5xwg==}
     engines: {node: '>=8'}
@@ -1387,6 +1405,29 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+  zundo@2.3.0:
+    resolution: {integrity: sha512-4GXYxXA17SIKYhVbWHdSEU04P697IMyVGXrC2TnzoyohEAWytFNOKqOp5gTGvaW93F/PM5Y0evbGtOPF0PWQwQ==}
+    peerDependencies:
+      zustand: ^4.3.0 || ^5.0.0
+
+  zustand@5.0.12:
+    resolution: {integrity: sha512-i77ae3aZq4dhMlRhJVCYgMLKuSiZAaUPAct2AksxQ+gOtimhGMdXljRT21P5BNpeT4kXlLIckvkPM029OljD7g==}
+    engines: {node: '>=12.20.0'}
+    peerDependencies:
+      '@types/react': '>=18.0.0'
+      immer: '>=9.0.6'
+      react: '>=18.0.0'
+      use-sync-external-store: '>=1.2.0'
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      immer:
+        optional: true
+      react:
+        optional: true
+      use-sync-external-store:
+        optional: true
 
 snapshots:
 
@@ -2171,6 +2212,8 @@ snapshots:
     dependencies:
       safer-buffer: 2.1.2
 
+  immer@10.2.0: {}
+
   indent-string@4.0.0: {}
 
   is-potential-custom-element-name@1.0.1: {}
@@ -2484,3 +2527,13 @@ snapshots:
   yallist@3.1.1: {}
 
   zod@3.25.76: {}
+
+  zundo@2.3.0(zustand@5.0.12(@types/react@19.2.14)(immer@10.2.0)(react@19.2.5)):
+    dependencies:
+      zustand: 5.0.12(@types/react@19.2.14)(immer@10.2.0)(react@19.2.5)
+
+  zustand@5.0.12(@types/react@19.2.14)(immer@10.2.0)(react@19.2.5):
+    optionalDependencies:
+      '@types/react': 19.2.14
+      immer: 10.2.0
+      react: 19.2.5
