@@ -1,0 +1,102 @@
+import 'fake-indexeddb/auto';
+
+import { ThemeProvider } from '@portplanner/design-system';
+import type { Project } from '@portplanner/domain';
+import { newProjectId, serialize } from '@portplanner/domain';
+import { projectStore, resetProjectStoreForTests } from '@portplanner/project-store';
+import { render, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import { App } from '../src/App';
+import { DB_NAME, PROJECTS_STORE, type StoredProjectRecord } from '../src/persistence';
+
+function makeProject(name = 'Seeded Port'): Project {
+  return {
+    id: newProjectId(),
+    schemaVersion: '1.0.0',
+    name,
+    createdAt: '2026-04-22T10:00:00.000Z',
+    updatedAt: '2026-04-22T10:00:00.000Z',
+    coordinateSystem: null,
+    objects: {},
+    scenarioId: null,
+  };
+}
+
+async function resetDB(): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => resolve();
+  });
+}
+
+async function seed(record: StoredProjectRecord): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const openReq = indexedDB.open(DB_NAME, 1);
+    openReq.onupgradeneeded = () => {
+      const db = openReq.result;
+      if (!db.objectStoreNames.contains(PROJECTS_STORE)) {
+        const store = db.createObjectStore(PROJECTS_STORE, { keyPath: 'id' });
+        store.createIndex('by-updated-at', 'updatedAt');
+      }
+    };
+    openReq.onsuccess = () => {
+      const db = openReq.result;
+      const tx = db.transaction(PROJECTS_STORE, 'readwrite');
+      const putReq = tx.objectStore(PROJECTS_STORE).put(record);
+      putReq.onsuccess = () => {
+        db.close();
+        resolve();
+      };
+      putReq.onerror = () => {
+        db.close();
+        reject(putReq.error);
+      };
+    };
+    openReq.onerror = () => reject(openReq.error);
+  });
+}
+
+describe('useAutoLoadMostRecent (via <App />)', () => {
+  beforeEach(async () => {
+    resetProjectStoreForTests();
+    await resetDB();
+  });
+
+  it('hydrates the store with the most-recent seeded project', async () => {
+    const p = makeProject('Seeded Port');
+    const lastSavedAt = '2026-04-22T10:30:00.000Z';
+    await seed({
+      id: p.id,
+      name: p.name,
+      updatedAt: lastSavedAt,
+      blob: serialize(p),
+    });
+
+    render(
+      <ThemeProvider mode="dark">
+        <App />
+      </ThemeProvider>,
+    );
+
+    await waitFor(() => {
+      expect(projectStore.getState().project?.id).toBe(p.id);
+    });
+    const state = projectStore.getState();
+    expect(state.dirty).toBe(false);
+    expect(state.lastSavedAt).toBe(lastSavedAt);
+  });
+
+  it('leaves the store untouched when the db is empty', async () => {
+    render(
+      <ThemeProvider mode="dark">
+        <App />
+      </ThemeProvider>,
+    );
+    // Give the effect a tick.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(projectStore.getState().project).toBeNull();
+  });
+});

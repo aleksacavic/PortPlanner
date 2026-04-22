@@ -42,8 +42,8 @@ describe('<App /> prototype-shell', () => {
     expect(getByText('Properties')).toBeDefined();
   });
 
-  it('renders the "Ready" status text', () => {
+  it('renders the "No project" status text when store is empty', () => {
     const { getByText } = render(<App />, { wrapper });
-    expect(getByText('Ready')).toBeDefined();
+    expect(getByText('No project')).toBeDefined();
   });
 });
