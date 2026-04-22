@@ -90,12 +90,16 @@ describe('<SaveButton />', () => {
     await waitFor(() => {
       expect(projectStore.getState().dirty).toBe(false);
     });
-    expect(projectStore.getState().lastSavedAt).not.toBeNull();
 
     const stored = await readStoredRecord(p.id);
     expect(stored).toBeDefined();
     expect(stored?.name).toBe('Test Port');
     const roundTripped = deserialize(stored?.blob ?? '');
     expect(roundTripped.id).toBe(p.id);
+
+    // Codex Round 1 H1 / Q1: the store's lastSavedAt must be
+    // byte-identical to the IndexedDB record's updatedAt — no clock
+    // skew introduced by a second new Date() inside markSaved.
+    expect(projectStore.getState().lastSavedAt).toBe(stored?.updatedAt);
   });
 });

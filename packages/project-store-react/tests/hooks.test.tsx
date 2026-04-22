@@ -51,7 +51,7 @@ describe('project-store-react hooks', () => {
     act(() => createNewProject(makeProject()));
     expect(result.current).toBe(true);
 
-    act(() => markSaved());
+    act(() => markSaved('2026-04-22T10:15:30.000Z'));
     expect(result.current).toBe(false);
   });
 

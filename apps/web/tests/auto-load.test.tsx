@@ -5,7 +5,7 @@ import type { Project } from '@portplanner/domain';
 import { newProjectId, serialize } from '@portplanner/domain';
 import { projectStore, resetProjectStoreForTests } from '@portplanner/project-store';
 import { render, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../src/App';
 import { DB_NAME, PROJECTS_STORE, type StoredProjectRecord } from '../src/persistence';
@@ -98,5 +98,41 @@ describe('useAutoLoadMostRecent (via <App />)', () => {
     // Give the effect a tick.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(projectStore.getState().project).toBeNull();
+  });
+
+  it('contains malformed record failure — no crash, no unhandled rejection, store stays null', async () => {
+    // Codex Round 1 H2 / Q2: seed IndexedDB with a record whose blob
+    // cannot be deserialized. loadMostRecent() will throw LoadFailure;
+    // useAutoLoadMostRecent must catch it and leave the store empty.
+    await seed({
+      id: 'corrupt-id',
+      name: 'Corrupt',
+      updatedAt: '2026-04-22T10:30:00.000Z',
+      blob: '{ not valid json',
+    });
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+    };
+    window.addEventListener('unhandledrejection', onUnhandled);
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    try {
+      render(
+        <ThemeProvider mode="dark">
+          <App />
+        </ThemeProvider>,
+      );
+      // Give the effect enough ticks to run the async body + microtasks.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(projectStore.getState().project).toBeNull();
+      expect(unhandled).toEqual([]);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('unhandledrejection', onUnhandled);
+      consoleErrorSpy.mockRestore();
+    }
   });
 });

@@ -1,8 +1,9 @@
 // M1.2 Phase 5 — "Save" toolbar button. Disabled unless a dirty project
-// is loaded. On click: saveProject() → markSaved(). The saveProject
-// return carries { savedAt } for SR-2 skew mitigation; M1.2 does not
-// use it beyond the bare flow, but it is the contract callers will
-// extend in later milestones.
+// is loaded. On click: saveProject() → markSaved(savedAt). The savedAt
+// returned by saveProject is the timestamp that was written to
+// IndexedDB; threading it into markSaved keeps in-memory
+// lastSavedAt byte-identical to the persisted updatedAt (SR-2
+// remediation — Codex Round 1 H1).
 
 import { markSaved } from '@portplanner/project-store';
 import { useIsDirty, useProject } from '@portplanner/project-store-react';
@@ -24,8 +25,8 @@ export function SaveButton() {
     }
     setBusy(true);
     try {
-      await saveProject(project);
-      markSaved();
+      const { savedAt } = await saveProject(project);
+      markSaved(savedAt);
     } finally {
       setBusy(false);
     }

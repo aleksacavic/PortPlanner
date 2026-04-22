@@ -43,12 +43,19 @@ export function hydrateProject(project: Project, lastSavedAt: string): void {
 /**
  * Post-save metadata update. Does NOT touch `state.project`:
  *   - dirty := false
- *   - lastSavedAt := current ISO timestamp
+ *   - lastSavedAt := the timestamp the persistence layer wrote
+ *
+ * `savedAt` MUST be the `savedAt` returned by `saveProject()` so the
+ * in-memory `lastSavedAt` is byte-identical to the IndexedDB record's
+ * `updatedAt` (SR-2 remediation — Codex Round 1 H1). Callers that
+ * stamp a fresh `new Date()` here would drift by up to tens of ms
+ * under load and lose end-to-end timestamp identity.
+ *
  * Not a mutation per ADR-010 (persistence metadata only).
  */
-export function markSaved(): void {
+export function markSaved(savedAt: string): void {
   projectStore.setState((state) => {
     state.dirty = false;
-    state.lastSavedAt = new Date().toISOString();
+    state.lastSavedAt = savedAt;
   });
 }

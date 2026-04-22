@@ -1461,3 +1461,75 @@ Extends Round 1 → Round 2 list:
 - [x] Procedure 01 §1.16 step 13 revision-discipline met: §1.3 + §1.13 + §1.16 step 12 all applied to this revised emission.
 - [x] Procedure 02 §2.10 Scrutiny Response Protocol satisfied: Round 2 → Round 3 subsection appended above; Round 3 self-audit subsection appended here; prior round records preserved untouched.
 - [x] No new deviations introduced. PI-1 and PI-2 remain the only progressive-implementation classifications.
+
+---
+
+## Post-commit remediation — 2026-04-22 (Round 1, triggered by Codex Round 1 post-commit audit)
+
+Codex Round 1 post-commit review of commit range `29eae5a..c7413ba` returned **7.8/10 No-Go** with 2 High-risk + 2 Quality-gap items. Remediation executed per Procedure 05.
+
+### H1 — Timestamp-skew contract not honored at callsite
+
+**Found:** `saveProject()` returns `{ savedAt }` specifically so the caller can propagate the DB-written timestamp to the in-memory store, but `SaveButton` discarded the return value and called `markSaved()` with no argument; `markSaved()` then stamped a fresh `new Date().toISOString()`, introducing millisecond-to-tens-of-ms drift between `projectStore.lastSavedAt` and the IndexedDB record's `updatedAt`. SR-2 was documented in the plan (§Appendix A) as "accepted cosmetic skew" — Codex reclassified it as High-risk for contract fidelity, which is correct.
+
+**Fixed:**
+- `packages/project-store/src/actions.ts` — `markSaved()` signature changed to `markSaved(savedAt: string)`; body now assigns `state.lastSavedAt = savedAt` (no `new Date()`). Doc comment updated to point at Codex Round 1 H1.
+- `apps/web/src/toolbar/SaveButton.tsx` — callsite now destructures `{ savedAt }` from `saveProject()` and passes it into `markSaved(savedAt)`.
+- Tests updated to match: `packages/project-store/tests/store.test.ts` passes a fixed ISO string and asserts byte-identity; `packages/project-store-react/tests/hooks.test.tsx` passes a fixed ISO string.
+
+**Verified:** `pnpm --filter @portplanner/project-store test` → 6/6 pass. New assertion in `save-button.test.tsx` proves `projectStore.lastSavedAt === stored.updatedAt` (Codex Q1 test).
+
+### H2 — Auto-load lacks failure containment for malformed records
+
+**Found:** `loadMostRecent()` can throw (via `deserialize()` → `LoadFailure`) when the DB holds a malformed record; `useAutoLoadMostRecent` awaited it without a try/catch, so a corrupted row would escape as an unhandled promise rejection and could crash the app at mount.
+
+**Fixed:**
+- `apps/web/src/hooks/useAutoLoadMostRecent.ts` — wrapped the `await loadMostRecent()` call in try/catch. On failure, log via `console.error` (prefixed with hook name) and return; the store stays null so the user can create a fresh project.
+
+**Verified:** new test in `apps/web/tests/auto-load.test.tsx` seeds IndexedDB with `blob: '{ not valid json'`, mounts `<App />`, attaches an `unhandledrejection` listener, and asserts: store stays null, no unhandled rejections, `console.error` was called. Passes (Codex Q2 test).
+
+### Q1 — Test for store-vs-record timestamp identity
+
+**Added:** `apps/web/tests/save-button.test.tsx` now asserts `projectStore.getState().lastSavedAt === stored?.updatedAt` after save (replaces the prior "not null" assertion).
+
+### Q2 — Test for auto-load malformed-record path
+
+**Added:** `apps/web/tests/auto-load.test.tsx` — "contains malformed record failure — no crash, no unhandled rejection, store stays null". See H2 above.
+
+### Files changed in this remediation round
+- Modified: `packages/project-store/src/actions.ts`
+- Modified: `apps/web/src/toolbar/SaveButton.tsx`
+- Modified: `apps/web/src/hooks/useAutoLoadMostRecent.ts`
+- Modified: `packages/project-store/tests/store.test.ts`
+- Modified: `packages/project-store-react/tests/hooks.test.tsx`
+- Modified: `apps/web/tests/save-button.test.tsx`
+- Modified: `apps/web/tests/auto-load.test.tsx`
+- Modified: `docs/plans/feature/m1-2-document-model.md` (this section)
+
+### Binding spec updates
+None. The contract that needed enforcement (SR-2 timestamp identity) was already documented in ADR-015 and in this plan's §Appendix A; the remediation fixes the code to match the documented contract, no spec change required.
+
+### Verification summary
+- `pnpm test` — 61/61 pass (was 60; +1 from new auto-load malformed test).
+- `pnpm typecheck` — clean.
+- `pnpm check` (Biome) — clean, 105 files.
+- `pnpm --filter @portplanner/web build` — success, 275.69 kB JS (83.13 kB gz).
+
+---
+
+## Reviewer Handoff (post-remediation)
+
+**Plan:** `docs/plans/feature/m1-2-document-model.md`
+**Branch:** `feature/m1-2-document-model`
+**Status:** Post-commit remediation complete — ready for review
+
+### Paste to Codex for re-review
+
+> Re-review the remediation commit(s) on top of `c7413ba` on
+> `feature/m1-2-document-model` using
+> `docs/procedures/Codex/04-post-commit-review.md`. The remediation
+> targets your Round 1 H1 (timestamp-skew contract) and H2 (auto-load
+> failure containment) plus the two corresponding Quality-gap tests.
+> If further issues surface, hand back to Claude for another
+> remediation round per
+> `docs/procedures/Claude/05-post-commit-remediation.md`.

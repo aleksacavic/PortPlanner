@@ -17,7 +17,17 @@ export function useAutoLoadMostRecent(): void {
       if (projectStore.getState().project !== null) {
         return;
       }
-      const result = await loadMostRecent();
+      let result: Awaited<ReturnType<typeof loadMostRecent>>;
+      try {
+        result = await loadMostRecent();
+      } catch (err) {
+        // Malformed / incompatible record in IndexedDB must not crash
+        // the app or escape as an unhandled rejection (Codex Round 1
+        // H2 remediation). Leave the store empty so the user can
+        // create a fresh project; surface details in console only.
+        console.error('[useAutoLoadMostRecent] failed to load most-recent project:', err);
+        return;
+      }
       if (cancelled || result === null) {
         return;
       }

@@ -38,15 +38,18 @@ describe('project store actions', () => {
     expect(s.lastSavedAt).toBe(ts);
   });
 
-  it('markSaved flips dirty=false and stamps lastSavedAt without touching project', () => {
+  it('markSaved(savedAt) flips dirty=false and uses the passed timestamp without touching project', () => {
     const p = makeProject();
     createNewProject(p);
     expect(projectStore.getState().dirty).toBe(true);
 
-    markSaved();
+    const savedAt = '2026-04-22T10:15:30.000Z';
+    markSaved(savedAt);
     const s = projectStore.getState();
     expect(s.dirty).toBe(false);
-    expect(s.lastSavedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    // Codex Round 1 H1: lastSavedAt is byte-identical to the passed
+    // savedAt (no new Date() in markSaved).
+    expect(s.lastSavedAt).toBe(savedAt);
     expect(s.project).toEqual(p); // unchanged
   });
 });
