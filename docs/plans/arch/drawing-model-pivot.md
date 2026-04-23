@@ -273,6 +273,10 @@ Gate 2.3: Three replacement ADRs have Supersedes headers
 Gate 2.4: Drawn-vs-canonical principle present in ADR-016
   Command: rg -in "drawn vs canonical|drawn geometry|canonical geometry" docs/adr/016-*.md
   Expected: ≥1 match
+
+Gate 2.5: Each new ADR references ≥2 distinct ADR IDs (self + ≥1 cross-reference)
+  Command: for f in docs/adr/016-*.md docs/adr/017-*.md docs/adr/018-*.md docs/adr/019-*.md docs/adr/020-*.md docs/adr/021-*.md docs/adr/022-*.md; do count=$(rg -oN "ADR-[0-9]+" "$f" | sort -u | wc -l); if [ "$count" -lt 2 ]; then echo "FAIL: $f ($count distinct ADR refs)"; fi; done
+  Expected: no output (any "FAIL: ..." line is a failure)
 ```
 
 ### Phase 3 — Move superseded ADRs with Status update
@@ -297,8 +301,8 @@ Gate 2.4: Drawn-vs-canonical principle present in ADR-016
 
 ```
 Gate 3.1: Original superseded files no longer at root
-  Command: ls docs/adr/002-*.md docs/adr/010-*.md docs/adr/013-*.md 2>&1 | rg -c "No such file|cannot access"
-  Expected: 3  (each of the three patterns fails to match a file)
+  Command: test ! -e docs/adr/002-object-model.md && test ! -e docs/adr/010-project-sync.md && test ! -e docs/adr/013-2d-rendering-pipeline.md && echo OK
+  Expected: "OK" (exit status 0 only when all three files are absent)
 
 Gate 3.2: Superseded files at new location with -superseded suffix
   Command: ls docs/adr/superseded/{002,010,013}-*-superseded.md | wc -l
@@ -321,13 +325,14 @@ Gate 3.4: Each superseded file points to its replacement
 - `docs/adr/README.md`
 
 **Steps:**
-1. Remove rows for 002, 010, 013 from the main "Index" table.
-2. Add rows for 016, 017, 018, 019, 020, 021, 022 to the main "Index" table with `Status: ACCEPTED`.
-3. Add a new section "Superseded ADRs" at the end of the README listing 002, 010, 013 with their replacement ADR numbers and paths into `superseded/`.
+1. Keep the existing `## Index` heading verbatim (exact text: `## Index`). The awk-bounded Gate 4.2/4.4 commands rely on this literal header text.
+2. Remove rows for 002, 010, 013 from the `## Index` table.
+3. Add rows for 016, 017, 018, 019, 020, 021, 022 to the `## Index` table with `Status: ACCEPTED`.
+4. Append a new section with the exact heading `## Superseded ADRs` (verbatim) at the end of the README. The section contains a table listing 002, 010, 013 with their replacement ADR numbers and relative paths into `superseded/`.
 
 **Invariants:**
-- I-9: `docs/adr/README.md` main Index table contains exactly 19 rows (001 + 003–009 + 011–012 + 014–015 + 016–022 = 19), each referencing an ACCEPTED ADR only.
-- I-10: Superseded section contains 002, 010, 013 with pointers into `superseded/`.
+- I-9: `docs/adr/README.md` `## Index` section contains exactly 19 table rows (001 + 003–009 + 011–012 + 014–015 + 016–022 = 19), each referencing an ACCEPTED ADR only.
+- I-10: `## Superseded ADRs` section contains rows for 002, 010, 013 with pointers into `superseded/`.
 
 **Mandatory Completion Gates:**
 
@@ -336,13 +341,17 @@ Gate 4.1: New ADRs listed in main index
   Command: rg -n "016-drawing-model|017-layer-model|018-dimension-model|019-object-model|020-project-sync|021-2d-rendering|022-tool-state" docs/adr/README.md
   Expected: ≥7 matches
 
-Gate 4.2: Superseded ADRs no longer in main index (only in superseded section)
-  Command: rg -n "\| \[002\]|\| \[010\]|\| \[013\]" docs/adr/README.md
-  Expected: matches occur only in the "Superseded" section table (verify by inspection — not grep-decidable)
+Gate 4.2: Superseded ADR identifiers absent from the `## Index` section (awk-bounded)
+  Command: awk '/^## Superseded ADRs/{flag=0} /^## Index/{flag=1} flag' docs/adr/README.md | rg -c "\[002\]|\[010\]|\[013\]"
+  Expected: 0
 
 Gate 4.3: Superseded section references new folder path
   Command: rg -n "superseded/" docs/adr/README.md
   Expected: ≥3 matches (one per superseded ADR)
+
+Gate 4.4: `## Index` section contains exactly 19 ACCEPTED-ADR rows (awk-bounded)
+  Command: awk '/^## Superseded ADRs/{flag=0} /^## Index/{flag=1} flag' docs/adr/README.md | rg -c "^\| \["
+  Expected: 19
 ```
 
 ### Phase 5 — Update architecture contracts (Claude + Codex)
@@ -356,7 +365,8 @@ Gate 4.3: Superseded section references new folder path
 **Steps per file (same for both):**
 1. Remove rows for 002, 010, 013 from the §0.2 ADR binding table.
 2. Add rows for 016, 017, 018, 019, 020, 021, 022 with paths to the new `docs/adr/NNN-*.md` files.
-3. Add a note below the table: "Superseded ADRs 002 → ADR-019, 010 → ADR-020, 013 → ADR-021. Superseded ADRs have moved to `docs/adr/superseded/` per the supersession discipline adopted 2026-04-23. Superseded ADRs remain in the repository for historical traceability but are not binding."
+3. Add a note below the table using the following verbatim wording, which deliberately cites superseded ADRs by **number only** (never by `.md` file path) so Gates 5.3/5.4 remain objective: `> Previously bound ADRs 002, 010, and 013 have been superseded by ADR-019, ADR-020, and ADR-021 respectively (2026-04-23). Superseded ADRs live in the \`docs/adr/superseded/\` folder for historical context and are not binding. See \`docs/adr/README.md\` §Superseded ADRs for the supersession map.`
+4. Do NOT include any of the three superseded file-path strings (`002-object-model.md`, `010-project-sync.md`, `013-2d-rendering-pipeline.md`) anywhere in the contract after the refresh — the folder reference `docs/adr/superseded/` is sufficient provenance.
 
 **Invariants:**
 - I-11: §0.2 ADR table in both files contains exactly the same set of ACCEPTED ADR rows (drift between Claude and Codex contracts is a governance bug).
@@ -372,13 +382,13 @@ Gate 5.2: New ADRs listed in Codex contract
   Command: rg -n "016-drawing-model|017-layer-model|018-dimension-model|019-object-model|020-project-sync|021-2d-rendering|022-tool-state" docs/procedures/Codex/00-architecture-contract.md
   Expected: ≥7 matches
 
-Gate 5.3: Superseded ADRs no longer listed as binding in Claude contract
-  Command: rg -n "002-object-model\.md|010-project-sync\.md|013-2d-rendering" docs/procedures/Claude/00-architecture-contract.md
-  Expected: 0 matches (unless referenced in the supersession note; inspection)
+Gate 5.3: Superseded ADR file paths absent from Claude contract
+  Command: rg -n "002-object-model\.md|010-project-sync\.md|013-2d-rendering-pipeline\.md" docs/procedures/Claude/00-architecture-contract.md
+  Expected: 0
 
-Gate 5.4: Superseded ADRs no longer listed as binding in Codex contract
-  Command: rg -n "002-object-model\.md|010-project-sync\.md|013-2d-rendering" docs/procedures/Codex/00-architecture-contract.md
-  Expected: 0 matches (same caveat)
+Gate 5.4: Superseded ADR file paths absent from Codex contract
+  Command: rg -n "002-object-model\.md|010-project-sync\.md|013-2d-rendering-pipeline\.md" docs/procedures/Codex/00-architecture-contract.md
+  Expected: 0
 ```
 
 ### Phase 6 — Reconcile overview.md
@@ -449,7 +459,15 @@ Gate 7.1: Restructure cites ADR-016
   Command: rg -n "ADR-016" docs/execution-plan.md
   Expected: ≥1 match
 
-Gate 7.2: Sub-milestone names present
+Gate 7.2a: Old scope assertion absent as a numbered list item
+  Command: rg -n "^[0-9]+\. RTG_BLOCK as the only drawable object type" docs/execution-plan.md
+  Expected: 0
+
+Gate 7.2b: Revision marker present
+  Command: rg -n "revised 2026-04-23 by ADR-016|Revised 2026-04-23 by ADR-016" docs/execution-plan.md
+  Expected: ≥1 match
+
+Gate 7.2c: Sub-milestone names present
   Command: rg -n "M1\.3a|M1\.3b|M1\.3c|M1\.4" docs/execution-plan.md
   Expected: ≥4 matches
 ```
@@ -495,17 +513,17 @@ Consolidated list of invariants introduced across Phases 1–8 with their enforc
 | I-1 | Filenames in `docs/adr/superseded/` end with `-superseded.md` | Gate 3.2 + periodic grep |
 | I-2 | Files in `docs/adr/superseded/` have `Status: SUPERSEDED` header | Gate 3.3 |
 | I-3 | Each new ADR has `Status: ACCEPTED` | Gate 2.2 |
-| I-4 | Each new ADR's Cross-references names dependent ADRs | Inspection in review |
+| I-4 | Each new ADR's Cross-references names dependent ADRs | Gate 2.5 |
 | I-5 | ADR-019/020/021 have `Supersedes:` header | Gate 2.3 |
 | I-6 | ADR-016 contains drawn-vs-canonical principle | Gate 2.4 |
 | I-7 | No original-path files for superseded IDs remain at `docs/adr/` root | Gate 3.1 |
 | I-8 | Superseded files name their replacement ADR in header | Gate 3.4 |
-| I-9 | Main Index table in `docs/adr/README.md` contains only ACCEPTED ADRs | Gates 4.1 + 4.2 |
-| I-10 | Superseded section in `docs/adr/README.md` lists all superseded ADRs | Gate 4.3 |
-| I-11 | §0.2 ADR tables in Claude + Codex contracts match | Gates 5.1–5.4 |
+| I-9 | `## Index` section of `docs/adr/README.md` contains exactly 19 ACCEPTED-ADR rows and no superseded-ID rows | Gates 4.1 + 4.2 + 4.4 |
+| I-10 | `## Superseded ADRs` section of `docs/adr/README.md` lists all superseded ADRs with pointers into `superseded/` | Gate 4.3 |
+| I-11 | §0.2 ADR tables in Claude + Codex contracts contain the same ACCEPTED-ADR rows and no superseded file-path references | Gates 5.1–5.4 |
 | I-12 | Overview.md does not contain "not a drawing tool" | Gate 6.1 |
 | I-13 | Overview.md names CAD-adjacent posture | Gate 6.2 |
-| I-14 | Execution plan does not assert "RTG_BLOCK as the only drawable object type" as current scope | Gate 7.2 (via absence inspection) |
+| I-14 | Execution plan does not assert "RTG_BLOCK as the only drawable object type" as a numbered scope item; revision marker present | Gates 7.2a + 7.2b |
 | I-15 | Execution plan cites ADR-016 for restructure | Gate 7.1 |
 | I-16 | Registry README entry format includes `## Constructors` | Gate 8.1 |
 | I-17 | Registry README has constructors governance subsection | Gate 8.2 |
@@ -543,6 +561,8 @@ All gates in Phases 1–8 pass, plus:
 | Codex Round 1 review may flag items we miss | The plan addresses the exact blockers Codex pre-flagged (overview contradiction, execution-plan framing, operation-shape precision, registry governance, binding table sync). Residual findings accepted as part of normal review. |
 | Operator shortcut `S` for Select blocks STRETCH | Explicitly accepted per user preference. STRETCH gets a different shortcut (TBD in ADR-022 appendix, non-blocking for M1). |
 | ADR-022 is large and partly forward-looking (operator implementations M1.3a/b/c) | ADR-022 pins the framework (state machine + command bar), not per-operator implementations. Those are execution-phase artifacts. |
+| Gate commands rely on `awk`, `rg`, `test`, `sed` availability in the reviewer environment | All four are standard POSIX tools present on Git Bash (Windows) and all Unix-family shells. Gate commands avoid bash-specific features (no arrays, no process substitution). If a reviewer environment lacks one, the M1.3a plan will pin shell-tool versions as a separate discipline. |
+| `## Index` and `## Superseded ADRs` headers in `docs/adr/README.md` become load-bearing for Gates 4.2 and 4.4 (awk-bounded) | Phase 4 Steps 1 and 4 pin the exact header text. Any future edit that renames these headers breaks the gates and must update them in the same commit. |
 
 ---
 
