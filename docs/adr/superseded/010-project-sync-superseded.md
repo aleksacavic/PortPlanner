@@ -1,6 +1,8 @@
 # ADR-010 — Project Sync and Offline Model
 
-**Status:** ACCEPTED
+**Status:** SUPERSEDED
+**Superseded by:** ADR-020 (`docs/adr/020-project-sync.md`)
+**Superseded on:** 2026-04-23
 **Date:** 2026-04-16
 
 ## Context

@@ -1,6 +1,8 @@
 # ADR-002 — Object Model Contract
 
-**Status:** ACCEPTED
+**Status:** SUPERSEDED
+**Superseded by:** ADR-019 (`docs/adr/019-object-model.md`)
+**Superseded on:** 2026-04-23
 **Date:** 2026-04-16
 
 ## Context

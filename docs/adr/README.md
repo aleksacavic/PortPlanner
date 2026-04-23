@@ -9,7 +9,6 @@ changes, a new ADR is written that references and supersedes the old one.
 | ID | Title | Status |
 |---|---|---|
 | [001](001-coordinate-system.md) | Coordinate System Strategy | ACCEPTED |
-| [002](002-object-model.md) | Object Model Contract | ACCEPTED |
 | [003](003-ownership-states.md) | Ownership States | ACCEPTED |
 | [004](004-parameter-extraction.md) | Parameter Extraction Contract | ACCEPTED |
 | [005](005-library-model.md) | Library Model | ACCEPTED |
@@ -17,12 +16,17 @@ changes, a new ADR is written that references and supersedes the old one.
 | [007](007-validation-engine.md) | Validation Engine | ACCEPTED |
 | [008](008-3d-cache.md) | 3D Derivation Cache | ACCEPTED |
 | [009](009-rbac.md) | RBAC and Permission Model | ACCEPTED |
-| [010](010-project-sync.md) | Project Sync and Offline Model | ACCEPTED |
 | [011](011-ui-stack.md) | UI Stack: Icon Library and Theme Switching | ACCEPTED |
 | [012](012-technology-stack.md) | Technology Stack | ACCEPTED |
-| [013](013-2d-rendering-pipeline.md) | 2D Rendering Pipeline | ACCEPTED |
 | [014](014-persistence-architecture.md) | Persistence Architecture | ACCEPTED |
 | [015](015-project-store-state-management.md) | Project Store and State Management Scope | ACCEPTED |
+| [016](016-drawing-model.md) | Drawing Model (Hybrid Primitive + Element) | ACCEPTED |
+| [017](017-layer-model.md) | Layer Model | ACCEPTED |
+| [018](018-dimension-model.md) | Dimension Model | ACCEPTED |
+| [019](019-object-model.md) | Object Model v2 | ACCEPTED |
+| [020](020-project-sync.md) | Project Sync and Offline Model v2 | ACCEPTED |
+| [021](021-2d-rendering-pipeline.md) | 2D Rendering Pipeline v2 | ACCEPTED |
+| [022](022-tool-state-machine-and-command-bar.md) | Tool State Machine and Command Bar | ACCEPTED |
 
 ## Format
 
@@ -58,3 +62,19 @@ Superseded by: (if applicable)
 - Choice of third-party library where any of several would work
 - Refactoring that does not change external behaviour
 - Bug fixes
+
+## Superseded ADRs
+
+ADRs that have been formally superseded. Each entry lives in
+[`superseded/`](superseded/) with a `-superseded` suffix and its own
+`Status: SUPERSEDED` + `Superseded by:` header. Files remain in the
+repository for historical traceability but are not binding.
+
+| Superseded ADR | Replacement | Superseded on |
+|---|---|---|
+| [002 Object Model Contract](superseded/002-object-model-superseded.md) | [019 Object Model v2](019-object-model.md) | 2026-04-23 |
+| [010 Project Sync and Offline Model](superseded/010-project-sync-superseded.md) | [020 Project Sync and Offline Model v2](020-project-sync.md) | 2026-04-23 |
+| [013 2D Rendering Pipeline](superseded/013-2d-rendering-pipeline-superseded.md) | [021 2D Rendering Pipeline v2](021-2d-rendering-pipeline.md) | 2026-04-23 |
+
+See [`superseded/README.md`](superseded/README.md) for the supersession
+procedure and folder purpose.

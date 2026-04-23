@@ -1,6 +1,8 @@
 # ADR-013 — 2D Rendering Pipeline
 
-**Status:** ACCEPTED
+**Status:** SUPERSEDED
+**Superseded by:** ADR-021 (`docs/adr/021-2d-rendering-pipeline.md`)
+**Superseded on:** 2026-04-23
 **Date:** 2026-04-18
 
 ## Context

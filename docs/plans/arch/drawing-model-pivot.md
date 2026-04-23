@@ -263,8 +263,9 @@ Gate 2.1: All seven new ADR files exist
   Expected: 7
 
 Gate 2.2: Each new ADR has ACCEPTED status
-  Command: rg -c "Status: ACCEPTED" docs/adr/016-*.md docs/adr/017-*.md docs/adr/018-*.md docs/adr/019-*.md docs/adr/020-*.md docs/adr/021-*.md docs/adr/022-*.md
+  Command: rg -c "^\*\*Status:\*\* ACCEPTED" docs/adr/016-*.md docs/adr/017-*.md docs/adr/018-*.md docs/adr/019-*.md docs/adr/020-*.md docs/adr/021-*.md docs/adr/022-*.md
   Expected: 7 files each with ≥1 match
+  Note: pattern includes the markdown bold `**Status:**` convention used across ADRs 001–015 (plan-authoring gate pattern corrected in-flight during Phase 2 execution per §3.7; original grep missed the `**` wrappers).
 
 Gate 2.3: Three replacement ADRs have Supersedes headers
   Command: rg -n "Supersedes:" docs/adr/019-*.md docs/adr/020-*.md docs/adr/021-*.md
@@ -315,12 +316,13 @@ Gate 3.2: Superseded files at new location with -superseded suffix
   Expected: 3
 
 Gate 3.3: Each superseded file marked SUPERSEDED and names a replacement
-  Command: rg -l "Status: SUPERSEDED" docs/adr/superseded/
+  Command: rg -l "Status:\*\* SUPERSEDED" docs/adr/superseded/
   Expected: ≥3 files listed
 
 Gate 3.4: Each superseded file points to its replacement
-  Command: rg -n "Superseded by: ADR-019" docs/adr/superseded/002-* && rg -n "Superseded by: ADR-020" docs/adr/superseded/010-* && rg -n "Superseded by: ADR-021" docs/adr/superseded/013-*
+  Command: rg -n "Superseded by:\*\* ADR-019" docs/adr/superseded/002-* && rg -n "Superseded by:\*\* ADR-020" docs/adr/superseded/010-* && rg -n "Superseded by:\*\* ADR-021" docs/adr/superseded/013-*
   Expected: ≥1 match per command (three total)
+  Note: patterns updated to match the markdown `**Status:**` / `**Superseded by:**` convention in-flight during Phase 3 execution per §3.7 (same class of correction as Gate 2.2).
 ```
 
 ### Phase 4 — Update ADR index (README)
@@ -585,3 +587,16 @@ All gates in Phases 1–8 pass, plus:
 
 ### Paste to user for approval
 > Please review the plan at `docs/plans/arch/drawing-model-pivot.md` on branch `arch/drawing-model-pivot`. After approval, invoke Procedure 03 to begin execution of Phase 1 (scaffold supersession directories) through Phase 8 (registry README).
+
+---
+
+## Post-execution notes (2026-04-23, executed 2026-04-24)
+
+**Corrections applied in-flight per §3.7 Plan Save and Cleanup:**
+
+1. **Gate 2.2 pattern fix.** Original command `rg -c "Status: ACCEPTED"` did not account for the markdown bold convention `**Status:** ACCEPTED` used across all existing ADRs (001–015). Pattern corrected to `rg -c "^\*\*Status:\*\* ACCEPTED"`. Invariant I-3 was verified green with the corrected pattern.
+2. **Gates 3.3 / 3.4 pattern fix.** Same markdown-bold oversight on `Status: SUPERSEDED` and `Superseded by: ADR-NNN` patterns. Updated to `Status:\*\* SUPERSEDED` and `Superseded by:\*\* ADR-NNN`. Invariants I-7, I-8 verified green with corrected patterns.
+
+Both corrections were class-of-one (grep-pattern typo that didn't reflect the markdown convention); they did not change any invariant text, phase ordering, file scope, or scope-of-change. Corrections noted here so future re-runs of the plan file's gates use the correct patterns.
+
+**Execution date:** 2026-04-24 (commit range landed on branch `arch/drawing-model-pivot`).

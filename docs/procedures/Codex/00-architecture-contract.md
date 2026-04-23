@@ -29,7 +29,6 @@ All files in `docs/adr/` are binding.
 | ID | Title | Path |
 |----|-------|------|
 | 001 | Coordinate System Strategy | `docs/adr/001-coordinate-system.md` |
-| 002 | Object Model Contract | `docs/adr/002-object-model.md` |
 | 003 | Ownership States | `docs/adr/003-ownership-states.md` |
 | 004 | Parameter Extraction Contract | `docs/adr/004-parameter-extraction.md` |
 | 005 | Library Model | `docs/adr/005-library-model.md` |
@@ -37,12 +36,24 @@ All files in `docs/adr/` are binding.
 | 007 | Validation Engine | `docs/adr/007-validation-engine.md` |
 | 008 | 3D Derivation Cache | `docs/adr/008-3d-cache.md` |
 | 009 | RBAC and Permissions | `docs/adr/009-rbac.md` |
-| 010 | Project Sync and Offline | `docs/adr/010-project-sync.md` |
 | 011 | UI Stack: Icon Library and Theme Switching | `docs/adr/011-ui-stack.md` |
 | 012 | Technology Stack | `docs/adr/012-technology-stack.md` |
-| 013 | 2D Rendering Pipeline | `docs/adr/013-2d-rendering-pipeline.md` |
 | 014 | Persistence Architecture | `docs/adr/014-persistence-architecture.md` |
 | 015 | Project Store and State Management Scope | `docs/adr/015-project-store-state-management.md` |
+| 016 | Drawing Model (Hybrid Primitive + Element) | `docs/adr/016-drawing-model.md` |
+| 017 | Layer Model | `docs/adr/017-layer-model.md` |
+| 018 | Dimension Model | `docs/adr/018-dimension-model.md` |
+| 019 | Object Model v2 | `docs/adr/019-object-model.md` |
+| 020 | Project Sync and Offline Model v2 | `docs/adr/020-project-sync.md` |
+| 021 | 2D Rendering Pipeline v2 | `docs/adr/021-2d-rendering-pipeline.md` |
+| 022 | Tool State Machine and Command Bar | `docs/adr/022-tool-state-machine-and-command-bar.md` |
+
+> Previously bound ADRs 002, 010, and 013 have been superseded by
+> ADR-019, ADR-020, and ADR-021 respectively (2026-04-23). Superseded
+> ADRs live in the `docs/adr/superseded/` folder for historical context
+> and are not binding. Reviews MUST consult the current authority
+> (019/020/021) and MUST flag any implementation referencing the old
+> numbers as binding.
 
 **ADR rules:**
 - ADRs MUST NOT be edited. Decision changes require a new ADR that
