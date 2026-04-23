@@ -5,24 +5,37 @@
 Ship a closed loop end-to-end before widening the feature set. The architecture
 is good enough. The risk now is analysis paralysis dressed as rigour.
 
-## Milestone 1 — The end-to-end proof (3-4 weeks)
+## Milestone 1 — The end-to-end proof (revised 2026-04-23 by ADR-016)
 
-**Goal:** prove that the core loop works for one object type, from draw to
-saved output. Nothing else matters until this works.
+**Goal:** prove that the core loop works for one object type, from draft →
+classify → extract → validate → saved output. Revised from the original
+"RTG_BLOCK as the only drawable object type" framing: ADR-016 established
+the hybrid primitive + typed-object data model, which means M1 now ships
+the drafting surface first and closes the commercial loop via promotion.
+The loop-closure milestone is now M1.4 rather than M1.3.
 
-### In scope
+### Sub-milestones
 
-1. A project model that serialises to disk and reloads deterministically
-2. A minimal editor shell — functional, not polished — with a 2D canvas
-3. Project creation with coordinate system setup (origin, true north)
-4. RTG_BLOCK as the only drawable object type
-5. RTG_BLOCK configuration dialog matching the prototype
-6. The extraction contract implementation for RTG_BLOCK per
-   `extraction-registry/RTG_BLOCK.md`
-7. Three validation rules: BLOCK_LENGTH_MAX, BLOCK_LENGTH_MIN,
-   TRUCK_LANE_MIN_WIDTH
-8. A yard capacity summary panel showing extracted outputs
-9. Save and reload, verify outputs are deterministic
+- **M1.1 — Foundation.** ✅ Shipped.
+- **M1.2 — Project Model.** ✅ Shipped (domain types, project store, IndexedDB persistence, New/Save/auto-load).
+- **M1.3 — Hybrid Drafting Surface.** Broken into three sub-milestones per ADR-016:
+  - **M1.3a — Canvas + Primitives + Layers + Grid.** `packages/editor-2d`, view transform, seven primitive draw tools (point, line, polyline, rectangle, circle, arc, xline), layer data model (ADR-017), grid entity (ADR-016), essential operators per ADR-022 (Select, Erase, Move, Copy, Undo/Redo, Zoom, Pan, Properties, Escape, F-key toggles), basic OSNAP (grid / endpoint / midpoint / intersection), ortho modifier, command bar per ADR-022, coordinate-system UI. No typed objects, no promotion, no dimensions.
+  - **M1.3b — Promotion + First Typed Object.** Promotion contract implementation (Path A unified pipeline per ADR-016), constructors registry surface, `sourceKind` / `sourceProvenance` provenance (ADR-019), RTG_BLOCK as the first typed object type, re-align operation per drawn-vs-canonical principle, core modify operators (Rotate, Mirror, Scale, Offset, Fillet, Chamfer, Trim, Extend, Join, Explode, Break, Array, Match). No extraction or validation yet.
+  - **M1.3c — Dimensions + Richer Snap.** Dimension entity (ADR-018), seven dimension kinds, associative updates, POLAR, remaining OSNAP modes, OTRACK.
+- **M1.4 — Extraction + Validation + Capacity Panel (closes the commercial loop).** RTG_BLOCK extractor per `extraction-registry/RTG_BLOCK.md`, three validation rules (BLOCK_LENGTH_MAX, BLOCK_LENGTH_MIN, TRUCK_LANE_MIN_WIDTH), yard capacity summary panel, save/reload deterministic extraction verification.
+
+### In scope (M1 as a whole, post-ADR-016)
+
+1. Project model with serialise/reload determinism ✅ (M1.2)
+2. 2D canvas editor shell with view transform (M1.3a)
+3. Coordinate system setup UI (M1.3a)
+4. Seven first-class primitive types, layer model, grid entity, command bar, essential operators (M1.3a per ADR-016/017/022)
+5. Promotion contract + RTG_BLOCK as first typed object + core modify operators (M1.3b per ADR-016/019)
+6. Dimension entity with associative references + POLAR/OTRACK snap (M1.3c per ADR-018)
+7. RTG_BLOCK extractor per `extraction-registry/RTG_BLOCK.md` (M1.4)
+8. Three validation rules: BLOCK_LENGTH_MAX, BLOCK_LENGTH_MIN, TRUCK_LANE_MIN_WIDTH (M1.4)
+9. Yard capacity summary panel (M1.4)
+10. Save/reload deterministic extraction verification (M1.4)
 
 ### Explicitly out of scope
 

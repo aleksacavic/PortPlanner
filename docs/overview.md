@@ -8,8 +8,14 @@ and throughput analysis, computes capex and revenue, and reports inconsistencies
 back to the geometry layer. 3D is a derived view for spatial validation and
 presentation.
 
-It is not a drawing tool. It is not a simulator. It is not a costing spreadsheet.
-Those tools already exist. This platform closes the loop between them.
+It is CAD-adjacent — users draft in primitives (point, line, polyline,
+rectangle, circle, arc, xline) organised by layer, annotate with
+dimensions, then classify drafts into typed port-yard objects at the
+moment of intent (see ADR-016). It is not a simulator. It is not a
+costing spreadsheet. Those tools already exist. This platform's
+differentiator is not the drafting surface — it is closing the loop
+from **draft → classify → extract → validate → commercial output**
+with drafting ergonomics port planners already know.
 
 ## The core loop
 
