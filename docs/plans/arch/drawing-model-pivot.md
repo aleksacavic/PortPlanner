@@ -274,9 +274,15 @@ Gate 2.4: Drawn-vs-canonical principle present in ADR-016
   Command: rg -in "drawn vs canonical|drawn geometry|canonical geometry" docs/adr/016-*.md
   Expected: ≥1 match
 
-Gate 2.5: Each new ADR references ≥2 distinct ADR IDs (self + ≥1 cross-reference)
-  Command: for f in docs/adr/016-*.md docs/adr/017-*.md docs/adr/018-*.md docs/adr/019-*.md docs/adr/020-*.md docs/adr/021-*.md docs/adr/022-*.md; do count=$(rg -oN "ADR-[0-9]+" "$f" | sort -u | wc -l); if [ "$count" -lt 2 ]; then echo "FAIL: $f ($count distinct ADR refs)"; fi; done
+Gate 2.5: Each new ADR's `## Cross-references` section names ≥1 OTHER ADR (section-bounded, self-ID excluded)
+  Command: for f in docs/adr/016-*.md docs/adr/017-*.md docs/adr/018-*.md docs/adr/019-*.md docs/adr/020-*.md docs/adr/021-*.md docs/adr/022-*.md; do own_id=$(basename "$f" | grep -oE '^[0-9]+'); refs=$(awk '/^## Cross-references/{flag=1; next} /^## /{flag=0} flag' "$f" | rg -oN "ADR-[0-9]+" | sort -u | grep -v "ADR-$own_id" | wc -l); if [ "$refs" -lt 1 ]; then echo "FAIL: $f ($refs cross-refs to OTHER ADRs inside ## Cross-references)"; fi; done
   Expected: no output (any "FAIL: ..." line is a failure)
+
+  Rationale: bounds grep to the `## Cross-references` section via awk
+  (start on that heading, stop on next `## `), collects ADR-NNN matches,
+  uniques, strips the file's own ID, then requires ≥1 remaining
+  reference. Directly enforces I-4 "names dependent ADRs" as the
+  invariant text requires, not just "mentions ≥2 ADRs globally".
 ```
 
 ### Phase 3 — Move superseded ADRs with Status update
