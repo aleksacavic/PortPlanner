@@ -4,8 +4,10 @@
 
 import {
   type CoordinateSystem,
+  LayerId,
   type Project,
   type ProjectId,
+  defaultLayer,
   newProjectId,
 } from '@portplanner/domain';
 import { createNewProject } from '@portplanner/project-store';
@@ -20,17 +22,18 @@ interface NewProjectDialogProps {
 
 function buildProject(name: string): Project {
   const now = new Date().toISOString();
-  // Cast needed because ProjectId / ObjectId are branded. Fresh empty
-  // objects record is intentional at genesis — zero objects.
   const coordinateSystem: CoordinateSystem | null = null;
   return {
     id: newProjectId() as ProjectId,
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     name,
     createdAt: now,
     updatedAt: now,
     coordinateSystem,
     objects: {},
+    primitives: {},
+    layers: { [LayerId.DEFAULT]: defaultLayer() },
+    grids: {},
     scenarioId: null,
   };
 }

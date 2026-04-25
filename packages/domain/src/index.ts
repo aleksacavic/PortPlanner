@@ -51,8 +51,13 @@ export {
 
 export {
   CoordinateSystemSchema,
+  DisplayOverridesSchema,
+  GridSchema,
+  LayerSchema,
+  LineTypeSchema,
   OperationSchema,
   OwnershipStateSchema,
+  PrimitiveSchema,
   ProjectObjectSchema,
   ProjectSchema,
 } from './schemas';
