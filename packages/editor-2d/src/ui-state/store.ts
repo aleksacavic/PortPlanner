@@ -1,5 +1,6 @@
-// editor-2d UI state store — vanilla zustand + immer.
-// NO zundo: UI state is not undoable per ADR-015 (I-35).
+// editor-2d UI state store — vanilla zustand + immer only.
+// Undo middleware is intentionally absent (UI state not undoable per
+// ADR-015 / I-35).
 //
 // Slices: viewport, selection, activeTool, toggles, command-bar, focus,
 // overlay. Each slice declares its own shape; the store composes them
