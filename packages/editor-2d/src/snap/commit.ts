@@ -1,7 +1,7 @@
 // Layer-1 tolerance — bit-copy on snap commit per ADR-016.
 // Returns a Point2D whose x/y bits are identical to the target's.
-// MUST NOT be mixed with Layer-2 (equalsMetric) or Layer-3
-// (isSnapCandidate) — Gate 12.5b directory-scopes this module.
+// MUST NOT be mixed with Layer-2 (derived-logic ε) or Layer-3
+// (screen-pixel UI tolerance) — Gate 12.5b directory-scopes this module.
 
 import type { Point2D } from '@portplanner/domain';
 
