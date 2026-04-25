@@ -25,8 +25,10 @@ let registered = false;
 let cleanup: (() => void) | null = null;
 
 export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () => void {
-  if (registered) {
-    throw new Error('registerKeyboardRouter: a router is already registered for this window');
+  // Replace any existing registration (idempotent — supports React 19
+  // StrictMode double-effect-invocation + multi-mount test scenarios).
+  if (registered && cleanup) {
+    cleanup();
   }
   registered = true;
 
