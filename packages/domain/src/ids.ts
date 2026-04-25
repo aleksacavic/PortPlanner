@@ -11,6 +11,9 @@ export type ProjectId = string & { readonly __brand: 'ProjectId' };
 export type ObjectId = string & { readonly __brand: 'ObjectId' };
 export type OperationId = string & { readonly __brand: 'OperationId' };
 export type UserId = string & { readonly __brand: 'UserId' };
+export type PrimitiveId = string & { readonly __brand: 'PrimitiveId' };
+export type LayerId = string & { readonly __brand: 'LayerId' };
+export type GridId = string & { readonly __brand: 'GridId' };
 
 export function newProjectId(): ProjectId {
   return uuidv7() as ProjectId;
@@ -23,6 +26,27 @@ export function newObjectId(): ObjectId {
 export function newOperationId(): OperationId {
   return uuidv7() as OperationId;
 }
+
+export function newPrimitiveId(): PrimitiveId {
+  return uuidv7() as PrimitiveId;
+}
+
+export function newLayerId(): LayerId {
+  return uuidv7() as LayerId;
+}
+
+export function newGridId(): GridId {
+  return uuidv7() as GridId;
+}
+
+// Fixed default-layer UUIDv7 — every project's protected default layer
+// uses this exact id (per ADR-017 + M1.3a plan §A15). Same value across
+// all projects so cross-project layer references are unambiguous.
+// Type + value declaration merging gives consumers `LayerId.DEFAULT`.
+// eslint-disable-next-line @typescript-eslint/no-redeclare
+export const LayerId = {
+  DEFAULT: '01900000-0000-7000-8000-000000000000' as LayerId,
+} as const;
 
 /**
  * Fixed placeholder UUID used for `Operation.userId` in M1 (auth is
