@@ -12,6 +12,7 @@
   "dependencies": {
     "@portplanner/design-system": "workspace:*",
     "@portplanner/domain": "workspace:*",
+    "@portplanner/editor-2d": "workspace:*",
     "@portplanner/project-store": "workspace:*",
     "@portplanner/project-store-react": "workspace:*",
     "idb": "^8.0.0",

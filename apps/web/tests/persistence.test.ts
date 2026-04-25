@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 
-import { LoadFailure, newProjectId, serialize } from '@portplanner/domain';
+import { LayerId, LoadFailure, defaultLayer, newProjectId, serialize } from '@portplanner/domain';
 import type { Project } from '@portplanner/domain';
 import { beforeEach, describe, expect, it } from 'vitest';
 
@@ -17,12 +17,15 @@ import {
 function makeProject(name = 'Test Port'): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     name,
     createdAt: '2026-04-22T10:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',
     coordinateSystem: null,
     objects: {},
+    primitives: {},
+    layers: { [LayerId.DEFAULT]: defaultLayer() },
+    grids: {},
     scenarioId: null,
   };
 }

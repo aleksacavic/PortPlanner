@@ -1,3 +1,4 @@
+import { StatusBarGeoRefChip } from '@portplanner/editor-2d';
 import { useIsDirty, useLastSavedAt, useProject } from '@portplanner/project-store-react';
 
 import styles from './StatusBar.module.css';
@@ -15,7 +16,7 @@ export function StatusBar() {
   const lastSavedAt = useLastSavedAt();
 
   let leftClass = styles.left;
-  let leftContent = 'No project';
+  let leftContent: string = 'No project';
   if (project !== null) {
     if (dirty) {
       leftClass = `${styles.left} ${styles.dirty}`;
@@ -31,7 +32,10 @@ export function StatusBar() {
   return (
     <footer className={styles.statusBar}>
       <div className={leftClass}>{leftContent}</div>
-      <div className={styles.right}>v0.1.0</div>
+      <div className={styles.right}>
+        {project !== null ? <StatusBarGeoRefChip /> : null}
+        <span style={{ marginLeft: 8 }}>v0.1.0</span>
+      </div>
     </footer>
   );
 }

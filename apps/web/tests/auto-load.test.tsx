@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 
 import { ThemeProvider } from '@portplanner/design-system';
 import type { Project } from '@portplanner/domain';
-import { newProjectId, serialize } from '@portplanner/domain';
+import { LayerId, defaultLayer, newProjectId, serialize } from '@portplanner/domain';
 import { projectStore, resetProjectStoreForTests } from '@portplanner/project-store';
 import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,12 +13,15 @@ import { DB_NAME, PROJECTS_STORE, type StoredProjectRecord } from '../src/persis
 function makeProject(name = 'Seeded Port'): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     name,
     createdAt: '2026-04-22T10:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',
     coordinateSystem: null,
     objects: {},
+    primitives: {},
+    layers: { [LayerId.DEFAULT]: defaultLayer() },
+    grids: {},
     scenarioId: null,
   };
 }

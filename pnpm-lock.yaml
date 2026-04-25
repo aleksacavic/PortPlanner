@@ -26,6 +26,9 @@ importers:
       '@portplanner/domain':
         specifier: workspace:*
         version: link:../../packages/domain
+      '@portplanner/editor-2d':
+        specifier: workspace:*
+        version: link:../../packages/editor-2d
       '@portplanner/project-store':
         specifier: workspace:*
         version: link:../../packages/project-store
