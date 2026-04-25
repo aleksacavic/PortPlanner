@@ -16,7 +16,7 @@ export function StatusBar() {
   const lastSavedAt = useLastSavedAt();
 
   let leftClass = styles.left;
-  let leftContent: string = 'No project';
+  let leftContent = 'No project';
   if (project !== null) {
     if (dirty) {
       leftClass = `${styles.left} ${styles.dirty}`;

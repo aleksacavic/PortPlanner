@@ -10,8 +10,8 @@ import type { Grid, Point2D, Primitive } from '@portplanner/domain';
 
 import type { Viewport } from '../canvas/view-transform';
 import { gatherGsnapCandidates } from './gsnap';
-import { gatherOsnapCandidates, type OsnapCandidate } from './osnap';
 import { applyOrtho } from './ortho';
+import { type OsnapCandidate, gatherOsnapCandidates } from './osnap';
 import { isSnapCandidate } from './screen-tolerance';
 
 export interface SnapToggles {
@@ -54,9 +54,10 @@ export function resolveSnap(input: ResolveSnapInput): SnapHit {
       if (!best || dist < best.dist) best = { c, dist };
     }
     if (best) {
-      const finalPoint = toggles.ortho && priorPoint
-        ? best.c.point // OSNAP wins over Ortho per I-41
-        : best.c.point;
+      const finalPoint =
+        toggles.ortho && priorPoint
+          ? best.c.point // OSNAP wins over Ortho per I-41
+          : best.c.point;
       return { kind: best.c.kind, point: finalPoint };
     }
   }

@@ -15,10 +15,9 @@ export function GeoRefDialog({ onClose }: GeoRefDialogProps): ReactElement {
     <div className={styles.dialog} role="dialog" data-component="georef-dialog">
       <h3>Project geo-reference</h3>
       <p className={styles.body}>
-        This project is currently <strong>not geo-referenced</strong>. Drafting
-        works fully without a geodetic anchor — coordinates are project-local
-        metric. The anchor is only needed when you later add a satellite
-        basemap, import a GIS file, or export a geo-referenced format.
+        This project is currently <strong>not geo-referenced</strong>. Drafting works fully without
+        a geodetic anchor — coordinates are project-local metric. The anchor is only needed when you
+        later add a satellite basemap, import a GIS file, or export a geo-referenced format.
       </p>
       <button
         type="button"

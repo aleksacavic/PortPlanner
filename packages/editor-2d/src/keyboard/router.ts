@@ -10,7 +10,7 @@
 // next letter or timeout.
 
 import { editorUiActions, editorUiStore } from '../ui-state/store';
-import { isMultiLetterPrefix, lookupShortcut, type ToolId } from './shortcuts';
+import { type ToolId, isMultiLetterPrefix, lookupShortcut } from './shortcuts';
 
 export interface KeyboardRouterCallbacks {
   onActivateTool: (id: ToolId) => void;

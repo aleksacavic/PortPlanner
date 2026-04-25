@@ -46,13 +46,10 @@ const PolylinePrimitiveSchema = z
   .refine((p) => (p.closed ? p.vertices.length >= 3 : true), {
     message: 'closed polyline requires vertices.length >= 3',
   })
-  .refine(
-    (p) => p.bulges.length === (p.closed ? p.vertices.length : p.vertices.length - 1),
-    {
-      message:
-        'bulges.length must equal vertices.length when closed and vertices.length - 1 when open',
-    },
-  );
+  .refine((p) => p.bulges.length === (p.closed ? p.vertices.length : p.vertices.length - 1), {
+    message:
+      'bulges.length must equal vertices.length when closed and vertices.length - 1 when open',
+  });
 
 const RectanglePrimitiveSchema = z.object({
   ...BaseShape,

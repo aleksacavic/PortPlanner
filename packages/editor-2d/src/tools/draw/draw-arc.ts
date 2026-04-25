@@ -7,7 +7,11 @@ import { addPrimitive } from '@portplanner/project-store';
 import { editorUiStore } from '../../ui-state/store';
 import type { ToolGenerator } from '../types';
 
-function circumcircle(a: Point2D, b: Point2D, c: Point2D): {
+function circumcircle(
+  a: Point2D,
+  b: Point2D,
+  c: Point2D,
+): {
   cx: number;
   cy: number;
   r: number;
@@ -37,7 +41,7 @@ export async function* drawArcTool(): ToolGenerator {
   const startAngle = Math.atan2(start.point.y - cc.cy, start.point.x - cc.cx);
   const endAngle = Math.atan2(end.point.y - cc.cy, end.point.x - cc.cx);
   // Normalize so endAngle > startAngle (CCW sweep).
-  let s = startAngle;
+  const s = startAngle;
   let e = endAngle;
   while (e < s) e += Math.PI * 2;
 

@@ -10,13 +10,7 @@ export interface SubOption {
   shortcut: string;
 }
 
-export type AcceptedInputKind =
-  | 'point'
-  | 'number'
-  | 'angle'
-  | 'distance'
-  | 'entity'
-  | 'subOption';
+export type AcceptedInputKind = 'point' | 'number' | 'angle' | 'distance' | 'entity' | 'subOption';
 
 export interface Prompt {
   text: string;

@@ -94,12 +94,7 @@ function nodesOf(p: Primitive): Point2D[] {
 }
 
 /** Line-line intersection in metric, or null if parallel / coincident. */
-function lineLineIntersection(
-  a1: Point2D,
-  a2: Point2D,
-  b1: Point2D,
-  b2: Point2D,
-): Point2D | null {
+function lineLineIntersection(a1: Point2D, a2: Point2D, b1: Point2D, b2: Point2D): Point2D | null {
   const denom = (a1.x - a2.x) * (b1.y - b2.y) - (a1.y - a2.y) * (b1.x - b2.x);
   if (Math.abs(denom) < 1e-12) return null;
   const t = ((a1.x - b1.x) * (b1.y - b2.y) - (a1.y - b1.y) * (b1.x - b2.x)) / denom;
@@ -127,7 +122,12 @@ function intersectionsOf(primitives: Primitive[]): Point2D[] {
   const out: Point2D[] = [];
   for (let i = 0; i < segments.length; i++) {
     for (let j = i + 1; j < segments.length; j++) {
-      const ix = lineLineIntersection(segments[i]![0], segments[i]![1], segments[j]![0], segments[j]![1]);
+      const ix = lineLineIntersection(
+        segments[i]![0],
+        segments[i]![1],
+        segments[j]![0],
+        segments[j]![1],
+      );
       if (ix) out.push(ix);
     }
   }

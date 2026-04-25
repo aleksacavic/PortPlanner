@@ -1,13 +1,13 @@
-import { LayerId, type Grid, type Primitive, newGridId, newPrimitiveId } from '@portplanner/domain';
+import { type Grid, LayerId, type Primitive, newGridId, newPrimitiveId } from '@portplanner/domain';
 import { describe, expect, it } from 'vitest';
 
+import type { Viewport } from '../src/canvas/view-transform';
 import { commitSnappedVertex } from '../src/snap/commit';
 import { DEFAULT_METRIC_EPSILON, equalsMetric } from '../src/snap/equals';
-import { gatherOsnapCandidates } from '../src/snap/osnap';
 import { applyOrtho } from '../src/snap/ortho';
+import { gatherOsnapCandidates } from '../src/snap/osnap';
 import { resolveSnap } from '../src/snap/priority';
 import { isSnapCandidate } from '../src/snap/screen-tolerance';
-import type { Viewport } from '../src/canvas/view-transform';
 
 const viewport: Viewport = {
   panX: 0,

@@ -3,16 +3,12 @@
 
 import type { Point2D, Primitive, PrimitiveId } from '@portplanner/domain';
 
-import { type PrimitiveSpatialIndex } from './spatial-index';
+import type { PrimitiveSpatialIndex } from './spatial-index';
 import { type Viewport, screenToMetric } from './view-transform';
 
 const HIT_TOLERANCE_PX = 6;
 
-function distancePointToLineSegment(
-  p: Point2D,
-  a: Point2D,
-  b: Point2D,
-): number {
+function distancePointToLineSegment(p: Point2D, a: Point2D, b: Point2D): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len2 = dx * dx + dy * dy;

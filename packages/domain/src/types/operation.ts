@@ -6,7 +6,15 @@
 // M1.3a (Condition 2 of progressive implementation per §0.7); M1.3c
 // widens it.
 
-import type { GridId, LayerId, ObjectId, OperationId, PrimitiveId, ProjectId, UserId } from '../ids';
+import type {
+  GridId,
+  LayerId,
+  ObjectId,
+  OperationId,
+  PrimitiveId,
+  ProjectId,
+  UserId,
+} from '../ids';
 import type { GridSnapshot } from './grid';
 import type { LayerSnapshot } from './layer';
 import type { ObjectSnapshot } from './object';

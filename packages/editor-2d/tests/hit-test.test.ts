@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import { hitTest } from '../src/canvas/hit-test';
 import { PrimitiveSpatialIndex } from '../src/canvas/spatial-index';
-import { type Viewport } from '../src/canvas/view-transform';
+import type { Viewport } from '../src/canvas/view-transform';
 
 const viewport: Viewport = {
   panX: 0,

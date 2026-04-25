@@ -7,13 +7,10 @@ import type { Primitive, PrimitiveId } from '@portplanner/domain';
 import { emitOperation } from '../operation-emit';
 
 export function addPrimitive(primitive: Primitive): void {
-  emitOperation(
-    { type: 'CREATE', targetKind: 'primitive', targetId: primitive.id },
-    (state) => {
-      if (!state.project) throw new Error('addPrimitive: no active project');
-      state.project.primitives[primitive.id] = primitive;
-    },
-  );
+  emitOperation({ type: 'CREATE', targetKind: 'primitive', targetId: primitive.id }, (state) => {
+    if (!state.project) throw new Error('addPrimitive: no active project');
+    state.project.primitives[primitive.id] = primitive;
+  });
 }
 
 export function updatePrimitive(id: PrimitiveId, patch: Partial<Primitive>): void {

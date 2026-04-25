@@ -6,7 +6,7 @@
 import type { Project } from '@portplanner/domain';
 
 import { paintGrid, paintPrimitive } from './painters';
-import { type PrimitiveSpatialIndex } from './spatial-index';
+import type { PrimitiveSpatialIndex } from './spatial-index';
 import { resolveEffectiveStyle } from './style';
 import { type Viewport, applyToCanvasContext, viewportFrustum } from './view-transform';
 
@@ -21,7 +21,12 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
 
   // Reset transform + clear in device-pixel coords.
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, viewport.canvasWidthCss * viewport.dpr, viewport.canvasHeightCss * viewport.dpr);
+  ctx.clearRect(
+    0,
+    0,
+    viewport.canvasWidthCss * viewport.dpr,
+    viewport.canvasHeightCss * viewport.dpr,
+  );
 
   // Apply view transform (DPR + Y-flip + zoom + pan).
   applyToCanvasContext(ctx, viewport);

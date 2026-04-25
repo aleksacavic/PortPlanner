@@ -24,7 +24,7 @@ import {
   newOperationId,
 } from '@portplanner/domain';
 
-import { type ProjectStoreState } from './initial-state';
+import type { ProjectStoreState } from './initial-state';
 import { projectStore } from './store';
 
 interface OperationMeta {

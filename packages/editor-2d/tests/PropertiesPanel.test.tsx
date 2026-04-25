@@ -90,7 +90,9 @@ describe('PropertiesPanel', () => {
     });
     editorUiActions.setSelection([id]);
     const { container } = render(<PropertiesPanel />);
-    const select = container.querySelector('[data-component="properties-layer-select"]') as HTMLSelectElement;
+    const select = container.querySelector(
+      '[data-component="properties-layer-select"]',
+    ) as HTMLSelectElement;
     expect(select).toBeTruthy();
     const optionLabels = Array.from(select.querySelectorAll('option')).map((o) => o.textContent);
     expect(optionLabels).toContain('0'); // default

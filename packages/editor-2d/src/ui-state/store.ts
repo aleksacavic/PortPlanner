@@ -98,7 +98,9 @@ export const createInitialEditorUiState = (): EditorUiState => ({
   },
 });
 
-export const editorUiStore = createStore<EditorUiState>()(immer(() => createInitialEditorUiState()));
+export const editorUiStore = createStore<EditorUiState>()(
+  immer(() => createInitialEditorUiState()),
+);
 
 // --- Slice action helpers (typed mutators) ----------------------------
 
@@ -144,7 +146,11 @@ export const editorUiActions = {
       s.toggles.dynamicInput = !s.toggles.dynamicInput;
     });
   },
-  setPrompt(prompt: string | null, subOptions: SubOption[] = [], defaultValue: string | null = null): void {
+  setPrompt(
+    prompt: string | null,
+    subOptions: SubOption[] = [],
+    defaultValue: string | null = null,
+  ): void {
     editorUiStore.setState((s) => {
       s.commandBar.activePrompt = prompt;
       s.commandBar.subOptions = subOptions;

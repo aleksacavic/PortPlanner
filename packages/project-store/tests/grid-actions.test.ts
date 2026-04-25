@@ -1,10 +1,4 @@
-import {
-  LayerId,
-  type Project,
-  defaultLayer,
-  newGridId,
-  newProjectId,
-} from '@portplanner/domain';
+import { LayerId, type Project, defaultLayer, newGridId, newProjectId } from '@portplanner/domain';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createNewProject } from '../src/actions';

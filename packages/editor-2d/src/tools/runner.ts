@@ -15,7 +15,6 @@ export interface RunningTool {
 export function startTool(toolId: string, generatorFactory: () => ToolGenerator): RunningTool {
   const generator = generatorFactory();
   let pendingResolve: ((input: Input) => void) | null = null;
-  let resultPromise: Promise<ToolResult>;
   let aborted = false;
 
   function nextInput(): Promise<Input> {
@@ -24,7 +23,7 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
     });
   }
 
-  resultPromise = (async (): Promise<ToolResult> => {
+  const resultPromise: Promise<ToolResult> = (async (): Promise<ToolResult> => {
     editorUiActions.setActiveToolId(toolId);
     let nextValue: Input | undefined;
     try {
@@ -33,12 +32,17 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           await generator.return({ committed: false, reason: 'aborted' });
           return { committed: false, reason: 'aborted' };
         }
-        const yielded = nextValue === undefined ? await generator.next() : await generator.next(nextValue);
+        const yielded =
+          nextValue === undefined ? await generator.next() : await generator.next(nextValue);
         if (yielded.done) {
           return yielded.value;
         }
         const prompt = yielded.value;
-        editorUiActions.setPrompt(prompt.text, prompt.subOptions ?? [], prompt.defaultValue ?? null);
+        editorUiActions.setPrompt(
+          prompt.text,
+          prompt.subOptions ?? [],
+          prompt.defaultValue ?? null,
+        );
         const input = await nextInput();
         if (input.kind === 'escape') {
           aborted = true;

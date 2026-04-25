@@ -11,7 +11,7 @@ import { type ReactElement, useEffect, useRef } from 'react';
 
 import { paint } from './paint';
 import { PrimitiveSpatialIndex } from './spatial-index';
-import { type Viewport } from './view-transform';
+import type { Viewport } from './view-transform';
 
 export interface CanvasHostProps {
   viewport: Viewport;
@@ -67,7 +67,12 @@ export function CanvasHost(props: CanvasHostProps): ReactElement {
     canvas.style.width = `${props.viewport.canvasWidthCss}px`;
     canvas.style.height = `${props.viewport.canvasHeightCss}px`;
     if (props.onCanvasReady) props.onCanvasReady(canvas);
-  }, [props.viewport.canvasWidthCss, props.viewport.canvasHeightCss, props.viewport.dpr, props.onCanvasReady]);
+  }, [
+    props.viewport.canvasWidthCss,
+    props.viewport.canvasHeightCss,
+    props.viewport.dpr,
+    props.onCanvasReady,
+  ]);
 
   return <canvas ref={canvasRef} data-component="canvas-host" />;
 }

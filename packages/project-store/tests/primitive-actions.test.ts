@@ -8,11 +8,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { createNewProject } from '../src/actions';
-import {
-  addPrimitive,
-  deletePrimitive,
-  updatePrimitive,
-} from '../src/actions/primitive-actions';
+import { addPrimitive, deletePrimitive, updatePrimitive } from '../src/actions/primitive-actions';
 import { getOperationLog } from '../src/operation-emit';
 import { projectStore } from '../src/store';
 import { resetProjectStoreForTests } from '../src/test-utils';

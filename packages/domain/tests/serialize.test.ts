@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { LayerId, newPrimitiveId, newProjectId } from '../src/ids';
 import { LoadFailure, deserialize, serialize } from '../src/serialize';
-import { defaultLayer } from '../src/types/layer';
 import type { Project } from '../src/types';
+import { defaultLayer } from '../src/types/layer';
 
 function makeProject(): Project {
   const dl = defaultLayer();

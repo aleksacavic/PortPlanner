@@ -12,8 +12,8 @@ import {
 } from '@portplanner/project-store';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { startTool } from '../src/tools/runner';
 import { lookupTool } from '../src/tools';
+import { startTool } from '../src/tools/runner';
 import { editorUiActions, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));

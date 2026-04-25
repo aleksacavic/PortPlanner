@@ -11,7 +11,12 @@ function shiftedClone(p: Primitive, dx: number, dy: number): Primitive {
     case 'point':
       return { ...p, id, position: { x: p.position.x + dx, y: p.position.y + dy } };
     case 'line':
-      return { ...p, id, p1: { x: p.p1.x + dx, y: p.p1.y + dy }, p2: { x: p.p2.x + dx, y: p.p2.y + dy } };
+      return {
+        ...p,
+        id,
+        p1: { x: p.p1.x + dx, y: p.p1.y + dy },
+        p2: { x: p.p2.x + dx, y: p.p2.y + dy },
+      };
     case 'polyline':
       return { ...p, id, vertices: p.vertices.map((v) => ({ x: v.x + dx, y: v.y + dy })) };
     case 'rectangle':

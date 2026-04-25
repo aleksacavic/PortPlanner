@@ -1,9 +1,4 @@
-import {
-  LayerId,
-  type Project,
-  defaultLayer,
-  newProjectId,
-} from '@portplanner/domain';
+import { LayerId, type Project, defaultLayer, newProjectId } from '@portplanner/domain';
 import { createNewProject, resetProjectStoreForTests } from '@portplanner/project-store';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';

@@ -1,9 +1,4 @@
-import {
-  LayerId,
-  type Project,
-  defaultLayer,
-  newProjectId,
-} from '@portplanner/domain';
+import { LayerId, type Project, defaultLayer, newProjectId } from '@portplanner/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createNewProject, hydrateProject, markSaved } from '../src/actions';

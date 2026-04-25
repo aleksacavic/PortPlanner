@@ -1,4 +1,4 @@
-import { LayerId, type Layer } from '@portplanner/domain';
+import { type Layer, LayerId } from '@portplanner/domain';
 import { useProjectStoreSelector } from '../use-project-store';
 
 export function useDefaultLayer(): Layer | undefined {

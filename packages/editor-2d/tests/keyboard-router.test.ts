@@ -1,9 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import {
-  registerKeyboardRouter,
-  unregisterKeyboardRouterForTests,
-} from '../src/keyboard/router';
+import { registerKeyboardRouter, unregisterKeyboardRouterForTests } from '../src/keyboard/router';
 import { lookupShortcut } from '../src/keyboard/shortcuts';
 import { editorUiActions, editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
 

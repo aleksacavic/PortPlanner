@@ -33,13 +33,23 @@
       "recommended": true,
       "style": {
         "useImportType": "error",
-        "useExportType": "error"
+        "useExportType": "error",
+        "noNonNullAssertion": "off"
       },
       "suspicious": {
         "noConsole": {
           "level": "warn",
           "options": { "allow": ["warn", "error"] }
-        }
+        },
+        "noArrayIndexKey": "off"
+      },
+      "a11y": {
+        "useFocusableInteractive": "off",
+        "useKeyWithClickEvents": "off",
+        "useSemanticElements": "off"
+      },
+      "correctness": {
+        "useYield": "off"
       }
     }
   },

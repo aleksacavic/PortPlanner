@@ -1,11 +1,6 @@
 // ByLayer effective-style resolution per ADR-017.
 
-import type {
-  ColorValue,
-  DisplayOverrides,
-  Layer,
-  LineTypeId,
-} from '@portplanner/domain';
+import type { ColorValue, DisplayOverrides, Layer, LineTypeId } from '@portplanner/domain';
 
 export interface EffectiveStyle {
   color: ColorValue;

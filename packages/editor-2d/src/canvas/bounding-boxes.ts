@@ -27,10 +27,15 @@ function envelope(points: Point2D[]): BBox {
 }
 
 /** Bbox of an arc accounting for ±X/±Y extremes within its angular span. */
-function bboxOfArc(arc: { center: Point2D; radius: number; startAngle: number; endAngle: number }): BBox {
+function bboxOfArc(arc: {
+  center: Point2D;
+  radius: number;
+  startAngle: number;
+  endAngle: number;
+}): BBox {
   const { center, radius, startAngle, endAngle } = arc;
   // Normalize so end > start (arcs convention: CCW sweep).
-  let s = startAngle;
+  const s = startAngle;
   let e = endAngle;
   while (e < s) e += Math.PI * 2;
   // Endpoints

@@ -5,8 +5,8 @@
 import { LayerId, type Primitive, newPrimitiveId } from '@portplanner/domain';
 import { describe, expect, it } from 'vitest';
 
-import { arcParamsFromBulge } from '../src/canvas/painters/paintPolyline';
 import { paintPrimitive } from '../src/canvas/painters';
+import { arcParamsFromBulge } from '../src/canvas/painters/paintPolyline';
 import type { EffectiveStyle } from '../src/canvas/style';
 
 const style: EffectiveStyle = { color: '#FFFFFF', lineType: 'continuous', lineWeight: 0.25 };
@@ -50,7 +50,13 @@ const base = { id: newPrimitiveId(), layerId: LayerId.DEFAULT, displayOverrides:
 describe('per-kind painters', () => {
   it('point paints via fill arc', () => {
     const ctx = makeCtx();
-    paintPrimitive(ctx as unknown as CanvasRenderingContext2D, { ...base, kind: 'point', position: { x: 1, y: 2 } } as Primitive, style, 10, frustum);
+    paintPrimitive(
+      ctx as unknown as CanvasRenderingContext2D,
+      { ...base, kind: 'point', position: { x: 1, y: 2 } } as Primitive,
+      style,
+      10,
+      frustum,
+    );
     const ops = ctx.ops.map((o) => o[0]);
     expect(ops).toContain('arc');
     expect(ops).toContain('fill');

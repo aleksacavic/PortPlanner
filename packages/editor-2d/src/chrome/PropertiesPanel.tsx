@@ -1,7 +1,7 @@
 // Properties panel — read-only display + layer/displayOverrides edit.
 // Multi-select shows a placeholder.
 
-import { type LayerId, type Primitive } from '@portplanner/domain';
+import type { LayerId, Primitive } from '@portplanner/domain';
 import { updatePrimitive } from '@portplanner/project-store';
 import { useLayers, usePrimitive } from '@portplanner/project-store-react';
 import type { ReactElement } from 'react';
@@ -12,7 +12,11 @@ import { useEditorUi } from './use-editor-ui-store';
 function summarize(p: Primitive): Array<[string, string]> {
   switch (p.kind) {
     case 'point':
-      return [['kind', 'point'], ['x', p.position.x.toFixed(3)], ['y', p.position.y.toFixed(3)]];
+      return [
+        ['kind', 'point'],
+        ['x', p.position.x.toFixed(3)],
+        ['y', p.position.y.toFixed(3)],
+      ];
     case 'line':
       return [
         ['kind', 'line'],
@@ -32,7 +36,10 @@ function summarize(p: Primitive): Array<[string, string]> {
         ['height', p.height.toFixed(3)],
       ];
     case 'circle':
-      return [['kind', 'circle'], ['radius', p.radius.toFixed(3)]];
+      return [
+        ['kind', 'circle'],
+        ['radius', p.radius.toFixed(3)],
+      ];
     case 'arc':
       return [
         ['kind', 'arc'],
@@ -40,7 +47,10 @@ function summarize(p: Primitive): Array<[string, string]> {
         ['span (rad)', (p.endAngle - p.startAngle).toFixed(3)],
       ];
     case 'xline':
-      return [['kind', 'xline'], ['angle (rad)', p.angle.toFixed(3)]];
+      return [
+        ['kind', 'xline'],
+        ['angle (rad)', p.angle.toFixed(3)],
+      ];
   }
 }
 
@@ -68,7 +78,9 @@ export function PropertiesPanel(): ReactElement {
         <span className={styles.label}>layer</span>
         <select
           value={single.layerId}
-          onChange={(e) => updatePrimitive(single.id, { layerId: e.target.value as LayerId } as never)}
+          onChange={(e) =>
+            updatePrimitive(single.id, { layerId: e.target.value as LayerId } as never)
+          }
           data-component="properties-layer-select"
         >
           {Object.values(layers).map((layer) => (

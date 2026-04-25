@@ -5,11 +5,15 @@ import {
   defaultLayer,
   newProjectId,
 } from '@portplanner/domain';
-import { createNewProject, projectStore, resetProjectStoreForTests } from '@portplanner/project-store';
+import {
+  createNewProject,
+  projectStore,
+  resetProjectStoreForTests,
+} from '@portplanner/project-store';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { startTool } from '../src/tools/runner';
 import { lookupTool } from '../src/tools';
+import { startTool } from '../src/tools/runner';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
