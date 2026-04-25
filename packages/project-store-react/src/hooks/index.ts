@@ -1,5 +1,12 @@
+export { useDefaultLayer } from './useDefaultLayer';
+export { useGrid } from './useGrid';
+export { useGrids } from './useGrids';
 export { useIsDirty } from './useIsDirty';
 export { useLastSavedAt } from './useLastSavedAt';
+export { useLayer } from './useLayer';
+export { useLayers } from './useLayers';
 export { useObjectById } from './useObjectById';
+export { usePrimitive } from './usePrimitive';
+export { usePrimitives } from './usePrimitives';
 export { useProject } from './useProject';
 export { useProjectId } from './useProjectId';
