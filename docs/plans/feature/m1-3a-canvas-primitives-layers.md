@@ -18,13 +18,25 @@ as drafting aids. Adds a new `packages/editor-2d` package, expands
 `packages/domain` and `packages/project-store` with primitive / layer /
 grid entities, brings `Operation` and `ProjectObject` into binding-ADR
 shape (ADR-020 and ADR-019), introduces a window-level keyboard routing
-discipline + AutoCAD-style command bar (ADR-022), and ships the essential
+discipline + AutoCAD-style command bar (per ADR-023, which supersedes
+ADR-022 in this milestone — see §5 + Phase 15), and ships the essential
 operator set + seven primitive draw tools.
 
 No promotion, no typed objects (RTG_BLOCK et al), no dimensions, no
 extraction. Promotion + typed objects → M1.3b. Dimensions + remaining
 OSNAP modes + POLAR + OTRACK → M1.3c. Extraction + validation + capacity
 panel → M1.4.
+
+ADR governance: ADR-022 is **superseded by ADR-023** (new) per §0.6 +
+§0.7 step 3, with the operator shortcut SSOT moving to a subordinate
+registry file `docs/operator-shortcuts.md`. ADR-022 moves to
+`docs/adr/superseded/`. Same-PR spec-update commitment satisfied —
+docs and code land in the same M1.3a PR.
+
+> **Architecture contract source-of-truth note:** the architecture
+> contract lives at `docs/procedures/Claude/00-architecture-contract.md`
+> (Claude-side) and `docs/procedures/Codex/00-architecture-contract.md`
+> (Codex-side). No `docs/architecture.md` exists at the repo root.
 
 ## 2. Assumptions and scope clarifications
 
@@ -36,12 +48,24 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
   optional `sourceProvenance`. No `ProjectObject` instances exist in
   M1.3a (no typed objects yet) — the type and schema are brought into
   compliance proactively to avoid a partial-refactor in M1.3b.
-- **A2 — ADR-022 shortcut map edited in place (Q2 approved).** Seven
-  draw-tool rows added to the table; ADR-022 changelog bumped 1.0.0 →
-  1.0.1 with a one-line entry. Mechanism: ADR-022's self-described
-  governance ("Adding a new operator … list it in this ADR's shortcut
-  map (changelog bump)"). Treated as expected extension within ADR-022's
-  own clause — not a §0.7 deviation.
+- **A2 — ADR-022 superseded by ADR-023 + subordinate registry file
+  `docs/operator-shortcuts.md` (Codex Round-1 OI-1 resolution,
+  user-acknowledged 2026-04-25).** ADR-023 restates ADR-022's
+  framework decisions (command bar, generator-pattern tools,
+  keyboard routing, sub-options, focus discipline) and adds the
+  seven primitive draw-tool shortcut rows (`PT`, `L`, `PL`, `REC`,
+  `CC`, `A`, `XL`/`XX`). ADR-023 also rewrites the operator-addition
+  governance clause to point at `docs/operator-shortcuts.md` as the
+  authoritative shortcut SSOT going forward; future operator additions
+  edit the registry file (with version bumps + changelog) and do not
+  edit any ADR. ADR-022 moves to `docs/adr/superseded/022-tool-state-
+  machine-and-command-bar-superseded.md` with `Status: SUPERSEDED` +
+  `Superseded by: ADR-023` headers per §0.6 governance. Both
+  architecture contracts (Claude + Codex) get §0.2 binding-table
+  refresh: ADR-022 row removed, ADR-023 row added, supersession note
+  appended (mirrors the drawing-model-pivot precedent for ADRs
+  002/010/013 → 019/020/021). Supersession is the binding-compliant
+  mechanism per §0.7 step 3 and is not classified as a deviation.
 - **A3 — UI state co-located in `packages/editor-2d/src/ui-state/`
   (Q3 approved).** Single store using vanilla zustand + immer (no
   zundo — UI state is not undoable per ADR-015). When a second consumer
@@ -212,6 +236,21 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
 - `src/chrome/StatusBarGeoRefChip.tsx` + `.module.css`
 - `tests/` — unit + integration test files (one per module under test)
 
+**Architecture / docs (new):**
+
+- `docs/adr/023-tool-state-machine-and-command-bar.md` — replacement
+  for ADR-022; restates framework decisions; includes the complete
+  M1.3a/b/c shortcut map plus seven new draw-tool rows; governance
+  clause moves the shortcut SSOT to `docs/operator-shortcuts.md`.
+- `docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md`
+  — ADR-022 moved here with `Status: SUPERSEDED` + `Superseded by:
+  ADR-023` headers.
+- `docs/operator-shortcuts.md` — new subordinate registry file. Holds
+  the authoritative operator shortcut table; governance: edit-in-place
+  with version bumps + changelog (extraction-registry-style). Initial
+  contents: every M1.3a/b/c row from old ADR-022's table + the seven
+  new draw-tool rows.
+
 ### 3.2 In scope — files modified
 
 **Domain:**
@@ -273,11 +312,17 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
   layout).
 - `apps/web/package.json` — add `@portplanner/editor-2d`: `workspace:*`.
 
-**Architecture / docs:**
+**Architecture / docs (modified in place):**
 
-- `docs/adr/022-tool-state-machine-and-command-bar.md` — add seven
-  rows to the operator shortcut map (`PT`, `L`, `PL`, `REC`, `CC`,
-  `A`, `XL`/`XX`); bump changelog 1.0.0 → 1.0.1.
+- `docs/adr/README.md` — main `## Index` table gets ADR-023 row;
+  `## Superseded ADRs` section gets ADR-022 row.
+- `docs/adr/superseded/README.md` — supersession-folder index gets
+  ADR-022 row.
+- `docs/procedures/Claude/00-architecture-contract.md` — §0.2 ADR
+  binding table: remove ADR-022 row, add ADR-023 row, append
+  supersession note.
+- `docs/procedures/Codex/00-architecture-contract.md` — same as Claude
+  contract (mirror).
 - `docs/glossary.md` — append 12 terms (see §3.5).
 
 **Workspace:**
@@ -369,7 +414,7 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
 - **Ortho** — Modifier that constrains cursor motion to ±X / ±Y of
   the active drafting frame (WCS in M1.3a — bay / cross-bay axes)
   relative to the previous point in a tool's prompt chain. M1.3a.
-  ADR-016, ADR-022.
+  ADR-016, ADR-023.
 - **Snap priority** — Resolution order when multiple snap candidates
   apply (highest to lowest): OSNAP → OTRACK → POLAR → GSNAP →
   grid-line fallback. Ortho is a modifier applied after all snaps.
@@ -397,7 +442,9 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
 | ADR-019 Object Model v2 | No change — M1.3a brings `ProjectObject` type + Zod schema + serializer into ADR-019 compliance proactively (A1). |
 | ADR-020 Project Sync v2 | No change — M1.3a replaces `Operation` shape with ADR-020 shape; `targetKind` / `targetId` / `promotionGroupId?` honoured. |
 | ADR-021 2D Rendering Pipeline v2 | No change — M1.3a implements the kind-discriminated paint loop, ByLayer style resolution, snap priority resolver. |
-| ADR-022 Tool State Machine + Command Bar | **Edit-in-place — operator shortcut map gains seven draw-tool rows; changelog bumped 1.0.0 → 1.0.1.** Mechanism: ADR-022's self-described "add operators via changelog bump" governance; not a §0.7 deviation per A2. |
+| ADR-022 Tool State Machine + Command Bar | **SUPERSEDED → ADR-023.** Status flipped to `SUPERSEDED`; file moved to `docs/adr/superseded/`; supersession + supersedee pointers added per §0.6 governance. Removed from binding-table in both architecture contracts. |
+| ADR-023 Tool State Machine + Command Bar (v2) | **NEW — replaces ADR-022.** Restates the framework decisions. Embeds the complete M1.3a/b/c operator shortcut map including the seven new draw-tool rows. Governance clause moves the shortcut SSOT to `docs/operator-shortcuts.md`; future operator additions edit the registry file, not any ADR. |
+| `docs/operator-shortcuts.md` | **NEW** subordinate registry file. Authoritative shortcut SSOT going forward. Governance: edit-in-place with version bumps + changelog (extraction-registry-style). |
 | `docs/glossary.md` | Appended — 12 new terms per §3.5. |
 | `docs/coordinate-system.md` | No change. |
 | `docs/design-tokens.md` | Audit — confirm canvas tokens exist for `snap_indicator`, `grid`, `background`, `selection_handle`, `dimension_preview`. If any are missing, append in same commit; if all present, no change. |
@@ -410,7 +457,13 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
 
 | Doc | Path | Change type | Reason |
 |-----|------|-------------|--------|
-| ADR-022 | `docs/adr/022-tool-state-machine-and-command-bar.md` | Edit in place — 7 new shortcut-map rows + changelog bump 1.0.0 → 1.0.1 | Add primitive draw-tool shortcuts under ADR-022's own self-described governance |
+| ADR-022 | `docs/adr/022-tool-state-machine-and-command-bar.md` → `docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md` | Move + status flip to `SUPERSEDED` + supersession pointer | Codex Round-1 OI-1: editing ADR text in place violates §0.6; supersession is the §0.7-compliant path |
+| ADR-023 | `docs/adr/023-tool-state-machine-and-command-bar.md` | New | Replacement for ADR-022; restates framework + adds shortcuts + moves SSOT to subordinate registry |
+| `docs/operator-shortcuts.md` | `docs/operator-shortcuts.md` | New | Subordinate registry holding the authoritative operator shortcut table |
+| ADR README | `docs/adr/README.md` | Edit in place | Add ADR-023 row in main `## Index`; add ADR-022 row in `## Superseded ADRs` section |
+| Superseded README | `docs/adr/superseded/README.md` | Edit in place | Add ADR-022 row to the supersession-folder index |
+| Claude contract | `docs/procedures/Claude/00-architecture-contract.md` | Edit in place | §0.2 binding table: remove ADR-022 row; add ADR-023 row; supersession note appended |
+| Codex contract | `docs/procedures/Codex/00-architecture-contract.md` | Edit in place | Mirror of Claude contract |
 | Glossary | `docs/glossary.md` | Append 12 terms | New domain vocabulary lands with M1.3a code |
 | Design tokens | `docs/design-tokens.md` | Audit + append iff missing | Canvas overlay tokens consumed by paint code |
 | ADR-019 | `docs/adr/019-object-model.md` | No change | Implementation comes into compliance |
@@ -424,13 +477,18 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
 **None formally.** Two close-to-the-line items were surfaced and resolved
 in the pre-response notification (acknowledged 2026-04-25):
 
-- **ADR-022 shortcut-map edit (A2).** Classified as expected extension
-  within ADR-022's self-described governance ("Adding a new operator …
-  list it in this ADR's shortcut map (changelog bump)"). ADR-022's
-  shortcut map is a registry-shaped artifact internal to the ADR;
-  editing it under its own changelog rule is consistent with the
-  extraction-registry precedent in §0.6. Recorded user approval:
-  2026-04-25.
+- **ADR-022 supersession (A2, Codex Round-1 OI-1).** Originally
+  Revision-0 proposed an in-place edit of ADR-022's shortcut map.
+  Codex Round-1 flagged this as a §0.6 immutability violation. The
+  Revision-1 resolution supersedes ADR-022 with ADR-023 + introduces
+  a subordinate `docs/operator-shortcuts.md` registry as the
+  going-forward SSOT for shortcut additions. Supersession is the
+  binding-compliant mechanism per §0.6 + §0.7 step 3 — **not a
+  deviation**. The same-PR commitment (ADR-023 + registry file +
+  supersession move + index/contract updates land in the same M1.3a
+  PR as the code that registers the shortcuts) is satisfied via
+  Phase 15 (docs governance) → Phase 17 (code uses ADR-023's registry
+  references) → Phase 21 (final verification gates).
 - **`ProjectObject` ADR-019 alignment (A1).** Not a deviation — ADR-019
   is binding and the type was on the now-superseded ADR-002 shape.
   M1.3a brings the type into spec compliance. Timing (M1.3a vs M1.3b)
@@ -518,9 +576,9 @@ drawing-model-pivot plan); first constructor content lands in M1.3b.
 
 ## 8. Implementation phases
 
-Sixteen phases. Each has its file list, steps, invariants, gates, and
-tests (where applicable). Phases are sequenced with strong dependency
-order — Phase N+1 can begin only when Phase N's gates pass.
+Twenty-one phases. Each has its file list, steps, invariants, gates,
+and tests (where applicable). Phases are sequenced with strong
+dependency order — Phase N+1 can begin only when Phase N's gates pass.
 
 ### Phase 1 — Domain types (primitives, layers, grid, ids)
 
@@ -882,20 +940,31 @@ mutation produces an Operation record. Resolves M1.2 PI-1.
    - Module-level `operationLog: Operation[]` (in-memory; not
      persisted in M1.3a).
    - Module-level `sequence: number` counter.
-   - `emitOperation(args: { type, targetKind, targetId, before,
-     after, promotionGroupId? })` builds an `Operation`, increments
-     sequence, pushes to log, returns the op.
+   - **emitOperation is a transactional wrapper (Codex Round-1 OI-2a
+     hardening).** Signature:
+     `emitOperation(meta: { type, targetKind, targetId, promotionGroupId? },
+     mutator: (state: ProjectStoreState) => void): Operation`.
+     Internally:
+       1. Read current state; build before-snapshot via the
+          `targetKind`-discriminated lookup (`state.project.primitives[id]`
+          for `'primitive'`, etc.). For CREATE the before-snapshot is `null`.
+       2. Call `projectStore.setState(mutator)`.
+       3. Read post-mutation state; build after-snapshot. For DELETE the
+          after-snapshot is `null`.
+       4. Construct `Operation` with the next `sequence`, push to
+          `operationLog`, and return the op.
    - `getOperationLog(): readonly Operation[]` accessor for tests.
    - `clearOperationLog(): void` for `createNewProject` /
      `hydrateProject` and tests.
-2. Modify each action file to capture before-snapshot, perform
-   mutation, capture after-snapshot, and call `emitOperation()`. The
-   exact shape:
-   - For CREATE: `before = null`, `after = { kind, snapshot }`.
-   - For UPDATE: `before = { kind, snapshot: oldEntity }`, `after =
-     { kind, snapshot: newEntity }`.
-   - For DELETE: `before = { kind, snapshot: oldEntity }`, `after =
-     null`.
+2. Refactor each action under `packages/project-store/src/actions/` to
+   call `emitOperation(meta, mutator)` exclusively — actions MUST NOT
+   call `projectStore.setState` directly (Gate 6.5 enforces this with a
+   hard zero-match grep). The mutator closure is the only place where
+   the action mutates state. Whole-state replacement actions
+   (`createNewProject`, `hydrateProject`, `markSaved`) remain in
+   `actions.ts` at the package root and continue to call setState
+   directly — they are not entity-level mutations and are excluded
+   from the Gate 6.5 directory scope.
 3. Modify `createNewProject` and `hydrateProject` to call
    `clearOperationLog()` (whole-state replacement; no incremental
    ops to retain).
@@ -932,10 +1001,19 @@ Gate 6.4: Sequence-monotonicity test passes
   Command: pnpm --filter @portplanner/project-store test -- --grep "sequence|monotonic"
   Expected: ≥1 test, passes
 
-Gate 6.5: No raw mutation bypasses emission (heuristic)
-  Command: rg -n "state\\.project\\.(primitives|layers|grids)\\[" packages/project-store/src/actions/
-  Expected: every match is inside an action that immediately follows / precedes an emitOperation call (manual review of grep output; not a hard programmatic gate, flagged in plan as a manual-review checkpoint)
-  Note: this gate is heuristic; the authoritative enforcement is the test suite (Gate 6.3) which asserts each action emits the right operation.
+Gate 6.5: Entity actions never call projectStore.setState directly
+  Command: rg -n "projectStore\\.setState\\b" packages/project-store/src/actions/
+  Expected: 0 matches
+  Rationale (per Codex Round-1 OI-2a): emitOperation is refactored into a
+  transactional wrapper with signature `emitOperation(meta, mutator)`.
+  Internally it captures before-snapshot, calls projectStore.setState
+  with the mutator, captures after-snapshot, builds the Operation, and
+  pushes to the log. Therefore the only legal setState call from inside
+  packages/project-store/src/actions/ is the one made by emitOperation
+  itself — actions never call setState directly. Whole-state replacement
+  paths (createNewProject, hydrateProject, markSaved) live in actions.ts
+  at the package root (NOT under actions/) and are not entity-level
+  mutations; they are excluded from this gate by directory scope.
 ```
 
 ### Phase 7 — Project-store-react hooks for new entity kinds
@@ -1362,9 +1440,9 @@ Gate 11.2: Focus holder enum constrained
   Command: rg -n "'canvas'.*'bar'.*'dialog'|FocusHolder" packages/editor-2d/src/ui-state/focus.ts
   Expected: ≥1 match
 
-Gate 11.3: Single window-level keydown registration (heuristic)
+Gate 11.3: Single window-level keydown registration
   Command: rg -n "window\\.addEventListener\\(['\"]keydown" packages/editor-2d/src
-  Expected: exactly 1 match (only inside keyboard/router.ts)
+  Expected: exactly 1 match, located inside packages/editor-2d/src/keyboard/router.ts
 
 Gate 11.4: UI state has no zundo
   Command: rg -n "temporal|zundo" packages/editor-2d/src/ui-state/
@@ -1447,7 +1525,7 @@ modifier, and the priority resolver.
   if OSNAP found a target, Ortho does not re-clamp away from it.
   Tested.
 - I-42: Three tolerance utilities are not mixed at use sites.
-  Enforced by grep gate (see Gate 12.5).
+  Enforced by directory-scoped grep gates (12.5a/b/c).
 
 **Mandatory Completion Gates:**
 
@@ -1468,10 +1546,22 @@ Gate 12.4: Bit-copy commit test passes
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "bit-copy|commitSnappedVertex|Object\\.is"
   Expected: ≥1 test, passes
 
-Gate 12.5: No mixing of tolerance utilities outside their modules
-  Command: rg -n "equalsMetric" packages/editor-2d/src/canvas/ | rg -v "test"
-  Expected: 0 matches (canvas code does not use derived-logic ε; UI uses screen-tolerance instead)
-  Note: this gate is a heuristic boundary check; review the matches manually if any appear.
+Gate 12.5a: equalsMetric used only in src/snap/ (derived-logic tolerance)
+  Command: rg -l "\\bequalsMetric\\b" packages/editor-2d/src | rg -v "src/snap/|src/snap/equals\\.ts"
+  Expected: 0 files listed
+  Rationale (per Codex Round-1 OI-2b): equalsMetric is the ε=1e-6 derived-logic
+  utility. Canvas paint paths and UI-tolerance code MUST NOT import it.
+
+Gate 12.5b: commitSnappedVertex used only in src/tools/ + src/snap/ (commit path)
+  Command: rg -l "\\bcommitSnappedVertex\\b" packages/editor-2d/src | rg -v "src/tools/|src/snap/|src/snap/commit\\.ts"
+  Expected: 0 files listed
+  Rationale: bit-copy commit is a tool-final-step utility; called from snap engine
+  and tool generators only.
+
+Gate 12.5c: isSnapCandidate used only in src/snap/ + src/canvas/hit-test.ts (UI tolerance)
+  Command: rg -l "\\bisSnapCandidate\\b" packages/editor-2d/src | rg -v "src/snap/|src/canvas/hit-test\\.ts|src/snap/screen-tolerance\\.ts"
+  Expected: 0 files listed
+  Rationale: screen-pixel UI tolerance utility; never used by derived-logic code.
 
 Gate 12.6: Snap priority resolver respects ADR-016 ordering
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "priority|OSNAP wins over GSNAP"
@@ -1481,7 +1571,7 @@ Gate 12.6: Snap priority resolver respects ADR-016 ordering
 ### Phase 13 — Tool runner (generator pattern)
 
 **Goal:** Land the ToolRunner that drives generator-pattern tools per
-ADR-022.
+ADR-023 (post-Phase-15 supersession of ADR-022).
 
 **Files affected:**
 - `packages/editor-2d/src/tools/types.ts` (new)
@@ -1490,7 +1580,7 @@ ADR-022.
 
 **Steps:**
 1. Author `types.ts`: `Prompt`, `Input`, `ToolGenerator`, `ToolResult`
-   per ADR-022.
+   per ADR-023.
 2. Author `runner.ts`:
    - `startTool(generator: () => ToolGenerator)`: instantiates the
      generator; subscribes to canvas pointer / keyboard / bar inputs;
@@ -1558,7 +1648,7 @@ sub-options Extents/Window/Previous), Pan, Properties, Layer Manager
 - `packages/editor-2d/tests/tools-essential.test.ts`
 
 **Steps:**
-1. Author each tool as a generator per ADR-022 example. Move is the
+1. Author each tool as a generator per ADR-023 example. Move is the
    reference implementation (select if no selection, base point,
    second point, commit).
 2. Sub-option handling for Zoom: yield with `subOptions:
@@ -1571,7 +1661,7 @@ sub-options Extents/Window/Previous), Pan, Properties, Layer Manager
 5. Properties tool: opens Properties panel and selects the current
    selection's first entity. If selection is empty, prompts "Select
    entity".
-6. Layer Manager (LA): opens Layer Manager dialog (Phase 16).
+6. Layer Manager (LA): opens Layer Manager dialog (Phase 17).
 7. F3/F8/F9/F12 toggles: pure ui-state mutations; not generator-driven.
 8. Tests per tool: representative input → expected operation log
    contents and expected ui-state.
@@ -1603,26 +1693,175 @@ Gate 14.4: Type-check passes
   Expected: zero errors
 ```
 
-### Phase 15 — Seven primitive draw tools + ADR-022 shortcut-map edit
+### Phase 15 — ADR governance: supersede ADR-022 with ADR-023 + create operator-shortcuts.md registry
 
-**Goal:** Land draw tools for the seven primitive kinds and bring
-ADR-022's shortcut map into completeness.
+**Goal:** Resolve Codex Round-1 OI-1 by superseding ADR-022 with
+ADR-023 and creating the subordinate `docs/operator-shortcuts.md`
+registry as the going-forward shortcut SSOT. Land all docs governance
+artifacts in this phase so Phase 16 (impl) can reference an
+already-authoritative ADR + registry. No code touched here — pure
+docs governance.
 
 **Files affected:**
-- `packages/editor-2d/src/tools/draw/draw-point.ts`
-- `packages/editor-2d/src/tools/draw/draw-line.ts`
-- `packages/editor-2d/src/tools/draw/draw-polyline.ts`
-- `packages/editor-2d/src/tools/draw/draw-rectangle.ts`
-- `packages/editor-2d/src/tools/draw/draw-circle.ts`
-- `packages/editor-2d/src/tools/draw/draw-arc.ts`
-- `packages/editor-2d/src/tools/draw/draw-xline.ts`
+- `docs/adr/023-tool-state-machine-and-command-bar.md` (new)
+- `docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md`
+  (moved from `docs/adr/022-tool-state-machine-and-command-bar.md`)
+- `docs/operator-shortcuts.md` (new)
+- `docs/adr/README.md` (modified)
+- `docs/adr/superseded/README.md` (modified)
+- `docs/procedures/Claude/00-architecture-contract.md` (modified)
+- `docs/procedures/Codex/00-architecture-contract.md` (modified)
+
+**Steps:**
+1. **Author ADR-023.** File: `docs/adr/023-tool-state-machine-and-command-bar.md`.
+   Headers: `**Status:** ACCEPTED`, `**Date:** 2026-04-25`,
+   `**Supersedes:** ADR-022 (`docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md`)`.
+   Content:
+   - Restate ADR-022's framework decisions verbatim (command bar as
+     bottom UI, generator-pattern tool state machines, keyboard
+     routing rules, sub-option bracket notation, focus discipline
+     across canvas / bar / dialog).
+   - Operator shortcut map: include every row from the original
+     ADR-022 table (Select, Erase, Move, Copy, Undo, Redo, Zoom +
+     sub-options, Pan, Properties, LA, Escape, F3/F8/F9/F12, plus
+     M1.3b/c rows) **plus** the seven new draw-tool rows
+     (`PT` Point, `L` Line, `PL` Polyline, `REC` Rectangle, `CC`
+     Circle, `A` Arc, `XL`/`XX` Xline).
+   - Governance clause (replaces ADR-022's self-describing
+     "changelog bump" clause): *Future operator additions edit
+     `docs/operator-shortcuts.md` (the subordinate registry file)
+     with a version bump + changelog line. ADR-023's shortcut map
+     is the snapshot at the time of supersession; the registry
+     file is the going-forward SSOT.* This pattern mirrors the
+     extraction-registry governance in `docs/extraction-registry/`.
+   - Cross-references: ADR-016, ADR-017, ADR-018, ADR-019, ADR-020,
+     ADR-021. Same set as ADR-022.
+   - Changelog: `| 1.0.0 | 2026-04-25 | Replaces ADR-022. Restates
+     framework + adds seven primitive draw-tool shortcuts (PT, L, PL,
+     REC, CC, A, XL/XX). Moves operator-shortcut SSOT to
+     docs/operator-shortcuts.md going forward. |`.
+2. **Move ADR-022 to superseded folder.**
+   `git mv docs/adr/022-tool-state-machine-and-command-bar.md
+   docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md`.
+   Then edit the moved file: change `**Status:** ACCEPTED` to
+   `**Status:** SUPERSEDED`, and add `**Superseded by:** ADR-023
+   (`docs/adr/023-tool-state-machine-and-command-bar.md`)` on the
+   following line. (This is the §0.6-permitted edit of a superseded
+   ADR — the contract itself mandates the supersession-marker edit.)
+3. **Create `docs/operator-shortcuts.md`.** Format mirrors an
+   extraction-registry entry:
+   - Title + intro paragraph (purpose, governance, version)
+   - `**Version:** 1.0.0`, `**Date:** 2026-04-25`
+   - `## Governance` section: edit-in-place with version bumps;
+     adding a shortcut = minor; changing an existing = major;
+     removing = major; same Constructors-style discipline as the
+     extraction registry.
+   - `## Shortcut map` table — three sub-sections: M1.3a, M1.3b,
+     M1.3c. Rows mirror ADR-023's table.
+   - `## Changelog` table — initial row `1.0.0 | 2026-04-25 | Initial
+     registry. Seeded from ADR-023's M1.3a/b/c shortcut map at
+     supersession of ADR-022.`
+4. **Update `docs/adr/README.md`.**
+   - In the main `## Index` table: add a row for ADR-023.
+   - In the `## Superseded ADRs` section: add a row for ADR-022
+     pointing at `docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md`
+     and the replacement ADR-023.
+   - The `## Index` table count moves from 19 (per drawing-model-pivot
+     plan) to 19 — ADR-022 leaves the index, ADR-023 enters; net zero.
+     (Verify via gate.)
+5. **Update `docs/adr/superseded/README.md`.** Add a row for ADR-022
+   in the supersession-folder index.
+6. **Update both architecture contracts** (`docs/procedures/Claude/00-architecture-contract.md`
+   and `docs/procedures/Codex/00-architecture-contract.md`):
+   - Remove the ADR-022 row from the §0.2 ADR binding table.
+   - Add an ADR-023 row pointing to `docs/adr/023-tool-state-machine-and-command-bar.md`.
+   - Append the supersession note in the existing supersession-list
+     prose (the same paragraph that lists ADRs 002/010/013 → 019/020/021;
+     extend to mention ADR-022 → ADR-023).
+   - Both contracts must remain identical (mirror discipline per the
+     drawing-model-pivot precedent).
+
+**Invariants introduced:**
+- I-60: ADR-023 file exists at `docs/adr/023-tool-state-machine-and-command-bar.md`
+  with `Status: ACCEPTED`, `Supersedes: ADR-022`, and the seven
+  draw-tool shortcut rows. Hard grep gates.
+- I-61: ADR-022 file moved to `docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md`
+  with `Status: SUPERSEDED` and `Superseded by: ADR-023` headers; the
+  original-path file no longer exists at root. Hard test + grep gates.
+- I-62: `docs/operator-shortcuts.md` exists, version `1.0.0`, contains
+  the seven draw-tool rows + the M1.3a/b/c carry-over rows from
+  ADR-022's table. Hard grep gate.
+- I-63: Both architecture contracts (Claude + Codex) §0.2 binding
+  tables list ADR-023 and DO NOT list `022-tool-state-machine-and-command-bar.md`
+  (path string). Hard grep gate.
+- I-64: ADR README main `## Index` lists ADR-023; `## Superseded ADRs`
+  section lists ADR-022. Hard grep gates.
+
+**Mandatory Completion Gates:**
+
+```
+Gate 15.1: ADR-023 file exists with ACCEPTED status + Supersedes header
+  Command: rg -n "^\\*\\*Status:\\*\\* ACCEPTED" docs/adr/023-tool-state-machine-and-command-bar.md && rg -n "^\\*\\*Supersedes:\\*\\* ADR-022" docs/adr/023-tool-state-machine-and-command-bar.md
+  Expected: ≥1 match in each (combined exit 0)
+
+Gate 15.2: ADR-023 contains all seven draw-tool shortcut rows
+  Command: rg -n "\\| `PT` |\\| `L` |\\| `PL` |\\| `REC` |\\| `CC` |\\| `A` |\\| `XL`|\\| `XX`" docs/adr/023-tool-state-machine-and-command-bar.md
+  Expected: ≥8 matches (one per row including XX alias)
+
+Gate 15.3: ADR-022 moved to superseded folder; root file gone
+  Command: test ! -e docs/adr/022-tool-state-machine-and-command-bar.md && test -f docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md && echo OK
+  Expected: "OK"
+
+Gate 15.4: Superseded ADR-022 has SUPERSEDED status + Superseded by ADR-023 pointer
+  Command: rg -n "Status:\\*\\* SUPERSEDED" docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md && rg -n "Superseded by:\\*\\* ADR-023" docs/adr/superseded/022-tool-state-machine-and-command-bar-superseded.md
+  Expected: ≥1 match each
+
+Gate 15.5: docs/operator-shortcuts.md registry exists with version + governance + draw-tool rows
+  Command: rg -n "Version.*1\\.0\\.0|## Governance|## Shortcut map" docs/operator-shortcuts.md && rg -n "\\| `PT` |\\| `L` |\\| `PL` |\\| `REC` |\\| `CC` |\\| `A` |\\| `XL`|\\| `XX`" docs/operator-shortcuts.md
+  Expected: ≥3 matches in first; ≥8 matches in second
+
+Gate 15.6: ADR README updated — ADR-023 in main index, ADR-022 in superseded section
+  Command: rg -n "023-tool-state-machine" docs/adr/README.md && awk '/^## Superseded ADRs/{flag=1} flag' docs/adr/README.md | rg -n "022-tool-state-machine"
+  Expected: matches in both
+
+Gate 15.7a: Both architecture contracts list ADR-023 in §0.2 binding table
+  Command: rg -n "023-tool-state-machine" docs/procedures/Claude/00-architecture-contract.md docs/procedures/Codex/00-architecture-contract.md
+  Expected: ≥2 matches (one per contract file)
+
+Gate 15.7b: Neither contract references the OLD ADR-022 path
+  Command: rg -n "022-tool-state-machine-and-command-bar\\.md" docs/procedures/Claude/00-architecture-contract.md docs/procedures/Codex/00-architecture-contract.md
+  Expected: 0 matches
+```
+
+**Tests added:** none in this phase (docs work; verification by gates
+only).
+
+### Phase 16 — Seven primitive draw tools + register shortcuts in registry
+
+**Goal:** Land draw tools for the seven primitive kinds, register
+their shortcuts in `packages/editor-2d/src/keyboard/shortcuts.ts`, and
+populate the seven new draw-tool rows in
+`docs/operator-shortcuts.md` (the registry created in Phase 15). No
+ADR text edits in this phase — Phase 15 already authored ADR-023 with
+the complete shortcut map; this phase only touches the impl-side
+registration and the subordinate registry rows.
+
+**Files affected:**
+- `packages/editor-2d/src/tools/draw/draw-point.ts` (new)
+- `packages/editor-2d/src/tools/draw/draw-line.ts` (new)
+- `packages/editor-2d/src/tools/draw/draw-polyline.ts` (new)
+- `packages/editor-2d/src/tools/draw/draw-rectangle.ts` (new)
+- `packages/editor-2d/src/tools/draw/draw-circle.ts` (new)
+- `packages/editor-2d/src/tools/draw/draw-arc.ts` (new)
+- `packages/editor-2d/src/tools/draw/draw-xline.ts` (new)
 - `packages/editor-2d/src/tools/index.ts` (modified — register draw
   tools)
 - `packages/editor-2d/src/keyboard/shortcuts.ts` (modified — register
   shortcuts)
 - `packages/editor-2d/tests/draw-tools.test.ts` (new)
-- `docs/adr/022-tool-state-machine-and-command-bar.md` (modified —
-  add 7 rows + changelog bump)
+- `docs/operator-shortcuts.md` (modified — verify the seven draw-tool
+  rows seeded in Phase 15 are present and consistent with the impl
+  shortcut registration)
 
 **Steps:**
 1. Author each draw tool generator. Reference flow for Polyline:
@@ -1655,12 +1894,10 @@ ADR-022's shortcut map into completeness.
    - `A` → `draw-arc`
    - `XL` → `draw-xline`
    - `XX` → `draw-xline` (alias)
-4. Modify `docs/adr/022-tool-state-machine-and-command-bar.md`:
-   - Add 7 rows to the operator shortcut map under a new sub-heading
-     "Draw tools (M1.3a)" or interleaved with existing M1.3a rows.
-   - Bump changelog: `| 1.0.1 | 2026-04-25 | Added seven primitive
-     draw-tool shortcuts (PT, L, PL, REC, CC, A, XL/XX) per M1.3a
-     plan. |`
+4. Confirm `docs/operator-shortcuts.md` (created in Phase 15) contains
+   the seven draw-tool rows; if drift between impl shortcuts and
+   registry file rows is detected, update the registry file and bump
+   its changelog.
 5. Tests: each draw tool produces the expected primitive shape with
    `bulges` zero-filled.
 
@@ -1674,40 +1911,41 @@ ADR-022's shortcut map into completeness.
   in editor-2d ui-state.
 - I-50: Each draw tool sets `displayOverrides: {}` (ByLayer for all
   properties). Tested.
-- I-51: ADR-022 shortcut map contains rows for `PT`, `L`, `PL`,
-  `REC`, `CC`, `A`, `XL`, `XX`. Verified by grep.
-- I-52: ADR-022 changelog has a `1.0.1` row mentioning M1.3a draw
-  shortcuts.
+- I-51: `docs/operator-shortcuts.md` registry contains rows for
+  `PT`, `L`, `PL`, `REC`, `CC`, `A`, `XL`, `XX` (seeded in Phase 15;
+  verified again in this phase). Hard grep gate.
+- I-52: `keyboard/shortcuts.ts` impl maps the same eight shortcut
+  literals to the seven draw tools. Hard grep gate.
 
 **Mandatory Completion Gates:**
 
 ```
-Gate 15.1: All seven draw tools present
+Gate 16.1: All seven draw tools present
   Command: ls packages/editor-2d/src/tools/draw/draw-{point,line,polyline,rectangle,circle,arc,xline}.ts | wc -l
   Expected: 7
 
-Gate 15.2: Draw tools tests pass
+Gate 16.2: Draw tools tests pass
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "draw"
   Expected: passes
 
-Gate 15.3: ADR-022 shortcut map contains all seven rows + XX alias
-  Command: rg -n "\\| `PT` |\\| `L` |\\| `PL` |\\| `REC` |\\| `CC` |\\| `A` |\\| `XL`|\\| `XX`" docs/adr/022-tool-state-machine-and-command-bar.md
-  Expected: ≥8 matches (one per row including XX alias)
+Gate 16.3: All eight draw-tool shortcut literals registered in keyboard/shortcuts.ts
+  Command: rg -n "['\"](PT|L|PL|REC|CC|A|XL|XX)['\"]" packages/editor-2d/src/keyboard/shortcuts.ts
+  Expected: ≥8 matches
 
-Gate 15.4: ADR-022 changelog bumped to 1.0.1
-  Command: rg -n "^\\| 1\\.0\\.1 \\| 2026-04-25" docs/adr/022-tool-state-machine-and-command-bar.md
-  Expected: ≥1 match
+Gate 16.4: docs/operator-shortcuts.md still contains the seven draw-tool rows (consistency with impl)
+  Command: rg -n "\\| `PT` |\\| `L` |\\| `PL` |\\| `REC` |\\| `CC` |\\| `A` |\\| `XL`|\\| `XX`" docs/operator-shortcuts.md
+  Expected: ≥8 matches
 
-Gate 15.5: M1.3a polyline emits zero bulges only
+Gate 16.5: M1.3a polyline emits zero bulges only
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "polyline.*bulge.*0"
   Expected: ≥1 test, passes
 
-Gate 15.6: Type-check passes
+Gate 16.6: Type-check passes
   Command: pnpm tsc --noEmit
   Expected: zero errors
 ```
 
-### Phase 16 — Command bar React component
+### Phase 17 — Command bar React component
 
 **Goal:** Land the AutoCAD-style command bar React component with
 prompt display, sub-option brackets, history scrollback, focus
@@ -1723,7 +1961,7 @@ integration.
 - `packages/editor-2d/tests/CommandBar.test.tsx` (new)
 
 **Steps:**
-1. Authors per ADR-022 §Command bar schema. Read state from
+1. Authors per ADR-023 §Command bar schema. Read state from
    `editorUiStore` via dedicated hook (in chrome/, so React imports
    are allowed).
 2. Render history scrollback (capped at N=200 entries; older
@@ -1751,20 +1989,20 @@ integration.
 **Mandatory Completion Gates:**
 
 ```
-Gate 16.1: CommandBar component exists
+Gate 17.1: CommandBar component exists
   Command: rg -n "export.*function CommandBar|export const CommandBar" packages/editor-2d/src/chrome/CommandBar.tsx
   Expected: ≥1 match
 
-Gate 16.2: CommandBar tests pass
+Gate 17.2: CommandBar tests pass
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "CommandBar|commandBar"
   Expected: passes
 
-Gate 16.3: History cap configured
+Gate 17.3: History cap configured
   Command: rg -n "200|HISTORY_CAP|historyLimit" packages/editor-2d/src/chrome/CommandBar.tsx packages/editor-2d/src/chrome/CommandHistoryList.tsx
   Expected: ≥1 match
 ```
 
-### Phase 17 — Properties panel + Layer Manager dialog + StatusBar geo-ref chip
+### Phase 18 — Properties panel + Layer Manager dialog + StatusBar geo-ref chip
 
 **Goal:** Land the supporting React chrome for Properties (Ctrl+1),
 Layer Manager (LA), and the geo-ref chip for the status bar.
@@ -1810,24 +2048,24 @@ Layer Manager (LA), and the geo-ref chip for the status bar.
 **Mandatory Completion Gates:**
 
 ```
-Gate 17.1: All chrome components exist
+Gate 18.1: All chrome components exist
   Command: ls packages/editor-2d/src/chrome/{PropertiesPanel,LayerManagerDialog,StatusBarGeoRefChip,GeoRefDialog,CommandBar}.tsx | wc -l
   Expected: 5
 
-Gate 17.2: Properties / LayerManager / GeoRef tests pass
+Gate 18.2: Properties / LayerManager / GeoRef tests pass
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "Properties|LayerManager|GeoRef"
   Expected: passes
 
-Gate 17.3: GeoRef chip "Not geo-referenced" label present
+Gate 18.3: GeoRef chip "Not geo-referenced" label present
   Command: rg -n "Not geo-referenced" packages/editor-2d/src/chrome/StatusBarGeoRefChip.tsx
   Expected: ≥1 match
 
-Gate 17.4: Default layer protected in Layer Manager
+Gate 18.4: Default layer protected in Layer Manager
   Command: rg -n "LayerId\\.DEFAULT|defaultLayer.*delete|cannot delete default" packages/editor-2d/src/chrome/LayerManagerDialog.tsx
   Expected: ≥1 match
 ```
 
-### Phase 18 — apps/web integration
+### Phase 19 — apps/web integration
 
 **Goal:** Wire `<EditorRoot />` into `apps/web/src/shell/CanvasArea.tsx`
 and the geo-ref chip into the status bar.
@@ -1857,28 +2095,28 @@ and the geo-ref chip into the status bar.
 **Mandatory Completion Gates:**
 
 ```
-Gate 18.1: apps/web depends on editor-2d
+Gate 19.1: apps/web depends on editor-2d
   Command: rg -n "@portplanner/editor-2d" apps/web/package.json
   Expected: ≥1 match
 
-Gate 18.2: CanvasArea renders EditorRoot
+Gate 19.2: CanvasArea renders EditorRoot
   Command: rg -n "EditorRoot" apps/web/src/shell/CanvasArea.tsx
   Expected: ≥1 match
 
-Gate 18.3: StatusBar renders geo-ref chip
+Gate 19.3: StatusBar renders geo-ref chip
   Command: rg -n "StatusBarGeoRefChip" apps/web/src/shell/StatusBar.tsx
   Expected: ≥1 match
 
-Gate 18.4: apps/web tests + smoke pass
+Gate 19.4: apps/web tests + smoke pass
   Command: pnpm --filter @portplanner/web test
   Expected: passes
 
-Gate 18.5: Build passes
+Gate 19.5: Build passes
   Command: pnpm -r build
   Expected: success across all packages
 ```
 
-### Phase 19 — Glossary + design tokens audit
+### Phase 20 — Glossary + design tokens audit
 
 **Goal:** Append glossary terms + audit/append design tokens.
 
@@ -1901,16 +2139,16 @@ Gate 18.5: Build passes
 **Mandatory Completion Gates:**
 
 ```
-Gate 19.1: All 12 new glossary terms present
+Gate 20.1: All 12 new glossary terms present
   Command: rg -n "Primitive|Layer\\b|Default layer|DisplayOverrides|Grid\\b|Xline|Bulge|ByLayer|OSNAP|GSNAP|Ortho|Snap priority|View transform" docs/glossary.md
   Expected: ≥12 matches
 
-Gate 19.2: Canvas tokens present in design-tokens.md
+Gate 20.2: Canvas tokens present in design-tokens.md
   Command: rg -n "snap_indicator|grid_minor|grid_major|selection_handle|dimension_preview|guide_line|ortho_axis" docs/design-tokens.md
   Expected: ≥6 matches (or all 8 if a clean append)
 ```
 
-### Phase 20 — Comprehensive test pass + smoke E2E
+### Phase 21 — Comprehensive test pass + smoke E2E
 
 **Goal:** Final verification: full test suite passes; smoke E2E
 covers the headline user journey.
@@ -1922,16 +2160,33 @@ covers the headline user journey.
 
 **Steps:**
 1. Run full test suite (`pnpm test`).
-2. Author smoke E2E:
-   - Mount `<EditorRoot />` in happy-dom.
-   - Simulate `createNewProject` → assert default layer present.
-   - Simulate `keyDown('L')` → active tool = draw-line.
-   - Simulate canvas click at metric (0, 0) → first prompt resolved.
-   - Simulate canvas click at metric (10, 0) → tool commits.
-   - Assert `projectStore.getState().project.primitives` has one
-     entry with kind `'line'` and the right vertices.
-   - Simulate `serialize / deserialize` round-trip.
-   - Assert primitive survives.
+2. Author smoke E2E suite. Each scenario is a named `it(...)` test
+   inside `packages/editor-2d/tests/smoke-e2e.test.tsx`. Gate 21.2's
+   grep matches the scenario name strings:
+   - **Scenario "draw line and reload":** mount `<EditorRoot />` in
+     happy-dom; simulate `createNewProject` → assert default layer
+     present; `keyDown('L')` → active tool = draw-line; canvas click
+     at metric (0,0) → first prompt resolved; canvas click at (10,0)
+     → tool commits; assert one `'line'` primitive in store with
+     right vertices; serialize / deserialize round-trip; assert
+     primitive survives.
+   - **Scenario "pan zoom toggle":** wheel events zoom; middle-mouse
+     drag pans (assert `viewport.panX` changes); `keyDown('Z')` →
+     active tool = zoom; sub-option `keyDown('E')` → fits extents;
+     `keyDown('F3')` → assert toggles[OSNAP] flips; same for F8 / F9 /
+     F12. Each toggle change reflected in ui-state.
+   - **Scenario "layer manager flow":** `keyDown('L')` then
+     `keyDown('A')` → multi-letter accumulator → LA tool active →
+     LayerManagerDialog opens; create layer; set active; `keyDown('L')`
+     → draw-line; click two points; assert primitive on the new layer;
+     toggle visibility on layer → assert paint excludes; toggle back.
+   - **Scenario "properties edit":** select a primitive (canvas click
+     in select tool); `keyDown('Ctrl+1')` → Properties panel opens;
+     change layer dropdown → assert primitive's `layerId` updates;
+     change color override → assert `displayOverrides.color` set.
+   - **Scenario "geo-ref chip non-blocking":** click chip in status
+     bar → GeoRefDialog opens; click "Set later" → dialog closes;
+     `coordinateSystem` still null; primitive can be drawn afterward.
 3. Run `pnpm typecheck` (= `pnpm tsc --noEmit`); zero errors.
 4. Run `pnpm check` (Biome); zero issues.
 5. Run `pnpm build`; success.
@@ -1939,29 +2194,33 @@ covers the headline user journey.
 **Mandatory Completion Gates:**
 
 ```
-Gate 20.1: Full test suite passes
+Gate 21.1: Full test suite passes
   Command: pnpm test
   Expected: all packages pass; no skipped without justification
 
-Gate 20.2: Smoke E2E passes
+Gate 21.2: Smoke E2E passes
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "smoke-e2e|draw line.*reload|round-trip"
   Expected: ≥1 test, passes
 
-Gate 20.3: Typecheck passes
+Gate 21.3: Typecheck passes
   Command: pnpm typecheck
   Expected: zero errors
 
-Gate 20.4: Lint passes
+Gate 21.4: Lint passes
   Command: pnpm check
   Expected: zero issues
 
-Gate 20.5: Build passes
+Gate 21.5: Build passes
   Command: pnpm build
   Expected: success across all packages
 
-Gate 20.6: Module isolation grep gates pass
+Gate 21.6: Module isolation grep gates pass
   Command: rg -n "from '@portplanner/project-store-react'" packages/editor-2d/src/canvas/ ; rg -n "from '@portplanner/editor-2d'" packages/viewer-3d/ 2>/dev/null ; rg -n "from '@portplanner/viewer-3d'" packages/editor-2d/ 2>/dev/null
   Expected: zero matches across all three commands (third + fourth tolerate non-existence of viewer-3d package)
+
+Gate 21.7: Out-of-scope artifacts are absent
+  Command: test ! -e docs/handovers && test ! -e services/api && test ! -e packages/viewer-3d && echo OK
+  Expected: "OK"
 ```
 
 ## 9. Invariants summary
@@ -1983,7 +2242,7 @@ Gate 20.6: Module isolation grep gates pass
 | I-13 | Default layer cannot be deleted | Gate 5.2 |
 | I-14 | Layer delete with referenced entities requires reassign | Gate 5.3 |
 | I-15 | Layer rename preserves layerId | Tested (Phase 5) |
-| I-16 | Every project-store mutation passes through `emitOperation` | Gate 6.2 + 6.5 |
+| I-16 | Every entity-level mutation in `actions/` goes through emitOperation; setState in `actions/` is forbidden | Gate 6.2 + 6.5 (hard, directory-scoped after Codex Round-1 OI-2a refactor) |
 | I-17 | Operation sequence is monotonically increasing | Gate 6.4 |
 | I-18 | `clearOperationLog` called on `createNewProject`/`hydrateProject` | Tested (Phase 6) |
 | I-19 | Hooks return stable references when entity unchanged | Tested (Phase 7) |
@@ -1996,7 +2255,7 @@ Gate 20.6: Module isolation grep gates pass
 | I-26 | Paint excludes invisible / frozen layers | Gate 10.7 |
 | I-27 | No paint-extraction coupling (extraction-agnostic discipline) | Documented; no extractor in M1.3a |
 | I-28 | Only `canvas-host.tsx` under `canvas/` imports React | Gate 10.5 |
-| I-29 | `canvas-host.tsx` subscribes via `projectStore.subscribe` (not `useProject`) | Gate 10.6 + manual review |
+| I-29 | `canvas-host.tsx` subscribes via `projectStore.subscribe` (not `useProject`) | Gate 10.6 (hard grep — file does not import from `@portplanner/project-store-react`) |
 | I-30 | Polyline painter handles `bulge !== 0` segments | Gate 10.3 + path-string assertion |
 | I-31 | Focus holder is `'canvas' \| 'bar' \| 'dialog'` | Gate 11.2 |
 | I-32 | Bypass keys (F3/F8/F9/F12, Ctrl+Z/Y) handle identically across focus holders | Gate 11.5 |
@@ -2009,24 +2268,29 @@ Gate 20.6: Module isolation grep gates pass
 | I-39 | `commitSnappedVertex` is bit-copy (Object.is identity) | Gate 12.4 |
 | I-40 | Snap priority order matches ADR-016 §GSNAP ordering | Gate 12.6 |
 | I-41 | Ortho applied as modifier after snap resolution | Tested (Phase 12) |
-| I-42 | No mixing of tolerance utilities outside their modules | Gate 12.5 (heuristic) |
+| I-42 | No mixing of tolerance utilities outside their modules | Gates 12.5a + 12.5b + 12.5c (hard, directory-scoped) |
 | I-43 | ToolRunner is stateless; state in active-tool slice | Tested (Phase 13) |
 | I-44 | Escape during tool aborts without commit | Gate 13.1 |
 | I-45 | Successful tool completion emits ≥1 operation | Gate 13.1 |
 | I-46 | Each tool emits at most one logical commit per run | Tested (Phase 14) |
 | I-47 | Undo/Redo via zundo `temporal` | Tested (Phase 14) |
-| I-48 | M1.3a polyline draw emits zero bulges only (progressive subset of ADR-016) | Gate 15.5 |
-| I-49 | Draw tools assign `activeLayerId`, defaulting to `LayerId.DEFAULT` | Tested (Phase 15) |
-| I-50 | Draw tools set `displayOverrides: {}` (ByLayer) | Tested (Phase 15) |
-| I-51 | ADR-022 shortcut map contains rows for `PT/L/PL/REC/CC/A/XL/XX` | Gate 15.3 |
-| I-52 | ADR-022 changelog has `1.0.1` row | Gate 15.4 |
-| I-53 | Command bar history capped at 200 entries | Gate 16.3 |
-| I-54 | Bar input native focus drives ui-state focus holder | Tested (Phase 16) |
-| I-55 | Properties panel `layerId` dropdown sourced from `useLayers()` | Tested (Phase 17) |
-| I-56 | Layer Manager prevents rename/delete of `LayerId.DEFAULT` | Gate 17.4 |
-| I-57 | GeoRefDialog has "Set later"; drafting unblocked when null | Tested (Phase 17) |
-| I-58 | apps/web `CanvasArea` renders `<EditorRoot />` | Gate 18.2 |
-| I-59 | apps/web `StatusBar` includes geo-ref chip | Gate 18.3 |
+| I-48 | M1.3a polyline draw emits zero bulges only (progressive subset of ADR-016) | Gate 16.5 |
+| I-49 | Draw tools assign `activeLayerId`, defaulting to `LayerId.DEFAULT` | Tested (Phase 16) |
+| I-50 | Draw tools set `displayOverrides: {}` (ByLayer) | Tested (Phase 16) |
+| I-51 | `docs/operator-shortcuts.md` registry contains rows for `PT/L/PL/REC/CC/A/XL/XX` | Gate 15.5 + Gate 16.4 |
+| I-52 | `keyboard/shortcuts.ts` impl maps the eight shortcut literals to the seven draw tools | Gate 16.3 |
+| I-53 | Command bar history capped at 200 entries | Gate 17.3 |
+| I-54 | Bar input native focus drives ui-state focus holder | Tested (Phase 17) |
+| I-55 | Properties panel `layerId` dropdown sourced from `useLayers()` | Tested (Phase 18) |
+| I-56 | Layer Manager prevents rename/delete of `LayerId.DEFAULT` | Gate 18.4 |
+| I-57 | GeoRefDialog has "Set later"; drafting unblocked when null | Tested (Phase 18) |
+| I-58 | apps/web `CanvasArea` renders `<EditorRoot />` | Gate 19.2 |
+| I-59 | apps/web `StatusBar` includes geo-ref chip | Gate 19.3 |
+| I-60 | ADR-023 file exists with ACCEPTED + Supersedes ADR-022 + seven draw-tool rows | Gate 15.1 + 15.2 |
+| I-61 | ADR-022 moved to superseded folder with SUPERSEDED + Superseded by ADR-023 headers | Gate 15.3 + 15.4 |
+| I-62 | `docs/operator-shortcuts.md` registry exists with version + governance + draw-tool rows | Gate 15.5 |
+| I-63 | Both architecture contracts list ADR-023 in §0.2 binding table; neither references the OLD ADR-022 path | Gate 15.7a + 15.7b |
+| I-64 | ADR README updated — ADR-023 in main `## Index`, ADR-022 in `## Superseded ADRs` section | Gate 15.6 |
 
 ## 10. Test strategy
 
@@ -2046,7 +2310,7 @@ Gate 20.6: Module isolation grep gates pass
   layer seed; layer delete with reassign; emitOperation correctness;
   sequence monotonicity; clearOperationLog.
 - Project-store-react (Phase 7): hook stability + selector contract.
-- Editor-2d (Phases 8–17, 19, 20): view transform round-trip; per-kind
+- Editor-2d (Phases 8–14, 16–18, 20, 21): view transform round-trip; per-kind
   bbox; spatial index CRUD; paint smoke; per-painter capture
   assertions; bulge-arc rendering; hit-test per kind; UI state slices;
   keyboard router (focus matrix); snap tolerances; OSNAP / GSNAP /
@@ -2063,54 +2327,69 @@ Gate 20.6: Module isolation grep gates pass
 
 ## 11. Done Criteria — objective pass/fail
 
-All Phase 1–20 gates pass, plus:
+All Phase 1–21 gates pass. Each Done Criteria item below pairs a
+behavioural check with the executable gate / test that verifies it
+(per Codex Round-1 OI-4 — no manual-only UX checkpoints):
 
-- [ ] `docs/plans/feature/m1-3a-canvas-primitives-layers.md` exists,
-  is committed to `feature/m1-3a-canvas-primitives-layers`, and is
-  pushed to `origin`.
-- [ ] All seven primitive kinds round-trip through serialize/deserialize.
-- [ ] `Operation` ADR-020 shape lands; `ObjectSnapshot` typing flows
-  through TargetSnapshot union.
-- [ ] `ProjectObject` ADR-019 shape lands; uninstantiated in M1.3a
-  (no typed objects).
-- [ ] Default layer seeded on `createNewProject`; absent default
-  layer fails `hydrateProject`.
-- [ ] `emitOperation` is called by every primitive / layer / grid
-  action; sequence increases monotonically.
-- [ ] `packages/editor-2d` builds, types, lints, tests cleanly.
-- [ ] User can: open the app → "New Project" → see a blank canvas
-  with default grid → press `L` → click two points → see a line
-  rendered → save → reload → line still rendered.
-- [ ] User can: pan with middle-mouse-drag; zoom with wheel /
-  `Z` + Extents/Window/Previous; toggle F3 OSNAP / F8 Ortho /
-  F9 GSNAP / F12 Dynamic Input.
-- [ ] User can: open Layer Manager (LA), create a layer, set it
-  active, draw a primitive on it, toggle visibility.
-- [ ] User can: open Properties (Ctrl+1) for a selected primitive,
-  change its layer, change its color override.
-- [ ] User can: click "Not geo-referenced" chip in status bar,
-  see the GeoRefDialog placeholder, close it without setting,
-  continue drafting.
-- [ ] Three snap tolerances are not mixed at any use site (Gate
-  12.5 manual review acceptable for residual matches).
-- [ ] ADR-022 shortcut map contains the seven draw-tool rows; ADR-022
-  changelog `1.0.1`.
-- [ ] No `docs/handovers/` directory created; no `services/api`
-  scaffold; no `packages/viewer-3d` touched.
-- [ ] Module isolation grep gates (Gate 20.6) pass.
-- [ ] `pnpm test`, `pnpm typecheck`, `pnpm check`, `pnpm build` all
-  pass.
+- [ ] Plan file committed + pushed — verified by branch state at
+  closure (the very fact of this PR existing on `feature/m1-3a-canvas-primitives-layers`).
+- [ ] All seven primitive kinds round-trip — verified by Gate 2.2
+  (schema round-trip tests) + Gate 21.2 (smoke E2E persists each
+  kind through save/reload).
+- [ ] `Operation` ADR-020 shape — verified by Gate 3.1 + 3.2 + 3.3
+  + 3.4 + Gate 6.3 (operation-emit tests cover each `targetKind`).
+- [ ] `ProjectObject` ADR-019 shape — verified by Gate 4.1 + 4.2
+  + 4.3.
+- [ ] Default layer seeded; absent → hydrateProject fails — verified
+  by Gate 5.1 + Gate 7.1 (hydration test for orphan-layerId / missing-default).
+- [ ] `emitOperation` covers every entity action; sequence
+  monotonic — verified by Gate 6.2 + 6.4 + 6.5 (hard, after OI-2a
+  refactor).
+- [ ] `packages/editor-2d` builds / types / lints / tests cleanly
+  — verified by Gate 8.1 + Gate 21.3 + Gate 21.4 + Gate 21.5.
+- [ ] **Smoke E2E: New Project → press `L` → click two points →
+  line rendered → save → reload → line still rendered** — verified
+  by Gate 21.2 (the headline E2E scenario).
+- [ ] **Smoke E2E: middle-mouse pan, wheel zoom, `Z` Extents/Window/
+  Previous, F3/F8/F9/F12 toggles** — verified by Phase 21 expansion
+  to include these scenarios in the smoke E2E suite (added in Phase
+  21 step 2 below; Gate 21.2 grep widens to match these scenario
+  names).
+- [ ] **Smoke E2E: open LA → create layer → set active → draw
+  primitive → toggle visibility** — verified by Gate 21.2.
+- [ ] **Smoke E2E: open Properties (Ctrl+1) on a selection → change
+  layer → change color override** — verified by Gate 21.2.
+- [ ] **Smoke E2E: click geo-ref chip → GeoRefDialog opens → "Set
+  later" closes without setting → drafting continues** — verified
+  by Gate 17.3 (presence) + Gate 21.2 (full flow).
+- [ ] Three snap tolerances are not mixed at any use site —
+  verified by **hard, command-verifiable** Gates 12.5a + 12.5b +
+  12.5c (after OI-2b hardening).
+- [ ] **ADR-023 contains the seven draw-tool shortcut rows + ADR-022
+  is properly superseded + `docs/operator-shortcuts.md` registry
+  is the going-forward SSOT + both architecture contracts updated**
+  — verified by Gates 15.1 + 15.2 + 15.3 + 15.4 + 15.5 + 15.6 +
+  15.7a + 15.7b.
+- [ ] `keyboard/shortcuts.ts` registers the eight shortcut literals
+  (PT, L, PL, REC, CC, A, XL, XX) — verified by Gate 16.3.
+- [ ] No `docs/handovers/` directory; no `services/api` scaffold;
+  no `packages/viewer-3d` package — verified by `test ! -e
+  docs/handovers && test ! -e services/api && test ! -e packages/viewer-3d
+  && echo OK` (added as Gate 21.7 in the smoke pass).
+- [ ] Module isolation grep gates (Gate 21.6) pass.
+- [ ] `pnpm test`, `pnpm typecheck`, `pnpm check`, `pnpm build`
+  all pass — verified by Gate 21.1 + 21.3 + 21.4 + 21.5.
 
 ## 12. Risks and Mitigations
 
 | Risk | Mitigation |
 |------|------------|
 | `packages/editor-2d` is large (~30+ source files); review burden | Phased delivery with per-phase completion gates; each phase ships independently runnable tests; no phase requires the next to validate. |
-| Three-tolerance snap model easy to conflate | Three named modules (Phase 12); grep gate (Gate 12.5) flags suspected mixing; unit tests assert each layer's contract. |
+| Three-tolerance snap model easy to conflate | Three named modules (Phase 12); hard directory-scoped grep gates 12.5a/b/c (Codex Round-1 OI-2b hardening); unit tests assert each layer's contract. |
 | Operation emission first wired across all reducers (PI-1 risk) | Single `emitOperation` helper centralises shape; tests per action verify correct `targetKind` + before/after; sequence monotonicity test catches double-emission. |
 | Undo/redo for new entity kinds — zundo partialize scope unchanged | Partialize remains `project` slice; entity maps live inside `project`; undo / redo work transparently. Tested in `packages/project-store/tests/zundo.test.ts` (extended). |
 | Focus-holder bugs (canvas/bar/dialog routing) | Window-level single keydown handler (Gate 11.3); explicit routing table; per-transition tests; bypass keys covered. |
-| `C` collides with Copy and Circle in AutoCAD convention | M1.3a uses `CC` for Circle (Q5 final). Documented in ADR-022 shortcut map. |
+| `C` collides with Copy and Circle in AutoCAD convention | M1.3a uses `CC` for Circle (Q5 final). Documented in ADR-023 shortcut map and `docs/operator-shortcuts.md` registry. |
 | Bulge-encoded arc rendering / hit-test | Dedicated polyline-arc-segment painter + hit-test routines; tests with bulge ≠ 0 polylines. M1.3a draw tool only emits zero bulges (I-48); first non-zero source is M1.3b Fillet. |
 | DPR mismatch between paint and hit-test | Single `Viewport` value used by both; round-trip identity test (Gate 9.1). |
 | rbush bboxes too loose for rotated/bulge entities → false-positive frustum hits | Per-kind tight bbox calculator (Phase 9); xlines special-cased outside rbush; tests on rotated rectangles + bulge-arcs. |
@@ -2118,8 +2397,9 @@ All Phase 1–20 gates pass, plus:
 | Coordinate-system UX trap (M1.2 PI-2 framing) | Retired (A6). Drafting unblocked; geo-ref chip + dialog deferred to non-blocking discoverable affordance. |
 | `@flatten-js/core` + `rbush` are new deps | Pinned in Phase 8; `pnpm install` runs as part of scaffold gate; build gate (Gate 8.1) catches install failures. |
 | Multi-letter shortcut accumulator bugs (e.g., user types `L` then waits then `A` — Line followed by selection?) | Timeout-based accumulator (~750 ms inactivity flushes); tests around boundary cases. AutoCAD's exact behaviour is the reference. |
-| ADR-022 shortcut-map edit tension with §0.6 immutability | Surfaced as A2; accepted under ADR-022's self-described changelog-bump governance; user-approved 2026-04-25. |
-| Properties panel scope too broad → bloat | Limit to read-only display + layer/displayOverrides edit (A4 implicit; restated in Phase 17); deeper editing M1.3b. |
+| ADR-022 supersession adds 6 new docs files (ADR-023 + superseded mirror + registry + ADR README + Claude+Codex contract edits) | Mirrors drawing-model-pivot precedent (ADRs 002/010/013 → 019/020/021 + superseded mirrors); reviewers can navigate the chain via `Status: SUPERSEDED` + `Superseded by:` headers; Phase 15 gates 15.1–15.7b verify each artifact. Net cost is one extra docs phase; benefit is full §0.6 + §0.7 compliance and a sustainable shortcut SSOT (`docs/operator-shortcuts.md`) for future operator additions without touching ADR text. |
+| Cross-reference drift in future plans (M1.3b/c will write against ADR-023, not ADR-022) | ADR-022's superseded copy retains its content for historical lookup; the ADR-023 file's Cross-references section names ADR-016/017/018/019/020/021. M1.3b plan-review (Procedure 02 Round 1) catches stale ADR-022 references. |
+| Properties panel scope too broad → bloat | Limit to read-only display + layer/displayOverrides edit (A4 implicit; restated in Phase 18); deeper editing M1.3b. |
 | Layer Manager scope too broad → bloat | Limit to create/rename/recolor/visibility-frozen-locked/delete-with-reassign; no filters, no states, no print plots. |
 | Canvas paint performance with many entities | rbush frustum cull keeps per-frame work proportional to visible entities; xline list small; grid lattice clipped to viewport. M1.3a does not pre-optimise; profiling deferred until a real workload appears. |
 | Focus holder transitions on dialog close (return to previous) | Stack-of-focus model: opening dialog pushes; closing pops. Single-stack assumption (no nested dialogs in M1.3a) noted; nested dialogs deferred. |
