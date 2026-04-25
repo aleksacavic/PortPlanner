@@ -95,12 +95,17 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
   coordinate display. Multiple UCSs (rotated / translated drafting
   frames) are post-M1.
 - **A8 — Operation emission (PI-1 from M1.2 plan) wired in M1.3a.**
-  Every project-store mutation goes through a single `emitOperation()`
-  helper that captures before / after snapshots and pushes to an
-  in-memory operation log. Op-log persistence remains deferred per
-  ADR-014 M1 scope (full-project save is the M1 persistence path);
-  the in-memory log feeds zundo for undo / redo and is discarded on
-  reload.
+  Every entity-level mutation under
+  `packages/project-store/src/actions/` goes through a single
+  transactional `emitOperation(meta, mutator)` helper that captures
+  before / after snapshots, applies the mutator via
+  `projectStore.setState`, and pushes the resulting `Operation` to
+  an in-memory log. Whole-state replacement actions in
+  `actions.ts` (`createNewProject`, `hydrateProject`, `markSaved`)
+  bypass `emitOperation` legitimately. Op-log persistence remains
+  deferred per ADR-014 M1 scope (full-project save is the M1
+  persistence path); the in-memory log feeds zundo for undo / redo
+  and is discarded on reload.
 - **A9 — Schema break (M1.2 → M1.3a) under GR-1 clean-break rule.**
   `ProjectSchema.schemaVersion` bumps from `1.0.0` to `1.1.0` with no
   hydration shim. Old `1.0.0` projects are rejected by Zod with a
@@ -450,7 +455,7 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
 | `docs/design-tokens.md` | Audit — confirm canvas tokens exist for `snap_indicator`, `grid`, `background`, `selection_handle`, `dimension_preview`. If any are missing, append in same commit; if all present, no change. |
 | `docs/execution-plan.md` | No change — M1.3a sub-milestone scope already documented. |
 | `docs/extraction-registry/*` | No change. |
-| `docs/procedures/Claude/*`, `docs/procedures/Codex/*` | No change. |
+| Claude + Codex architecture contracts | **§0.2 binding table refreshed** — ADR-022 row removed, ADR-023 row added, supersession note appended (mirror discipline; both files identical). Phase 15 lands the edits. |
 | `docs/overview.md` | No change. |
 
 ## 4. Architecture Doc Impact
@@ -974,9 +979,13 @@ mutation produces an Operation record. Resolves M1.2 PI-1.
    promotion).
 
 **Invariants introduced:**
-- I-16: Every project-store mutation passes through `emitOperation`.
-  Enforced by grep gate that detects raw `state.project.<map>[id] =`
-  outside `emitOperation` call sites.
+- I-16: Every entity-level mutation in `actions/` goes through
+  `emitOperation`; `projectStore.setState` is forbidden inside
+  `actions/`. Whole-state replacement actions in `actions.ts`
+  (`createNewProject`, `hydrateProject`, `markSaved`) bypass
+  `emitOperation` legitimately and are excluded from the Gate 6.5
+  directory scope. Enforced by hard zero-match grep gate (Gate 6.5)
+  on `projectStore\.setState\b` within `packages/project-store/src/actions/`.
 - I-17: `Operation.sequence` is monotonically increasing within a
   session. Tested.
 - I-18: `clearOperationLog()` is called by `createNewProject` and
@@ -2161,8 +2170,9 @@ covers the headline user journey.
 **Steps:**
 1. Run full test suite (`pnpm test`).
 2. Author smoke E2E suite. Each scenario is a named `it(...)` test
-   inside `packages/editor-2d/tests/smoke-e2e.test.tsx`. Gate 21.2's
-   grep matches the scenario name strings:
+   inside `packages/editor-2d/tests/smoke-e2e.test.tsx`. The `it(...)`
+   name strings MUST match the verbatim grep patterns in Gates 21.2a–
+   21.2e exactly (one named `it` per gate, one gate per scenario):
    - **Scenario "draw line and reload":** mount `<EditorRoot />` in
      happy-dom; simulate `createNewProject` → assert default layer
      present; `keyDown('L')` → active tool = draw-line; canvas click
@@ -2198,9 +2208,28 @@ Gate 21.1: Full test suite passes
   Command: pnpm test
   Expected: all packages pass; no skipped without justification
 
-Gate 21.2: Smoke E2E passes
-  Command: pnpm --filter @portplanner/editor-2d test -- --grep "smoke-e2e|draw line.*reload|round-trip"
-  Expected: ≥1 test, passes
+Gate 21.2a: Smoke E2E "draw line and reload" passes
+  Command: pnpm --filter @portplanner/editor-2d test -- --grep "draw line and reload"
+  Expected: exactly 1 test matched, passes
+  Rationale: covers the headline draft-save-reload flow. Test name
+  string is the literal grep pattern; renaming the test breaks the
+  gate, which is the intended discipline.
+
+Gate 21.2b: Smoke E2E "pan zoom toggle" passes
+  Command: pnpm --filter @portplanner/editor-2d test -- --grep "pan zoom toggle"
+  Expected: exactly 1 test matched, passes
+
+Gate 21.2c: Smoke E2E "layer manager flow" passes
+  Command: pnpm --filter @portplanner/editor-2d test -- --grep "layer manager flow"
+  Expected: exactly 1 test matched, passes
+
+Gate 21.2d: Smoke E2E "properties edit" passes
+  Command: pnpm --filter @portplanner/editor-2d test -- --grep "properties edit"
+  Expected: exactly 1 test matched, passes
+
+Gate 21.2e: Smoke E2E "geo-ref chip non-blocking" passes
+  Command: pnpm --filter @portplanner/editor-2d test -- --grep "geo-ref chip non-blocking"
+  Expected: exactly 1 test matched, passes
 
 Gate 21.3: Typecheck passes
   Command: pnpm typecheck
@@ -2334,8 +2363,9 @@ behavioural check with the executable gate / test that verifies it
 - [ ] Plan file committed + pushed — verified by branch state at
   closure (the very fact of this PR existing on `feature/m1-3a-canvas-primitives-layers`).
 - [ ] All seven primitive kinds round-trip — verified by Gate 2.2
-  (schema round-trip tests) + Gate 21.2 (smoke E2E persists each
-  kind through save/reload).
+  (schema round-trip tests) + Gate 21.2a (smoke E2E "draw line and
+  reload" exercises the persist path; the schema round-trip test
+  already covers the other six kinds).
 - [ ] `Operation` ADR-020 shape — verified by Gate 3.1 + 3.2 + 3.3
   + 3.4 + Gate 6.3 (operation-emit tests cover each `targetKind`).
 - [ ] `ProjectObject` ADR-019 shape — verified by Gate 4.1 + 4.2
@@ -2349,19 +2379,16 @@ behavioural check with the executable gate / test that verifies it
   — verified by Gate 8.1 + Gate 21.3 + Gate 21.4 + Gate 21.5.
 - [ ] **Smoke E2E: New Project → press `L` → click two points →
   line rendered → save → reload → line still rendered** — verified
-  by Gate 21.2 (the headline E2E scenario).
+  by Gate 21.2a.
 - [ ] **Smoke E2E: middle-mouse pan, wheel zoom, `Z` Extents/Window/
-  Previous, F3/F8/F9/F12 toggles** — verified by Phase 21 expansion
-  to include these scenarios in the smoke E2E suite (added in Phase
-  21 step 2 below; Gate 21.2 grep widens to match these scenario
-  names).
+  Previous, F3/F8/F9/F12 toggles** — verified by Gate 21.2b.
 - [ ] **Smoke E2E: open LA → create layer → set active → draw
-  primitive → toggle visibility** — verified by Gate 21.2.
+  primitive → toggle visibility** — verified by Gate 21.2c.
 - [ ] **Smoke E2E: open Properties (Ctrl+1) on a selection → change
-  layer → change color override** — verified by Gate 21.2.
+  layer → change color override** — verified by Gate 21.2d.
 - [ ] **Smoke E2E: click geo-ref chip → GeoRefDialog opens → "Set
   later" closes without setting → drafting continues** — verified
-  by Gate 17.3 (presence) + Gate 21.2 (full flow).
+  by Gate 17.3 (presence) + Gate 21.2e (full flow).
 - [ ] Three snap tolerances are not mixed at any use site —
   verified by **hard, command-verifiable** Gates 12.5a + 12.5b +
   12.5c (after OI-2b hardening).
