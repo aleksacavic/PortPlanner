@@ -26,7 +26,7 @@ changes, a new ADR is written that references and supersedes the old one.
 | [019](019-object-model.md) | Object Model v2 | ACCEPTED |
 | [020](020-project-sync.md) | Project Sync and Offline Model v2 | ACCEPTED |
 | [021](021-2d-rendering-pipeline.md) | 2D Rendering Pipeline v2 | ACCEPTED |
-| [022](022-tool-state-machine-and-command-bar.md) | Tool State Machine and Command Bar | ACCEPTED |
+| [023](023-tool-state-machine-and-command-bar.md) | Tool State Machine and Command Bar (v2) | ACCEPTED |
 
 ## Format
 
@@ -75,6 +75,7 @@ repository for historical traceability but are not binding.
 | [002 Object Model Contract](superseded/002-object-model-superseded.md) | [019 Object Model v2](019-object-model.md) | 2026-04-23 |
 | [010 Project Sync and Offline Model](superseded/010-project-sync-superseded.md) | [020 Project Sync and Offline Model v2](020-project-sync.md) | 2026-04-23 |
 | [013 2D Rendering Pipeline](superseded/013-2d-rendering-pipeline-superseded.md) | [021 2D Rendering Pipeline v2](021-2d-rendering-pipeline.md) | 2026-04-23 |
+| [022 Tool State Machine and Command Bar](superseded/022-tool-state-machine-and-command-bar-superseded.md) | [023 Tool State Machine and Command Bar (v2)](023-tool-state-machine-and-command-bar.md) | 2026-04-25 |
 
 See [`superseded/README.md`](superseded/README.md) for the supersession
 procedure and folder purpose.

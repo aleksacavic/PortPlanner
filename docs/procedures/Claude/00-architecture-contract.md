@@ -46,13 +46,15 @@ All files in `docs/adr/` are binding.
 | 019 | Object Model v2 | `docs/adr/019-object-model.md` |
 | 020 | Project Sync and Offline Model v2 | `docs/adr/020-project-sync.md` |
 | 021 | 2D Rendering Pipeline v2 | `docs/adr/021-2d-rendering-pipeline.md` |
-| 022 | Tool State Machine and Command Bar | `docs/adr/022-tool-state-machine-and-command-bar.md` |
+| 023 | Tool State Machine and Command Bar (v2) | `docs/adr/023-tool-state-machine-and-command-bar.md` |
 
-> Previously bound ADRs 002, 010, and 013 have been superseded by
-> ADR-019, ADR-020, and ADR-021 respectively (2026-04-23). Superseded
-> ADRs live in the `docs/adr/superseded/` folder for historical context
-> and are not binding. See `docs/adr/README.md` §Superseded ADRs for the
-> supersession map.
+> Previously bound ADRs 002, 010, 013, and 022 have been superseded by
+> ADR-019, ADR-020, ADR-021, and ADR-023 respectively (latest
+> supersession 2026-04-25). Superseded ADRs live in the
+> `docs/adr/superseded/` folder for historical context and are not
+> binding. See `docs/adr/README.md` §Superseded ADRs for the
+> supersession map. The operator shortcut SSOT moved out of the ADR
+> body to `docs/operator-shortcuts.md` registry per ADR-023.
 
 **ADR rules:**
 - ADRs MUST NOT be edited. If a decision changes, a new ADR MUST be written
