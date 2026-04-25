@@ -139,3 +139,56 @@ specific interaction: move, rotate, or reshape.
 graph extraction from the road network. Can have a use type assigned
 (container stacks, empty yard, parking). Becomes the input polygon for the
 generator.
+
+## Drawing surface terms (M1.3a, ADRs 016–017, 023)
+
+**Primitive** — a first-class persistent geometry entity in the drafting
+surface. Seven kinds in M1.3a: point, line, polyline, rectangle, circle,
+arc, xline. Carries no ownership state and is not extracted. ADR-016.
+
+**Layer** — an organisational grouping for primitives, grids, dimensions,
+and typed objects. Carries default style (color, lineType, lineWeight) and
+visibility / frozen / locked flags. ADR-017.
+
+**Default layer** — the protected layer named `"0"` seeded on project
+creation. Cannot be deleted or renamed; orphan-id references fall back to
+it. ADR-017.
+
+**DisplayOverrides** — the open key-value bag on every entity that
+overrides ByLayer defaults: `{ color?, lineType?, lineWeight? }`. Missing
+key = inherit from layer; present key = explicit override. ADR-017.
+
+**Grid** — a first-class drafting-aid entity with origin, angle, X/Y
+spacings, layer membership, visibility, and `activeForSnap` flag. ADR-016.
+
+**Xline** — an infinite construction line defined by a pivot point and an
+angle. First-class primitive; layer membership controls visibility.
+ADR-016.
+
+**Bulge** — DXF-convention scalar `tan(θ/4)` encoding the included arc
+angle and direction (sign) of a polyline segment. `bulge === 0` means
+straight; positive bulge = CCW. ADR-016.
+
+**ByLayer** — effective-style resolution rule: `effective.<key> =
+displayOverrides.<key> ?? layer.<key>`. ADR-017.
+
+**OSNAP** — object snap. Cursor magnetises to specific geometric features
+of nearby entities (endpoint, midpoint, intersection, node). Remaining
+modes (center, perpendicular, tangent, parallel, quadrant, nearest,
+extension, apparent intersection) deferred to M1.3c. ADR-016, ADR-021.
+
+**GSNAP** — grid snap. Cursor magnetises to grid nodes (or grid lines as
+fallback). Multi-grid supported; `activeForSnap` flag per grid. ADR-016,
+ADR-021.
+
+**Ortho** — modifier that constrains cursor motion to ±X / ±Y of the
+active drafting frame (WCS in M1.3a — bay-axis / cross-bay-axis) relative
+to the previous point in a tool's prompt chain. M1.3a, F8 toggle.
+
+**Snap priority** — resolution order when multiple snap candidates apply
+(highest to lowest): OSNAP → OTRACK → POLAR → GSNAP → grid-line fallback.
+Ortho is a modifier applied after all snaps. ADR-016 §GSNAP ordering.
+
+**View transform** — pan + zoom + DPR transformation between project-local
+metric and screen pixels. Custom implementation in
+`packages/editor-2d/src/canvas/view-transform.ts`. ADR-021.
