@@ -17,6 +17,8 @@ export type {
   ObjectSnapshot,
   Operation,
   OperationType,
+  TargetKind,
+  TargetSnapshot,
   Point2D,
   PointPrimitive,
   PolylinePrimitive,

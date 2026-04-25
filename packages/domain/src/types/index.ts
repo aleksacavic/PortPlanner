@@ -9,7 +9,7 @@ export type {
 } from './layer';
 export { defaultLayer } from './layer';
 export type { ObjectSnapshot, ProjectObject } from './object';
-export type { Operation, OperationType } from './operation';
+export type { Operation, OperationType, TargetKind, TargetSnapshot } from './operation';
 export type {
   ArcPrimitive,
   CirclePrimitive,

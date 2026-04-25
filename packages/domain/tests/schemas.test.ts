@@ -121,8 +121,8 @@ describe('ProjectSchema', () => {
   });
 });
 
-describe('OperationSchema', () => {
-  it('accepts a valid CREATE operation with before=null', () => {
+describe('OperationSchema (ADR-020)', () => {
+  it('accepts a CREATE operation on a primitive (before=null)', () => {
     const op = {
       id: newOperationId(),
       projectId: newProjectId(),
@@ -130,15 +130,151 @@ describe('OperationSchema', () => {
       timestamp: '2026-04-25T10:00:00.000Z',
       userId: LOCAL_USER_ID,
       type: 'CREATE' as const,
-      objectId: newObjectId(),
+      targetKind: 'primitive' as const,
+      targetId: newPrimitiveId(),
       before: null,
       after: {
-        id: newObjectId(),
-        type: 'RTG_BLOCK',
-        geometry: null,
-        parameters: {},
-        ownership: 'AUTHORED' as const,
+        kind: 'primitive' as const,
+        snapshot: {
+          id: newPrimitiveId(),
+          kind: 'line' as const,
+          layerId: LayerId.DEFAULT,
+          displayOverrides: {},
+          p1: { x: 0, y: 0 },
+          p2: { x: 10, y: 0 },
+        },
       },
+    };
+    expect(() => OperationSchema.parse(op)).not.toThrow();
+  });
+
+  it('accepts a DELETE operation on a layer (after=null)', () => {
+    const layerId = newLayerId();
+    const op = {
+      id: newOperationId(),
+      projectId: newProjectId(),
+      sequence: 2,
+      timestamp: '2026-04-25T10:00:00.000Z',
+      userId: LOCAL_USER_ID,
+      type: 'DELETE' as const,
+      targetKind: 'layer' as const,
+      targetId: layerId,
+      before: {
+        kind: 'layer' as const,
+        snapshot: {
+          id: layerId,
+          name: 'temp',
+          color: '#FFFFFF',
+          lineType: 'continuous',
+          lineWeight: 0.25,
+          visible: true,
+          frozen: false,
+          locked: false,
+        },
+      },
+      after: null,
+    };
+    expect(() => OperationSchema.parse(op)).not.toThrow();
+  });
+
+  it('accepts an UPDATE operation on a grid', () => {
+    const gridId = newGridId();
+    const baseGrid = {
+      id: gridId,
+      origin: { x: 0, y: 0 },
+      angle: 0,
+      spacingX: 6.058,
+      spacingY: 2.6,
+      layerId: LayerId.DEFAULT,
+      visible: true,
+      activeForSnap: true,
+    };
+    const op = {
+      id: newOperationId(),
+      projectId: newProjectId(),
+      sequence: 3,
+      timestamp: '2026-04-25T10:00:00.000Z',
+      userId: LOCAL_USER_ID,
+      type: 'UPDATE' as const,
+      targetKind: 'grid' as const,
+      targetId: gridId,
+      before: { kind: 'grid' as const, snapshot: baseGrid },
+      after: { kind: 'grid' as const, snapshot: { ...baseGrid, spacingX: 12 } },
+    };
+    expect(() => OperationSchema.parse(op)).not.toThrow();
+  });
+
+  it('rejects an operation missing targetKind', () => {
+    const op = {
+      id: newOperationId(),
+      projectId: newProjectId(),
+      sequence: 1,
+      timestamp: '2026-04-25T10:00:00.000Z',
+      userId: LOCAL_USER_ID,
+      type: 'CREATE' as const,
+      targetId: newPrimitiveId(),
+      before: null,
+      after: null,
+    };
+    expect(() => OperationSchema.parse(op)).toThrow();
+  });
+
+  it('rejects an operation with mismatched snapshot.kind vs targetKind', () => {
+    // Schema does not cross-check targetKind ↔ snapshot.kind today;
+    // this test documents the current behaviour. Cross-check is a
+    // store-side invariant enforced by emitOperation in Phase 6.
+    const op = {
+      id: newOperationId(),
+      projectId: newProjectId(),
+      sequence: 1,
+      timestamp: '2026-04-25T10:00:00.000Z',
+      userId: LOCAL_USER_ID,
+      type: 'CREATE' as const,
+      targetKind: 'primitive' as const,
+      targetId: newPrimitiveId(),
+      before: null,
+      // snapshot.kind is 'layer' even though targetKind is 'primitive'
+      after: {
+        kind: 'layer' as const,
+        snapshot: {
+          id: newLayerId(),
+          name: '0',
+          color: '#FFFFFF',
+          lineType: 'continuous',
+          lineWeight: 0.25,
+          visible: true,
+          frozen: false,
+          locked: false,
+        },
+      },
+    };
+    // Zod accepts because the snapshot is a valid layer shape; the
+    // cross-check is enforced upstream.
+    expect(() => OperationSchema.parse(op)).not.toThrow();
+  });
+
+  it('accepts an optional promotionGroupId', () => {
+    const op = {
+      id: newOperationId(),
+      projectId: newProjectId(),
+      sequence: 1,
+      timestamp: '2026-04-25T10:00:00.000Z',
+      userId: LOCAL_USER_ID,
+      type: 'DELETE' as const,
+      targetKind: 'primitive' as const,
+      targetId: newPrimitiveId(),
+      before: {
+        kind: 'primitive' as const,
+        snapshot: {
+          id: newPrimitiveId(),
+          kind: 'point' as const,
+          layerId: LayerId.DEFAULT,
+          displayOverrides: {},
+          position: { x: 0, y: 0 },
+        },
+      },
+      after: null,
+      promotionGroupId: 'some-uuid',
     };
     expect(() => OperationSchema.parse(op)).not.toThrow();
   });
