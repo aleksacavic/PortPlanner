@@ -1,0 +1,16 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--surface-raised, #222);
+  color: var(--text-secondary, #aaa);
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.chip:hover {
+  color: var(--text-primary, #eee);
+}

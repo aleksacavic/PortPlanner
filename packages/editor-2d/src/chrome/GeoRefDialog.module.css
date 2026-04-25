@@ -1,0 +1,21 @@
+.dialog {
+  background: var(--surface-overlay, #1a1a1a);
+  color: var(--text-primary, #eee);
+  padding: 16px;
+  border: 1px solid var(--surface-border, #333);
+  max-width: 480px;
+}
+
+.body {
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.button {
+  margin-top: 12px;
+  background: var(--surface-raised, #2a2a2a);
+  color: inherit;
+  border: 1px solid var(--surface-border, #333);
+  padding: 6px 12px;
+  cursor: pointer;
+}
