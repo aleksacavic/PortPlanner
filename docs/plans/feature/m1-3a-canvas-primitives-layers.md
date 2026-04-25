@@ -2,7 +2,7 @@
 
 **Branch:** `feature/m1-3a-canvas-primitives-layers`
 **Author:** Claude (Opus 4.7, 1M context)
-**Date:** 2026-04-25 (Revision-3: 2026-04-26)
+**Date:** 2026-04-25 (Revision-3: 2026-04-26; Revision-4: 2026-04-26)
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after approval
 **Status:** Plan authored — awaiting review
 
@@ -55,6 +55,39 @@ docs and code land in the same M1.3a PR.
 > root and fire DOM events. Phase-22 work that landed in commits
 > `5917a7d` + `de1d3cd` was reverted (`728706a` + `4342202`) so it
 > can be re-executed under proper Procedure 03 phase discipline.
+
+> **Revision-4 note (2026-04-26).** Codex Round-4 plan review
+> returned No-Go at 8.7/10 with one Blocker (I-68 enforcement was
+> prose-only), two High-risk findings (Gate 21.2.disc was aggregate-
+> count rather than per-scenario strict; A18 wording was diluted by
+> the properties-edit scenario's action-API selection setup), and
+> one Quality gap (Gate 22.6 label / command mismatch). Revision-4
+> corrects all four:
+> (i) adds **Gate 22.7** — vitest meta-test
+> `packages/editor-2d/tests/store-isolation.test.ts` walks
+> `packages/editor-2d/src/` and asserts only `EditorRoot.tsx`
+> imports both `@portplanner/project-store` (bare; not `-react`)
+> AND `useEditorUi` / `editorUiStore`, hardening I-68 from prose
+> to a runnable gate per §1.8;
+> (ii) replaces Gate 21.2.disc with a per-scenario meta-test inside
+> `smoke-e2e.test.tsx` (`'every named scenario mounts EditorRoot
+> and fires DOM events'`) that reads the test file source, splits
+> on `it(`, and per-named-scenario verifies the block contains
+> both `render(<EditorRoot` AND `fireEvent.` — a single
+> concentrated scenario can no longer mask four action-API-only
+> peers;
+> (iii) narrows A18 into three explicit sub-clauses (**A18-assert**:
+> pass/fail asserted via DOM events; **A18-uistate**: UI-state
+> writes — selection, active tool, focus, viewport, F-key toggles
+> — driven via DOM; **A18-setup**: project-state seeding via the
+> action API permitted as test arrangement) and rewrites the
+> properties-edit scenario to drive selection through a canvas
+> `fireEvent.pointerDown` rather than `editorUiActions.setSelection`;
+> (iv) renames Gate 22.6 label to match its `pnpm --filter
+> @portplanner/web build` command.
+> Procedure 02 §2.4 amendment (positive rule: "MUST mount + fire
+> DOM events") is silent on setup and does NOT require re-narrowing.
+> No code changes; plan-only revision per §1.16 step 13.
 
 ## 2. Assumptions and scope clarifications
 
@@ -177,20 +210,38 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
   Manager modal + GeoRef chip. Until Phase 22 lands, the editor
   surface in the running app is non-interactive even though every
   underlying component passes its own tests.
-- **A18 — Smoke E2E discipline (Revision-3, Codex post-commit
-  Round-1 lesson).** Smoke E2E tests for milestones that produce a
-  runnable user-facing artifact MUST render the public component
-  root (here: `<EditorRoot />`) in jsdom and fire DOM events
-  (`fireEvent.keyDown`, `fireEvent.pointerDown` on the canvas
-  element). Action-API assertions (calling `addPrimitive(...)`,
-  `editorUiActions.setSelection(...)`, etc.) are unit-level coverage
-  and DO NOT satisfy the smoke gate. Revision-3 rewrites the Phase
-  21 scenarios to follow this rule and amends Procedure 02 with the
-  same constraint so the next milestone with a UI artifact does not
-  replay this miss. Action-API coverage already exists inside the
-  per-module test files (tools-essential, draw-tools, etc.) — Phase
-  21 keeps those at unit-level and replaces its own scenarios with
-  DOM-level mounts.
+- **A18 — Smoke E2E discipline (Revision-3 + Revision-4 narrowing).**
+  Smoke E2E tests for milestones that produce a runnable user-facing
+  artifact MUST render the public component root (`<EditorRoot />`)
+  in jsdom and exercise three layers per scenario:
+  - **A18-assert.** The pass/fail assertion path MUST be observed
+    via DOM events (`fireEvent.keyDown`, `fireEvent.pointerDown`,
+    `fireEvent.click`, `fireEvent.change`, `fireEvent.wheel`, etc.).
+    Asserting against `editorUiStore.getState()` after calling
+    `editorUiActions.X(...)` directly does NOT satisfy the smoke
+    gate.
+  - **A18-uistate.** UI-state mutations (selection, active tool,
+    focus holder, viewport pan / zoom, F-key toggles) MUST be
+    DOM-driven inside a smoke scenario. Calling
+    `editorUiActions.set...()` to flip UI state during the act /
+    assert phase is forbidden at smoke level.
+  - **A18-setup (permitted).** Project-state SEEDING via the action
+    API (e.g. one `addPrimitive(...)` call to arrange a primitive
+    the scenario will then interact with) is legitimate test
+    arrangement, consistent with vitest's standard arrange / act /
+    assert pattern. The smoke discipline governs act + assert; it
+    does NOT prohibit arrange.
+  Revision-3 rewrote Phase 21 to mount `<EditorRoot />` and fire DOM
+  events; Revision-4 narrows the wording so the properties-edit
+  scenario's primitive seeding is unambiguously legitimate while
+  still requiring the selection step itself to come from a canvas
+  `fireEvent.pointerDown` rather than `editorUiActions.setSelection`
+  (per A18-uistate). Procedure 02 §2.4 amendment is a positive rule
+  ("MUST mount + fire DOM events") that is silent on setup, so it
+  does not need re-narrowing in this revision. Action-API coverage
+  already exists inside per-module unit tests (tools-essential,
+  draw-tools, etc.) — Phase 21 keeps those at unit level and uses
+  DOM-level mounts in its own scenarios.
 
 ## 3. Scope and Blast Radius
 
@@ -2228,7 +2279,15 @@ satisfy these gates per A18.
   test names remain `'draw line and reload'`, `'pan zoom toggle'`,
   `'layer manager flow'`, `'properties edit'`,
   `'geo-ref chip non-blocking'` so existing Gate 21.2a–e patterns
-  continue to apply)
+  continue to apply; **Revision-4** also adds an in-file discipline
+  meta-test `'every named scenario mounts EditorRoot and fires DOM
+  events'` that reads its own source via
+  `readFileSync(fileURLToPath(import.meta.url))` (or `__filename`
+  equivalent), splits on `it(`, and per-scenario asserts the block
+  contains `render(<EditorRoot` AND `fireEvent.` — drives the
+  Revision-4 per-scenario form of Gate 21.2.disc. The five named
+  scenarios live in a single `const SCENARIOS = [...]` constant in
+  the same file as the SSOT.)
 - `apps/web/tests/setup.ts` (modified — add `ResizeObserver` shim
   for jsdom; required by `EditorRoot`'s container size observer.
   Same shim added to `packages/editor-2d/tests/setup.ts`.)
@@ -2283,29 +2342,61 @@ satisfy these gates per A18.
      click two points; assert the resulting primitive's `layerId`
      matches the new active layer.
    - **`properties edit`:** create one primitive via the action API
-     (legitimate test setup); `editorUiActions.setSelection([id])`;
-     mount → assert the Properties panel renders the primitive's
-     fields; fire `change` on the layer dropdown → assert
-     `primitive.layerId` updates via the public API; fire `change` on
-     the color input → assert `displayOverrides.color` updates.
+     as test arrangement (A18-setup, permitted); mount; drive
+     selection via a canvas `fireEvent.pointerDown(canvas, { button:
+     0, clientX, clientY })` at the primitive's screen coordinate
+     (A18-uistate — selection is a UI-state write, so it MUST come
+     from a DOM event, not `editorUiActions.setSelection`); assert
+     the Properties panel renders the primitive's fields
+     (A18-assert); fire `change` on the layer dropdown → assert
+     `primitive.layerId` updates via the public API (A18-assert);
+     fire `change` on the color input → assert
+     `displayOverrides.color` updates (A18-assert).
    - **`geo-ref chip non-blocking`:** find the chip via
      `getByText('Not geo-referenced')`; `fireEvent.click(chip)` →
      assert GeoRefDialog renders; `fireEvent.click(getByText('Set
      later'))` → assert dialog gone, `coordinateSystem` still null;
      immediately fire `keyDown(window, { key: 'L' })` and a canvas
      pointerDown to verify drafting still works.
-3. Run `pnpm typecheck`; zero errors.
-4. Run `pnpm check` (Biome); zero issues.
-5. Run `pnpm build`; success.
+3. **Author the discipline meta-test (Revision-4).** Inside the same
+   `smoke-e2e.test.tsx`, add `describe('smoke E2E discipline (A18 /
+   Revision-4)')` containing
+   `it('every named scenario mounts EditorRoot and fires DOM
+   events', () => { ... })`. The meta-test:
+   - Reads its own source via `readFileSync(fileURLToPath(
+     import.meta.url), 'utf8')` (or `__filename` equivalent — vitest
+     supports both shapes).
+   - Splits the source on the `it(` token.
+   - For each name in
+     `const SCENARIOS = ['draw line and reload', 'pan zoom toggle',
+     'layer manager flow', 'properties edit', 'geo-ref chip
+     non-blocking']` (single SSOT in the same file), locates the
+     `it(...)` block whose name string starts with that scenario
+     name and asserts the block body contains `render(<EditorRoot`
+     AND `fireEvent.` (regex match on each).
+   - Asserts every scenario in `SCENARIOS` was found exactly once.
+   This is per-scenario structural enforcement of A18-assert +
+   A18-uistate, replacing the Revision-3 aggregate-count form.
+4. Run `pnpm typecheck`; zero errors.
+5. Run `pnpm check` (Biome); zero issues.
+6. Run `pnpm build`; success.
 
-**Invariants introduced (Revision-3):**
+**Invariants introduced (Revision-3, narrowed in Revision-4):**
 - I-A18-1: smoke E2E scenarios MUST mount the public component root
-  via `render(<EditorRoot />)` and MUST fire DOM events. Gate 21.2x
-  passing requires the test body to contain a `render(` call AND a
-  `fireEvent` call. Hard grep gate (see Gate 21.2.disc below).
-- I-A18-2: action-API scenarios at smoke level are forbidden; the
-  rule "test names that match 21.2a–e MUST be DOM-level" is
-  enforced by Gate 21.2.disc.
+  via `render(<EditorRoot />)` and MUST fire DOM events
+  per-scenario. Three sub-clauses apply (per A18, Revision-4):
+  **A18-assert** (assertion path is DOM-driven), **A18-uistate**
+  (UI-state writes are DOM-driven), **A18-setup** (project-state
+  seeding via the action API permitted as test arrangement).
+  Enforced by Gate 21.2.disc — a per-scenario vitest meta-test
+  that, for each name in the in-file `SCENARIOS` constant, asserts
+  the scenario block contains BOTH `render(<EditorRoot` AND
+  `fireEvent.`. Hard, runnable, per-scenario.
+- I-A18-2: action-API smoke gates are forbidden for assertion paths
+  and UI-state writes (A18-assert + A18-uistate); project-state
+  seeding via the action API is permitted setup only (A18-setup).
+  Enforced by Gate 21.2.disc per-scenario meta-test + Procedure 02
+  §2.4 amendment.
 
 **Mandatory Completion Gates:**
 
@@ -2334,14 +2425,24 @@ Gate 21.2e: Smoke E2E "geo-ref chip non-blocking" passes
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "geo-ref chip non-blocking"
   Expected: exactly 1 test matched, passes
 
-Gate 21.2.disc: Smoke E2E discipline — every scenario mounts the
-                component root + fires DOM events (Revision-3 / A18).
-  Command: rg -c "render\(<EditorRoot" packages/editor-2d/tests/smoke-e2e.test.tsx && rg -c "fireEvent\." packages/editor-2d/tests/smoke-e2e.test.tsx
-  Expected: ≥5 matches in first command (one render per scenario);
-            ≥10 matches in second (multiple fireEvent calls per scenario).
-  Rationale: prevents the Codex Round-1 post-commit miss from
-             recurring — gates pass only when the test body actually
-             renders the React tree and fires DOM events.
+Gate 21.2.disc: Smoke E2E per-scenario discipline (Revision-4 — replaces
+                the Revision-3 aggregate-count form per Codex Round-4
+                High-risk finding).
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/smoke-e2e -t "every named scenario mounts EditorRoot and fires DOM events"
+  Expected: exactly 1 test passes. The meta-test inside
+            `smoke-e2e.test.tsx` reads its own source, splits on
+            `it(`, and for each of the five named scenarios in the
+            in-file `SCENARIOS` constant (`draw line and reload`,
+            `pan zoom toggle`, `layer manager flow`,
+            `properties edit`, `geo-ref chip non-blocking`) asserts
+            the scenario block contains BOTH `render(<EditorRoot`
+            AND `fireEvent.`. Per-scenario structural enforcement —
+            a single concentrated scenario can no longer mask four
+            action-API-only peers.
+  Rationale: structural per-scenario enforcement of A18-assert +
+             A18-uistate; behavioural correctness still verified
+             independently by Gates 21.2a–e (each named scenario
+             must pass its own behavioural assertions).
 
 Gate 21.3: Typecheck passes
   Command: pnpm typecheck
@@ -2385,6 +2486,12 @@ smoke gates green.
   StrictMode double-effect-invocation + multi-mount test scenarios.)
 - `apps/web/tests/setup.ts` (modified — `ResizeObserver` shim for
   jsdom; landed in Phase 21 step 1 but verified again here.)
+- `packages/editor-2d/tests/store-isolation.test.ts` (new,
+  Revision-4 — meta-test enforcing I-68 per Gate 22.7. Walks
+  `packages/editor-2d/src/` recursively, identifies any `.ts` /
+  `.tsx` file that imports both `@portplanner/project-store` (bare;
+  not `-react`) AND `useEditorUi` / `editorUiStore`, asserts the
+  offender list excludes everything except `EditorRoot.tsx`.)
 
 **Steps:**
 1. Rewrite `EditorRoot`:
@@ -2423,6 +2530,22 @@ smoke gates green.
 4. Run the Phase 21 smoke E2E suite — all five scenarios MUST now pass
    (they failed against the Phase-8 placeholder; they pass against the
    wired EditorRoot).
+5. **Author the I-68 store-isolation meta-test (Revision-4).** Create
+   `packages/editor-2d/tests/store-isolation.test.ts`:
+   - Walk `packages/editor-2d/src/` recursively (Node `fs.readdirSync`
+     + recursive helper), collecting every `.ts` / `.tsx` file path.
+   - For each file, read its contents and regex-test for BOTH
+     `from ['"]@portplanner/project-store['"]` (the bare package
+     import — `rg`'s closing-quote semantics already exclude
+     `-react`) AND `useEditorUi|editorUiStore`.
+   - Push any file matching both patterns to an `offenders` array,
+     except `packages/editor-2d/src/EditorRoot.tsx` (the
+     legitimate dual-store subscriber per I-68).
+   - Assert `expect(offenders).toEqual([])`.
+   The test is the single source of truth for I-68 enforcement;
+   import-source-string match cannot be aliased, so adding
+   `import { projectStore as ps } from '@portplanner/project-store'`
+   still trips the gate.
 
 **Invariants introduced:**
 - I-65: `EditorRoot` registers exactly one keyboard-router instance
@@ -2437,8 +2560,10 @@ smoke gates green.
   scenarios (DOM-level).
 - I-68: `EditorRoot` is the only file that subscribes to BOTH the
   project store (via `projectStore` directly) and the editor-2d UI
-  state store (via `useEditorUi`). Lower-level files subscribe to one
-  or the other, never both. Documented; no automated gate.
+  state store (via `useEditorUi` / `editorUiStore`). Lower-level
+  files subscribe to one or the other, never both. **Enforced by
+  Gate 22.7** (vitest meta-test, Revision-4 hardening per Codex
+  Round-4 Blocker).
 
 **Mandatory Completion Gates:**
 
@@ -2463,16 +2588,39 @@ Gate 22.5: Phase 21 smoke E2E (all five DOM-level scenarios) passes
   Command: pnpm --filter @portplanner/editor-2d test -- tests/smoke-e2e
   Expected: 5 / 5 tests pass
 
-Gate 22.6: pnpm dev launches without throwing on initial render
+Gate 22.6: pnpm web build succeeds (module-graph + JSX compile proxy)
   Command: pnpm --filter @portplanner/web build
-  Expected: build success (no SSR; build is a proxy for "module graph
-            resolves and JSX compiles"; the actual `pnpm dev` smoke
-            check is a manual review item per A18 procedure note)
+  Expected: build success across the web app and its workspace deps.
+            Build success is the proxy enforcement that the module
+            graph resolves and JSX compiles end-to-end. Manual
+            `pnpm dev` boot inspection is a separate review item,
+            not a gate (label aligned with command per Codex Round-4
+            Quality gap).
+
+Gate 22.7: I-68 — only EditorRoot subscribes to both stores
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/store-isolation -t "only EditorRoot imports both projectStore and useEditorUi"
+  Expected: exactly 1 test passes. The meta-test
+            `packages/editor-2d/tests/store-isolation.test.ts`
+            walks `packages/editor-2d/src/` recursively, and for
+            each `.ts` / `.tsx` file checks whether it matches BOTH
+            `from '@portplanner/project-store'` (bare; rg/regex
+            quote semantics already exclude `-react`) AND
+            `useEditorUi|editorUiStore`. Any matching file other
+            than `EditorRoot.tsx` is appended to an `offenders`
+            array; the test asserts `offenders === []`. Source-
+            string match cannot be aliased.
+  Rationale: I-68 ("EditorRoot is the only file subscribing to both
+             stores") demoted from prose-only documentation to a
+             hard, runnable gate per Codex Round-4 Blocker
+             classification + Procedure 01 §1.8 ("no policy without
+             enforcement").
 ```
 
-**Tests added:** none in this phase directly — Phase 21 owns the
-DOM-level smoke tests. The Phase 22 gates verify the wiring exists;
-the Phase 21 gates verify it works.
+**Tests added:** Phase 21 owns the DOM-level smoke tests; Phase 22
+adds one structural meta-test —
+`packages/editor-2d/tests/store-isolation.test.ts` (Revision-4) —
+which enforces I-68 per Gate 22.7. The Phase 22 gates verify the
+wiring exists; the Phase 21 gates verify it works.
 
 ## 9. Invariants summary
 
@@ -2542,12 +2690,12 @@ the Phase 21 gates verify it works.
 | I-62 | `docs/operator-shortcuts.md` registry exists with version + governance + draw-tool rows | Gate 15.5 |
 | I-63 | Both architecture contracts list ADR-023 in §0.2 binding table; neither references the OLD ADR-022 path | Gate 15.7a + 15.7b |
 | I-64 | ADR README updated — ADR-023 in main `## Index`, ADR-022 in `## Superseded ADRs` section | Gate 15.6 |
-| I-A18-1 | Smoke E2E scenarios mount `<EditorRoot />` + fire DOM events (no action-API smoke) | Gate 21.2.disc |
-| I-A18-2 | Action-API tests at smoke level are forbidden | Gate 21.2.disc + Procedure 02 amendment |
+| I-A18-1 | Smoke E2E scenarios mount `<EditorRoot />` + fire DOM events per-scenario (assertion path DOM-level; UI-state writes DOM-driven; project-state seeding via action API permitted as setup) | Gate 21.2.disc (per-scenario meta-test, Revision-4) |
+| I-A18-2 | Action-API smoke gates are forbidden for assertion paths and UI-state writes; project-state seeding via the action API is permitted setup (A18-setup) | Gate 21.2.disc + Procedure 02 §2.4 amendment |
 | I-65 | `EditorRoot` registers exactly one keyboard router per mount; idempotent re-register on remount | Gate 22.2 + 22.3 |
 | I-66 | `EditorRoot` mounts `<CanvasHost>`, `<CommandBar>`, `<PropertiesPanel>`; LayerManager + GeoRef on demand | Gate 22.1 |
 | I-67 | Canvas left-click → tool runner; middle-drag → pan; wheel → zoom; tool isolation preserved | Gate 22.4 + Gate 21.2b/c (smoke) |
-| I-68 | `EditorRoot` is the only file subscribing to both `projectStore` and `editorUiStore` | Documented (Phase 22 prose) |
+| I-68 | `EditorRoot` is the only file subscribing to both `projectStore` and `editorUiStore` | Gate 22.7 (vitest meta-test, Revision-4) |
 
 ## 10. Test strategy
 
@@ -2586,9 +2734,12 @@ the Phase 21 gates verify it works.
 
 All Phase 1–22 gates pass. Each Done Criteria item below pairs a
 behavioural check with the executable gate / test that verifies it
-(per Codex Round-1 OI-4 + Revision-3 A18 — every smoke item below maps
-to a DOM-level Phase 21 gate that mounts `<EditorRoot />` and fires
-DOM events; no manual-only UX checkpoints; no action-API substitutes):
+(per Codex Round-1 OI-4 + Revision-3 A18 + Revision-4 narrowing —
+every smoke item below maps to a DOM-level Phase 21 gate that mounts
+`<EditorRoot />` and fires DOM events per-scenario; no manual-only UX
+checkpoints; no action-API substitutes for assertion paths or
+UI-state writes; project-state seeding via action API permitted as
+test arrangement only):
 
 - [ ] Plan file committed + pushed — verified by branch state at
   closure (the very fact of this PR existing on `feature/m1-3a-canvas-primitives-layers`).
@@ -2641,9 +2792,20 @@ DOM events; no manual-only UX checkpoints; no action-API substitutes):
   keyboard router registered; pointer events route into the active
   tool runner.** Verified by Gates 22.1 + 22.2 + 22.4. Behavioural
   end-to-end verified by Gates 21.2a–e (DOM-level smoke).
-- [ ] **Smoke E2E discipline (Revision-3 / A18):** every Phase 21
-  scenario mounts `<EditorRoot />` and fires DOM events; action-API
-  scenarios at smoke level are forbidden. Verified by Gate 21.2.disc.
+- [ ] **I-68 (dual-store subscription confined to `EditorRoot.tsx`)
+  is hard-enforced (Revision-4).** Verified by Gate 22.7 — the
+  `store-isolation.test.ts` meta-test walks
+  `packages/editor-2d/src/` and asserts no file other than
+  `EditorRoot.tsx` imports both `@portplanner/project-store` (bare)
+  and `useEditorUi` / `editorUiStore`.
+- [ ] **Smoke E2E per-scenario discipline (Revision-3 + Revision-4 /
+  A18).** Every Phase 21 named scenario mounts `<EditorRoot />` and
+  fires DOM events per-scenario (the in-file discipline meta-test
+  asserts `render(<EditorRoot` + `fireEvent.` presence in each of
+  the five `SCENARIOS`); assertion paths and UI-state writes are
+  DOM-driven (A18-assert + A18-uistate); project-state seeding via
+  the action API is permitted setup only (A18-setup). Verified by
+  Gate 21.2.disc (per-scenario meta-test, Revision-4).
 - [ ] **Procedure 02 amendment** committed in the same PR — adds the
   rule "smoke / E2E for runnable-artifact milestones MUST mount the
   public component root and fire DOM events" to both
@@ -2655,7 +2817,7 @@ DOM events; no manual-only UX checkpoints; no action-API substitutes):
 | Risk | Mitigation |
 |------|------------|
 | `packages/editor-2d` is large (~30+ source files); review burden | Phased delivery with per-phase completion gates; each phase ships independently runnable tests; no phase requires the next to validate. |
-| **Integration-test class of miss (Revision-3, Codex post-commit Round-1 lesson).** Smoke gates that test the action API instead of the React tree pass procedure-review without proving user acceptance — exactly the failure mode that put the Phase-8 EditorRoot placeholder into production. | Phase 21 rewritten to mount `<EditorRoot />` in jsdom and fire DOM events. Gate 21.2.disc (hard grep) enforces `render(<EditorRoot` + `fireEvent.` calls in the smoke file. Procedure 02 amendment (separate doc commit, same PR) adds the rule globally so the next UI milestone does not replay this. |
+| **Integration-test class of miss (Revision-3, Codex post-commit Round-1 lesson; Revision-4 hardening on Codex Round-4 finding).** Smoke gates that test the action API instead of the React tree pass procedure-review without proving user acceptance — exactly the failure mode that put the Phase-8 EditorRoot placeholder into production. Aggregate-count discipline gates can also miss action-API-only scenarios when other scenarios are concentrated. | Phase 21 rewritten to mount `<EditorRoot />` in jsdom and fire DOM events. **Gate 21.2.disc (Revision-4)** is now a per-scenario meta-test that, for each of the five named `SCENARIOS`, asserts the scenario block contains both `render(<EditorRoot` AND `fireEvent.` — concentrated coverage in one scenario can no longer mask action-API-only peers. A18 is split into A18-assert / A18-uistate / A18-setup so legitimate project-state seeding is unambiguous while UI-state writes and assertion paths remain DOM-driven. Procedure 02 §2.4 amendment (separate doc commit, same PR) adds the positive "MUST mount + fire DOM events" rule globally. |
 | Three-tolerance snap model easy to conflate | Three named modules (Phase 12); hard directory-scoped grep gates 12.5a/b/c (Codex Round-1 OI-2b hardening); unit tests assert each layer's contract. |
 | Operation emission first wired across all reducers (PI-1 risk) | Single `emitOperation` helper centralises shape; tests per action verify correct `targetKind` + before/after; sequence monotonicity test catches double-emission. |
 | Undo/redo for new entity kinds — zundo partialize scope unchanged | Partialize remains `project` slice; entity maps live inside `project`; undo / redo work transparently. Tested in `packages/project-store/tests/zundo.test.ts` (extended). |
