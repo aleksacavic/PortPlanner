@@ -3,6 +3,13 @@
 
 import type { ToolId } from '../keyboard/shortcuts';
 import { copyTool } from './copy';
+import { drawArcTool } from './draw/draw-arc';
+import { drawCircleTool } from './draw/draw-circle';
+import { drawLineTool } from './draw/draw-line';
+import { drawPointTool } from './draw/draw-point';
+import { drawPolylineTool } from './draw/draw-polyline';
+import { drawRectangleTool } from './draw/draw-rectangle';
+import { drawXlineTool } from './draw/draw-xline';
 import { eraseTool } from './erase';
 import { escapeTool } from './escape';
 import { layerManagerTool } from './layer-manager';
@@ -27,6 +34,13 @@ const ESSENTIAL_REGISTRY: Partial<Record<ToolId, () => ToolGenerator>> = {
   properties: propertiesTool,
   'layer-manager': layerManagerTool,
   escape: escapeTool,
+  'draw-point': drawPointTool,
+  'draw-line': drawLineTool,
+  'draw-polyline': drawPolylineTool,
+  'draw-rectangle': drawRectangleTool,
+  'draw-circle': drawCircleTool,
+  'draw-arc': drawArcTool,
+  'draw-xline': drawXlineTool,
 };
 
 export function lookupTool(id: ToolId): (() => ToolGenerator) | null {

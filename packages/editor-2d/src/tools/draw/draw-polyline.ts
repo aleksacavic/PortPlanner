@@ -1,0 +1,61 @@
+// Draw polyline. M1.3a polyline emits zero bulges only (I-48); non-zero
+// bulges enter via post-creation Fillet (M1.3b) or property edit (M1.3c).
+// Sub-options: Close (close the polyline at current vertex), Undo (drop
+// last vertex). End by Escape (commits open if >=2 vertices).
+
+import { LayerId, type Point2D, newPrimitiveId } from '@portplanner/domain';
+import { addPrimitive } from '@portplanner/project-store';
+
+import { editorUiStore } from '../../ui-state/store';
+import type { ToolGenerator } from '../types';
+
+export async function* drawPolylineTool(): ToolGenerator {
+  const start = yield { text: 'Specify start point', acceptedInputKinds: ['point'] };
+  if (start.kind !== 'point') return { committed: false, reason: 'aborted' };
+  const vertices: Point2D[] = [start.point];
+  let closed = false;
+
+  while (true) {
+    const next = yield {
+      text: 'Specify next point or [Close/Undo]',
+      subOptions: [
+        { label: 'Close', shortcut: 'c' },
+        { label: 'Undo', shortcut: 'u' },
+      ],
+      acceptedInputKinds: ['point', 'subOption'],
+    };
+    if (next.kind === 'subOption' && next.optionLabel === 'Close') {
+      if (vertices.length < 3) {
+        return { committed: false, reason: 'aborted' };
+      }
+      closed = true;
+      break;
+    }
+    if (next.kind === 'subOption' && next.optionLabel === 'Undo') {
+      if (vertices.length > 1) vertices.pop();
+      continue;
+    }
+    if (next.kind === 'point') {
+      vertices.push(next.point);
+      continue;
+    }
+    // Other input kinds: treat as commit-open intent.
+    break;
+  }
+
+  if (vertices.length < 2) return { committed: false, reason: 'aborted' };
+
+  const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;
+  // I-48: M1.3a draws straight segments; bulges all zero.
+  const bulges = new Array<number>(closed ? vertices.length : vertices.length - 1).fill(0);
+  addPrimitive({
+    id: newPrimitiveId(),
+    kind: 'polyline',
+    layerId,
+    displayOverrides: {},
+    vertices,
+    bulges,
+    closed,
+  });
+  return { committed: true, description: `polyline (${vertices.length} vertices)` };
+}
