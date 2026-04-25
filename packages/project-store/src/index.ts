@@ -6,4 +6,8 @@
 export { type ProjectStoreState, createInitialProjectStoreState } from './initial-state';
 export { projectStore } from './store';
 export { createNewProject, hydrateProject, markSaved } from './actions';
+export { addPrimitive, deletePrimitive, updatePrimitive } from './actions/primitive-actions';
+export { addLayer, deleteLayer, updateLayer } from './actions/layer-actions';
+export { addGrid, deleteGrid, updateGrid } from './actions/grid-actions';
+export { clearOperationLog, emitOperation, getOperationLog } from './operation-emit';
 export { resetProjectStoreForTests } from './test-utils';
