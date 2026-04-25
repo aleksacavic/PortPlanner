@@ -2357,10 +2357,16 @@ satisfy these gates per A18.
      assert GeoRefDialog renders; `fireEvent.click(getByText('Set
      later'))` → assert dialog gone, `coordinateSystem` still null;
      immediately fire `keyDown(window, { key: 'L' })` and a canvas
-     pointerDown to verify drafting still works.
-3. **Author the discipline meta-test (Revision-4).** Inside the same
-   `smoke-e2e.test.tsx`, add `describe('smoke E2E discipline (A18 /
-   Revision-4)')` containing
+     pointerDown to verify drafting still works. Compose the scenario
+     to render `<EditorRoot />` + `<StatusBarGeoRefChip />` as
+     siblings (the chip lives in `apps/web/src/shell/StatusBar.tsx`
+     in the running app per Phase 19; the smoke test mounts both so
+     a single render produces both surfaces — apps/web shell keeps
+     single chip ownership; **mid-execution Post-execution-note
+     refinement, see §13**).
+3. **Author the discipline meta-test (Revision-4, mid-execution
+   refinement per §13).** Inside the same `smoke-e2e.test.tsx`, add
+   `describe('smoke E2E discipline (A18 / Revision-4)')` containing
    `it('every named scenario mounts EditorRoot and fires DOM
    events', () => { ... })`. The meta-test:
    - Reads its own source via `readFileSync(fileURLToPath(
@@ -2372,8 +2378,12 @@ satisfy these gates per A18.
      'layer manager flow', 'properties edit', 'geo-ref chip
      non-blocking']` (single SSOT in the same file), locates the
      `it(...)` block whose name string starts with that scenario
-     name and asserts the block body contains `render(<EditorRoot`
-     AND `fireEvent.` (regex match on each).
+     name and asserts the block body contains `<EditorRoot` (as a
+     JSX usage anywhere in the block — relaxed from the strict
+     `render(<EditorRoot` literal so JSX wrappers around EditorRoot
+     are tolerated, e.g. `render(<><EditorRoot /><StatusBarGeoRefChip
+     /></>)` in the geo-ref scenario) AND `fireEvent.` (regex match
+     on each).
    - Asserts every scenario in `SCENARIOS` was found exactly once.
    This is per-scenario structural enforcement of A18-assert +
    A18-uistate, replacing the Revision-3 aggregate-count form.
@@ -2427,7 +2437,9 @@ Gate 21.2e: Smoke E2E "geo-ref chip non-blocking" passes
 
 Gate 21.2.disc: Smoke E2E per-scenario discipline (Revision-4 — replaces
                 the Revision-3 aggregate-count form per Codex Round-4
-                High-risk finding).
+                High-risk finding; mid-execution refinement per §13
+                relaxes the render-literal to a JSX-presence check so
+                JSX wrappers around EditorRoot are tolerated).
   Command: pnpm --filter @portplanner/editor-2d test -- tests/smoke-e2e -t "every named scenario mounts EditorRoot and fires DOM events"
   Expected: exactly 1 test passes. The meta-test inside
             `smoke-e2e.test.tsx` reads its own source, splits on
@@ -2435,14 +2447,19 @@ Gate 21.2.disc: Smoke E2E per-scenario discipline (Revision-4 — replaces
             in-file `SCENARIOS` constant (`draw line and reload`,
             `pan zoom toggle`, `layer manager flow`,
             `properties edit`, `geo-ref chip non-blocking`) asserts
-            the scenario block contains BOTH `render(<EditorRoot`
-            AND `fireEvent.`. Per-scenario structural enforcement —
-            a single concentrated scenario can no longer mask four
+            the scenario block contains BOTH `<EditorRoot` (JSX
+            usage — direct or inside a fragment / wrapper) AND
+            `fireEvent.`. Per-scenario structural enforcement — a
+            single concentrated scenario can no longer mask four
             action-API-only peers.
   Rationale: structural per-scenario enforcement of A18-assert +
              A18-uistate; behavioural correctness still verified
              independently by Gates 21.2a–e (each named scenario
-             must pass its own behavioural assertions).
+             must pass its own behavioural assertions). The relaxed
+             matcher is justified by Biome's automatic line wrapping
+             of multi-element JSX (`render(...)` calls split onto
+             multiple lines as soon as a fragment wraps the EditorRoot
+             — see §13 Post-execution notes).
 
 Gate 21.3: Typecheck passes
   Command: pnpm typecheck
@@ -2487,11 +2504,15 @@ smoke gates green.
 - `apps/web/tests/setup.ts` (modified — `ResizeObserver` shim for
   jsdom; landed in Phase 21 step 1 but verified again here.)
 - `packages/editor-2d/tests/store-isolation.test.ts` (new,
-  Revision-4 — meta-test enforcing I-68 per Gate 22.7. Walks
-  `packages/editor-2d/src/` recursively, identifies any `.ts` /
-  `.tsx` file that imports both `@portplanner/project-store` (bare;
-  not `-react`) AND `useEditorUi` / `editorUiStore`, asserts the
-  offender list excludes everything except `EditorRoot.tsx`.)
+  Revision-4 + mid-execution §13 refinement — meta-test enforcing
+  I-68 per Gate 22.7. Walks `packages/editor-2d/src/` recursively,
+  identifies any `.ts` / `.tsx` file that holds BOTH a subscription-
+  signal regex match for `\bprojectStore\.subscribe\(` /
+  `\bprojectStore\.temporal\.subscribe\(` AND a subscription-signal
+  match for `\buseEditorUi\(` / `\beditorUiStore\.subscribe\(`,
+  asserts the offender list excludes everything except
+  `EditorRoot.tsx`. One-shot `.getState()` reads in tool generators
+  are not subscriptions and do not trigger the gate.)
 
 **Steps:**
 1. Rewrite `EditorRoot`:
@@ -2530,22 +2551,32 @@ smoke gates green.
 4. Run the Phase 21 smoke E2E suite — all five scenarios MUST now pass
    (they failed against the Phase-8 placeholder; they pass against the
    wired EditorRoot).
-5. **Author the I-68 store-isolation meta-test (Revision-4).** Create
+5. **Author the I-68 store-isolation meta-test (Revision-4 + mid-
+   execution refinement per §13).** Create
    `packages/editor-2d/tests/store-isolation.test.ts`:
    - Walk `packages/editor-2d/src/` recursively (Node `fs.readdirSync`
      + recursive helper), collecting every `.ts` / `.tsx` file path.
    - For each file, read its contents and regex-test for BOTH
-     `from ['"]@portplanner/project-store['"]` (the bare package
-     import — `rg`'s closing-quote semantics already exclude
-     `-react`) AND `useEditorUi|editorUiStore`.
+     subscription signals (NOT mere imports — see §13):
+     - **subscribesProject** = `\bprojectStore\.subscribe\(` OR
+       `\bprojectStore\.temporal\.subscribe\(` matches the file.
+       One-shot reads via `projectStore.getState()` or
+       `projectStore.temporal.getState()` are NOT subscriptions and
+       do NOT trigger the gate (this is what makes tools/copy.ts,
+       tools/undo.ts, tools/redo.ts, tools/move.ts legitimate
+       non-offenders despite their cross-store reads).
+     - **subscribesUi** = `\buseEditorUi\(` OR
+       `\beditorUiStore\.subscribe\(` matches the file.
    - Push any file matching both patterns to an `offenders` array,
      except `packages/editor-2d/src/EditorRoot.tsx` (the
      legitimate dual-store subscriber per I-68).
    - Assert `expect(offenders).toEqual([])`.
-   The test is the single source of truth for I-68 enforcement;
-   import-source-string match cannot be aliased, so adding
-   `import { projectStore as ps } from '@portplanner/project-store'`
-   still trips the gate.
+   The test is the single source of truth for I-68 enforcement.
+   The subscription-signal regex precisely captures I-68's wording
+   ("subscribing to BOTH"). The bare-import form proposed in the
+   Revision-4 plan text was overly broad and would have flagged
+   legitimate one-shot tool generators; the §13 mid-execution
+   refinement narrows the regex without weakening the invariant.
 
 **Invariants introduced:**
 - I-65: `EditorRoot` registers exactly one keyboard-router instance
@@ -2559,11 +2590,16 @@ smoke gates green.
   tool; wheel zooms without affecting the tool. Verified by Phase 21
   scenarios (DOM-level).
 - I-68: `EditorRoot` is the only file that subscribes to BOTH the
-  project store (via `projectStore` directly) and the editor-2d UI
-  state store (via `useEditorUi` / `editorUiStore`). Lower-level
-  files subscribe to one or the other, never both. **Enforced by
-  Gate 22.7** (vitest meta-test, Revision-4 hardening per Codex
-  Round-4 Blocker).
+  project store (via `projectStore.subscribe(` or
+  `projectStore.temporal.subscribe(`) and the editor-2d UI state
+  store (via `useEditorUi(` or `editorUiStore.subscribe(`). One-
+  shot reads via `.getState()` are NOT subscriptions; lower-level
+  files (canvas-host, tool generators, chrome subscribers) hold at
+  most one subscription side. **Enforced by Gate 22.7** (vitest
+  meta-test, Revision-4 hardening per Codex Round-4 Blocker; mid-
+  execution §13 refinement narrowed the regex from import-presence
+  to subscription-signal so one-shot tool generators are not
+  flagged).
 
 **Mandatory Completion Gates:**
 
@@ -2598,22 +2634,28 @@ Gate 22.6: pnpm web build succeeds (module-graph + JSX compile proxy)
             Quality gap).
 
 Gate 22.7: I-68 — only EditorRoot subscribes to both stores
-  Command: pnpm --filter @portplanner/editor-2d test -- tests/store-isolation -t "only EditorRoot imports both projectStore and useEditorUi"
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/store-isolation -t "only EditorRoot subscribes to both projectStore and useEditorUi"
   Expected: exactly 1 test passes. The meta-test
             `packages/editor-2d/tests/store-isolation.test.ts`
             walks `packages/editor-2d/src/` recursively, and for
             each `.ts` / `.tsx` file checks whether it matches BOTH
-            `from '@portplanner/project-store'` (bare; rg/regex
-            quote semantics already exclude `-react`) AND
-            `useEditorUi|editorUiStore`. Any matching file other
-            than `EditorRoot.tsx` is appended to an `offenders`
-            array; the test asserts `offenders === []`. Source-
-            string match cannot be aliased.
+            **subscription signals** (NOT bare imports — see §13):
+            - `\bprojectStore\.subscribe\(` OR
+              `\bprojectStore\.temporal\.subscribe\(` AND
+            - `\buseEditorUi\(` OR `\beditorUiStore\.subscribe\(`.
+            One-shot reads via `.getState()` (used legitimately in
+            tools/copy.ts, tools/undo.ts, etc.) do NOT trigger the
+            gate. Any matching file other than `EditorRoot.tsx` is
+            appended to an `offenders` array; the test asserts
+            `offenders === []`.
   Rationale: I-68 ("EditorRoot is the only file subscribing to both
              stores") demoted from prose-only documentation to a
              hard, runnable gate per Codex Round-4 Blocker
              classification + Procedure 01 §1.8 ("no policy without
-             enforcement").
+             enforcement"). Mid-execution refinement (§13) narrowed
+             the regex from import-presence to subscription-signal
+             so legitimate one-shot tool generators are not flagged
+             as offenders.
 ```
 
 **Tests added:** Phase 21 owns the DOM-level smoke tests; Phase 22
@@ -2690,12 +2732,12 @@ wiring exists; the Phase 21 gates verify it works.
 | I-62 | `docs/operator-shortcuts.md` registry exists with version + governance + draw-tool rows | Gate 15.5 |
 | I-63 | Both architecture contracts list ADR-023 in §0.2 binding table; neither references the OLD ADR-022 path | Gate 15.7a + 15.7b |
 | I-64 | ADR README updated — ADR-023 in main `## Index`, ADR-022 in `## Superseded ADRs` section | Gate 15.6 |
-| I-A18-1 | Smoke E2E scenarios mount `<EditorRoot />` + fire DOM events per-scenario (assertion path DOM-level; UI-state writes DOM-driven; project-state seeding via action API permitted as setup) | Gate 21.2.disc (per-scenario meta-test, Revision-4) |
+| I-A18-1 | Smoke E2E scenarios mount `<EditorRoot />` + fire DOM events per-scenario (JSX-presence check, allows fragment / wrapper composition for chip companion); A18-assert + A18-uistate apply; A18-setup permitted | Gate 21.2.disc (per-scenario meta-test, Revision-4 + §13 refinement) |
 | I-A18-2 | Action-API smoke gates are forbidden for assertion paths and UI-state writes; project-state seeding via the action API is permitted setup (A18-setup) | Gate 21.2.disc + Procedure 02 §2.4 amendment |
 | I-65 | `EditorRoot` registers exactly one keyboard router per mount; idempotent re-register on remount | Gate 22.2 + 22.3 |
 | I-66 | `EditorRoot` mounts `<CanvasHost>`, `<CommandBar>`, `<PropertiesPanel>`; LayerManager + GeoRef on demand | Gate 22.1 |
 | I-67 | Canvas left-click → tool runner; middle-drag → pan; wheel → zoom; tool isolation preserved | Gate 22.4 + Gate 21.2b/c (smoke) |
-| I-68 | `EditorRoot` is the only file subscribing to both `projectStore` and `editorUiStore` | Gate 22.7 (vitest meta-test, Revision-4) |
+| I-68 | `EditorRoot` is the only file subscribing to both `projectStore` (via `.subscribe(` or `.temporal.subscribe(`) and the editor-2d UI store (via `useEditorUi(` or `editorUiStore.subscribe(`); one-shot `.getState()` reads do NOT count as subscriptions | Gate 22.7 (vitest meta-test, Revision-4 + §13 subscription-signal refinement) |
 
 ## 10. Test strategy
 
@@ -2855,3 +2897,98 @@ test arrangement only):
 > `docs/plans/feature/m1-3a-canvas-primitives-layers.md` on branch
 > `feature/m1-3a-canvas-primitives-layers`. After approval, invoke
 > Procedure 03 to begin execution from Phase 1 (domain types).
+
+---
+
+## 13. Post-execution notes (mid-execution refinements per §3.7 + §3.10)
+
+This section records refinements discovered during Procedure 03
+execution that were proposed in chat, reviewed, and acked before
+implementation continued. Per Procedure 03 §3.7 the plan file must
+reflect the true final state; the focused edits above already carry
+these refinements into the relevant phase / gate / invariant
+descriptions. This section is the auditor-friendly summary.
+
+### §13.1 Phase 22 Gate 22.7 regex — subscription-signal narrowing
+
+**Trigger.** Mid-Phase-22 audit of the existing M1.3a codebase
+(commits c9784a6..4fb4e5c) revealed the Revision-4 plan-literal
+implementation (regex matches bare `from '@portplanner/project-
+store'` AND `useEditorUi|editorUiStore`) would flag five legitimate
+non-offenders: `canvas-host.tsx` (single-side via `projectStore.
+subscribe(...)`) plus four tool generators (`tools/copy.ts`,
+`tools/move.ts`, `tools/undo.ts`, `tools/redo.ts`) that read both
+stores via one-shot `.getState()` calls but hold no long-lived
+subscription.
+
+**Decision.** Tighten Gate 22.7's regex to detect actual
+subscription signals only:
+
+| Side | Subscription regex | Rationale for not including… |
+|------|--------------------|------------------------------|
+| project-store | `\bprojectStore\.subscribe\(` OR `\bprojectStore\.temporal\.subscribe\(` | `projectStore.getState()` and `projectStore.temporal.getState().undo()` are one-shot accesses (used by tools/undo.ts, tools/redo.ts). They are not subscriptions and must not trigger the gate. |
+| editor-ui-store | `\buseEditorUi\(` OR `\beditorUiStore\.subscribe\(` | `editorUiStore.getState()` (used by tool generators reading `activeLayerId`, `selection`, etc.) is a one-shot read. The React-hook form `useEditorUi(...)` is the long-lived subscription path. |
+
+**Effect on existing files at HEAD before Phase 22:**
+
+- `canvas/canvas-host.tsx` — `projectStore.subscribe(...)` matches; no `useEditorUi(`. Single-side. Not an offender.
+- `tools/copy.ts`, `tools/move.ts` — `.getState()` only on both. Not offenders.
+- `tools/undo.ts`, `tools/redo.ts` — `projectStore.temporal.getState().undo()/redo()` (one-shot). Not offenders.
+- `chrome/CommandBar.tsx`, `chrome/PropertiesPanel.tsx`, `chrome/LayerManagerDialog.tsx` — `useEditorUi(` matches; no `projectStore.subscribe(`. Single-side (project-store side comes via the indirect React-hook layer in `@portplanner/project-store-react`, which I-68 explicitly excludes by saying "via `projectStore` directly"). Not offenders.
+- `EditorRoot.tsx` (after Phase 22) — both subscriptions present; exempted by filename.
+
+I-68's literal wording is unchanged ("subscribing to BOTH"). The
+gate now precisely captures that wording rather than the broad
+import proxy the Revision-4 plan text used.
+
+### §13.2 Phase 21 geo-ref smoke scenario — chip composition
+
+**Trigger.** Phase 21 rewrite (Revision-4) specifies the geo-ref
+scenario `find chip via getByText('Not geo-referenced')`. The chip
+component `<StatusBarGeoRefChip />` lives in
+`apps/web/src/shell/StatusBar.tsx` per Phase 19 (Gate 19.3 enforces
+the import). The smoke test renders `<EditorRoot />` only — the
+chip is not in EditorRoot's tree, so the scenario cannot find it.
+
+**Decision (B2 per chat ack).** Compose the geo-ref scenario to
+render `<EditorRoot />` AND `<StatusBarGeoRefChip />` as siblings
+inside a fragment:
+
+```tsx
+const { container } = render(
+  <>
+    <EditorRoot />
+    <StatusBarGeoRefChip />
+  </>,
+);
+```
+
+This preserves single chip ownership in `apps/web/src/shell/
+StatusBar.tsx` (no duplicate chip in the running app — B1 was
+rejected for that reason). The discipline meta-test (Gate 21.2.disc)
+relaxes its scenario-block matcher from `render(<EditorRoot`
+literal to `<EditorRoot` JSX-presence so the fragment wrapper does
+not break per-scenario enforcement. The Revision-4 intent (each
+scenario MUST mount EditorRoot via `render(...)` and fire DOM
+events) is preserved — JSX presence + `fireEvent.` presence is the
+structural rule.
+
+### §13.3 Procedural compliance
+
+Both refinements were:
+1. Discovered during Phase 22 execution (canvas-host imports
+   inspection + smoke-e2e rerun against the Phase-8 placeholder).
+2. Output in chat per §3.10 with proposed plan patch and
+   trade-off table.
+3. Reviewed independently and acked with the recommendations
+   recorded in this section.
+4. Inlined as focused edits to the affected phase / gate /
+   invariant text above.
+5. Summarised here for auditor traceability.
+
+No binding spec, ADR, or registry entry is changed. No deviation
+from the Approved Deviation Protocol (§0.7) is required. The
+refinements clarify implementation detail of an underspecified gate
+regex (§13.1) and resolve a chip-composition gap in the smoke
+contract (§13.2) without weakening the corresponding invariants
+(I-68, I-A18-1).
