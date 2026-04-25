@@ -161,6 +161,30 @@ Explicitly scan for:
 - Lifecycle cleanup paths.
 - Module isolation per GR-3.
 - SQL migration correctness (§2.5) if applicable.
+- **Smoke / E2E test scope (UI milestones).** When the plan produces a
+  runnable user-facing artifact (a React component root, a CLI, a
+  service endpoint), smoke / E2E gates MUST exercise the artifact at
+  the user-facing boundary:
+    - For React UI: tests MUST `render(<PublicRoot />)` (or equivalent
+      mount of the public component root) and fire DOM events
+      (`fireEvent.keyDown`, `fireEvent.pointerDown`, `fireEvent.click`,
+      etc.). Action-API assertions (calling reducers / store actions
+      directly) are unit-level coverage and DO NOT satisfy a smoke
+      gate. Reviewers MUST flag any plan whose Done Criteria pairs
+      user-flow language ("user presses X, sees Y") with action-API
+      tests.
+    - For CLI: tests MUST `spawn` the binary and assert stdout / exit
+      code. Calling the CLI's library entry-point directly is
+      unit-level.
+    - For service endpoint: tests MUST issue an HTTP request and
+      assert the response. Calling the route handler in-process is
+      unit-level.
+  Lesson source: M1.3a Codex post-commit Round-1 (audit of
+  `c9784a6..4fb4e5c`) returned no spec/code findings yet the milestone
+  failed user acceptance because Phase 21 smoke scenarios called
+  `addPrimitive(...)` instead of mounting `<EditorRoot />` and firing
+  DOM events. Three plan-review rounds + the post-commit audit all
+  missed the gap because Procedure 02 had no equivalent of this rule.
 - **Architectural patterns Claude tends to miss** (Codex-specific):
   - Cross-cutting concerns treated as single-object problems.
   - Ownership state transitions in edge cases (generator race conditions,

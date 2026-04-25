@@ -2,7 +2,7 @@
 
 **Branch:** `feature/m1-3a-canvas-primitives-layers`
 **Author:** Claude (Opus 4.7, 1M context)
-**Date:** 2026-04-25
+**Date:** 2026-04-25 (Revision-3: 2026-04-26)
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after approval
 **Status:** Plan authored — awaiting review
 
@@ -37,6 +37,24 @@ docs and code land in the same M1.3a PR.
 > contract lives at `docs/procedures/Claude/00-architecture-contract.md`
 > (Claude-side) and `docs/procedures/Codex/00-architecture-contract.md`
 > (Codex-side). No `docs/architecture.md` exists at the repo root.
+
+> **Revision-3 note (2026-04-26):** Codex post-commit audit Round 1
+> against `c9784a6..4fb4e5c` returned no spec/code findings, but the
+> milestone failed user acceptance — opening the app revealed
+> `EditorRoot` was still the Phase-8 placeholder. Three plan-review
+> rounds + the post-commit audit all missed the gap because Phase 21
+> smoke scenarios exercised the action API (`addPrimitive`,
+> `editorUiActions.toggleOsnap`, etc.) instead of mounting the React
+> tree and firing DOM events. Revision-3 plugs the gap structurally:
+> a new Phase 22 (Editor integration) wires CanvasHost / keyboard
+> router / pointer-event routing / chrome inside `EditorRoot`; Phase
+> 21 is rewritten to mount `<EditorRoot />` in jsdom and fire DOM
+> events as its smoke gates; and a Procedure 02 amendment (separate
+> doc commit, same PR) prevents recurrence by requiring smoke tests
+> for runnable-artifact milestones to render the public component
+> root and fire DOM events. Phase-22 work that landed in commits
+> `5917a7d` + `de1d3cd` was reverted (`728706a` + `4342202`) so it
+> can be re-executed under proper Procedure 03 phase discipline.
 
 ## 2. Assumptions and scope clarifications
 
@@ -147,9 +165,32 @@ User-confirmed in pre-response acknowledgment dated 2026-04-25:
   hit-test, snap priority resolver, tool generators (input → output
   invariants), keyboard routing table. Integration tests for: save +
   reload of new entity kinds, default-layer seed, undo / redo across
-  entity kinds. Smoke E2E (vitest + happy-dom or jsdom) for: create
-  project → pick draw tool → click two points → primitive appears in
-  store → save → reload → primitive still there.
+  entity kinds. Smoke E2E (vitest + jsdom) per A18.
+- **A17 — Editor integration scope (Revision-3).** Phase 22 wires
+  the editor surface so it actually responds to keyboard + pointer
+  events when mounted in apps/web. The Phase-8 EditorRoot is a
+  placeholder; Phase 22 replaces it with the integration that mounts
+  `CanvasHost` (with pointer-event routing — left click, middle-mouse
+  pan, wheel zoom), registers the window-level keyboard router on
+  mount + cleans up on unmount, routes the active tool's prompts
+  through the command bar, and hosts Properties panel + Layer
+  Manager modal + GeoRef chip. Until Phase 22 lands, the editor
+  surface in the running app is non-interactive even though every
+  underlying component passes its own tests.
+- **A18 — Smoke E2E discipline (Revision-3, Codex post-commit
+  Round-1 lesson).** Smoke E2E tests for milestones that produce a
+  runnable user-facing artifact MUST render the public component
+  root (here: `<EditorRoot />`) in jsdom and fire DOM events
+  (`fireEvent.keyDown`, `fireEvent.pointerDown` on the canvas
+  element). Action-API assertions (calling `addPrimitive(...)`,
+  `editorUiActions.setSelection(...)`, etc.) are unit-level coverage
+  and DO NOT satisfy the smoke gate. Revision-3 rewrites the Phase
+  21 scenarios to follow this rule and amends Procedure 02 with the
+  same constraint so the next milestone with a UI artifact does not
+  replay this miss. Action-API coverage already exists inside the
+  per-module test files (tools-essential, draw-tools, etc.) — Phase
+  21 keeps those at unit-level and replaces its own scenarios with
+  DOM-level mounts.
 
 ## 3. Scope and Blast Radius
 
@@ -581,9 +622,18 @@ drawing-model-pivot plan); first constructor content lands in M1.3b.
 
 ## 8. Implementation phases
 
-Twenty-one phases. Each has its file list, steps, invariants, gates,
+Twenty-two phases. Each has its file list, steps, invariants, gates,
 and tests (where applicable). Phases are sequenced with strong
 dependency order — Phase N+1 can begin only when Phase N's gates pass.
+
+> **Revision-3 reordering.** The original twenty-one-phase plan ended
+> with smoke E2E. Revision-3 inserts **Phase 22 — Editor integration**
+> after Phase 21 (smoke E2E rewrite) so the integration is exercised
+> by the smoke tests it depends on. The execution order is
+> 1 → 20 → 21 (smoke E2E rewritten to mount `<EditorRoot />` and fire
+> DOM events) → 22 (Editor integration that makes those smoke tests
+> green). Conceptually Phase 21 fails first, Phase 22 makes it green
+> — TDD-style gate ordering.
 
 ### Phase 1 — Domain types (primitives, layers, grid, ids)
 
@@ -2157,49 +2207,105 @@ Gate 20.2: Canvas tokens present in design-tokens.md
   Expected: ≥6 matches (or all 8 if a clean append)
 ```
 
-### Phase 21 — Comprehensive test pass + smoke E2E
+### Phase 21 — Smoke E2E rewrite (DOM-level scenarios that mount `<EditorRoot />`)
 
-**Goal:** Final verification: full test suite passes; smoke E2E
-covers the headline user journey.
+**Goal:** Smoke gates that prove the user-facing claim. Each scenario
+mounts `<EditorRoot />` in jsdom and fires DOM events
+(`fireEvent.keyDown`, `fireEvent.pointerDown` on the canvas element,
+`fireEvent.wheel`, etc.). Action-API assertions remain in the
+per-module unit tests (tools-essential, draw-tools, etc.) but DO NOT
+satisfy these gates per A18.
+
+> **Phase ordering note (Revision-3 TDD-style).** When this phase is
+> executed in isolation against a Phase-8 EditorRoot placeholder,
+> ALL FIVE smoke scenarios MUST FAIL. Phase 22 (Editor integration)
+> is the phase that turns them green. This is the intended ordering:
+> Phase 21 establishes the contract; Phase 22 satisfies it.
 
 **Files affected:**
-- `packages/editor-2d/tests/smoke-e2e.test.tsx` (new) — happy-dom
-  jsdom-based test
-- (any test gaps surfaced during this phase)
+- `packages/editor-2d/tests/smoke-e2e.test.tsx` (rewritten — replaces
+  any action-API scenarios in this file with DOM-level mounts; the
+  test names remain `'draw line and reload'`, `'pan zoom toggle'`,
+  `'layer manager flow'`, `'properties edit'`,
+  `'geo-ref chip non-blocking'` so existing Gate 21.2a–e patterns
+  continue to apply)
+- `apps/web/tests/setup.ts` (modified — add `ResizeObserver` shim
+  for jsdom; required by `EditorRoot`'s container size observer.
+  Same shim added to `packages/editor-2d/tests/setup.ts`.)
+- `packages/editor-2d/tests/setup.ts` (modified — `ResizeObserver`
+  shim, mirror of apps/web)
 
 **Steps:**
-1. Run full test suite (`pnpm test`).
-2. Author smoke E2E suite. Each scenario is a named `it(...)` test
-   inside `packages/editor-2d/tests/smoke-e2e.test.tsx`. The `it(...)`
-   name strings MUST match the verbatim grep patterns in Gates 21.2a–
-   21.2e exactly (one named `it` per gate, one gate per scenario):
-   - **Scenario "draw line and reload":** mount `<EditorRoot />` in
-     happy-dom; simulate `createNewProject` → assert default layer
-     present; `keyDown('L')` → active tool = draw-line; canvas click
-     at metric (0,0) → first prompt resolved; canvas click at (10,0)
-     → tool commits; assert one `'line'` primitive in store with
-     right vertices; serialize / deserialize round-trip; assert
-     primitive survives.
-   - **Scenario "pan zoom toggle":** wheel events zoom; middle-mouse
-     drag pans (assert `viewport.panX` changes); `keyDown('Z')` →
-     active tool = zoom; sub-option `keyDown('E')` → fits extents;
-     `keyDown('F3')` → assert toggles[OSNAP] flips; same for F8 / F9 /
-     F12. Each toggle change reflected in ui-state.
-   - **Scenario "layer manager flow":** `keyDown('L')` then
-     `keyDown('A')` → multi-letter accumulator → LA tool active →
-     LayerManagerDialog opens; create layer; set active; `keyDown('L')`
-     → draw-line; click two points; assert primitive on the new layer;
-     toggle visibility on layer → assert paint excludes; toggle back.
-   - **Scenario "properties edit":** select a primitive (canvas click
-     in select tool); `keyDown('Ctrl+1')` → Properties panel opens;
-     change layer dropdown → assert primitive's `layerId` updates;
-     change color override → assert `displayOverrides.color` set.
-   - **Scenario "geo-ref chip non-blocking":** click chip in status
-     bar → GeoRefDialog opens; click "Set later" → dialog closes;
-     `coordinateSystem` still null; primitive can be drawn afterward.
-3. Run `pnpm typecheck` (= `pnpm tsc --noEmit`); zero errors.
+1. Add a `ResizeObserver` shim to both `tests/setup.ts` files. jsdom 25
+   does not ship `ResizeObserver` natively; `EditorRoot`'s container
+   observer would throw without it.
+2. Author the smoke E2E suite. Each scenario is a named `it(...)` test
+   whose name string is the literal grep pattern of Gates 21.2a–21.2e.
+   Every scenario starts by:
+   ```ts
+   import { render, fireEvent } from '@testing-library/react';
+   import { ThemeProvider } from '@portplanner/design-system';
+   import { EditorRoot } from '../src/EditorRoot';
+   import { createNewProject } from '@portplanner/project-store';
+
+   const screen = render(
+     <ThemeProvider mode="dark">
+       <EditorRoot />
+     </ThemeProvider>,
+   );
+   act(() => createNewProject(makeProject()));
+   const canvas = screen.container.querySelector('[data-component="canvas-host"]')!;
+   ```
+   Then per-scenario assertions:
+   - **`draw line and reload`:** `fireEvent.keyDown(window, { key: 'L' })`
+     (wait for accumulator timeout) → assert `editorUiStore`
+     `activeToolId === 'draw-line'`; `fireEvent.pointerDown(canvas, {
+     button: 0, clientX: ..., clientY: ... })` at the canvas-relative
+     coordinate that maps to metric `(0, 0)`; second pointerDown at
+     metric `(10, 0)`; assert one `'line'` primitive in
+     `projectStore.getState().project.primitives`; serialize /
+     deserialize round-trip via `serialize` + `deserialize`; assert
+     primitive survives. **The pointerDown coordinate calculation
+     uses `canvas.getBoundingClientRect()` from jsdom; jsdom returns
+     `{ width: 0, height: 0 }` by default, so the test injects a
+     mocked `getBoundingClientRect()` returning the viewport size
+     before firing events.**
+   - **`pan zoom toggle`:** `fireEvent.wheel(canvas, { deltaY: -100 })`
+     → assert `viewport.zoom` increases; `fireEvent.pointerDown(canvas,
+     { button: 1, ... })` then `pointerMove` then `pointerUp` → assert
+     `viewport.panX` changes; `keyDown(window, { key: 'F3' })` →
+     assert `toggles.osnap` flips; same for F8 / F9 / F12.
+   - **`layer manager flow`:** `keyDown(window, { key: 'L' })` then
+     `keyDown(window, { key: 'A' })` (within 750 ms accumulator
+     window) → assert LayerManagerDialog renders in document; click
+     "+ New layer" button → assert new layer in `projectStore`; close
+     dialog; activate `keyDown(window, { key: 'L' })` for draw-line;
+     click two points; assert the resulting primitive's `layerId`
+     matches the new active layer.
+   - **`properties edit`:** create one primitive via the action API
+     (legitimate test setup); `editorUiActions.setSelection([id])`;
+     mount → assert the Properties panel renders the primitive's
+     fields; fire `change` on the layer dropdown → assert
+     `primitive.layerId` updates via the public API; fire `change` on
+     the color input → assert `displayOverrides.color` updates.
+   - **`geo-ref chip non-blocking`:** find the chip via
+     `getByText('Not geo-referenced')`; `fireEvent.click(chip)` →
+     assert GeoRefDialog renders; `fireEvent.click(getByText('Set
+     later'))` → assert dialog gone, `coordinateSystem` still null;
+     immediately fire `keyDown(window, { key: 'L' })` and a canvas
+     pointerDown to verify drafting still works.
+3. Run `pnpm typecheck`; zero errors.
 4. Run `pnpm check` (Biome); zero issues.
 5. Run `pnpm build`; success.
+
+**Invariants introduced (Revision-3):**
+- I-A18-1: smoke E2E scenarios MUST mount the public component root
+  via `render(<EditorRoot />)` and MUST fire DOM events. Gate 21.2x
+  passing requires the test body to contain a `render(` call AND a
+  `fireEvent` call. Hard grep gate (see Gate 21.2.disc below).
+- I-A18-2: action-API scenarios at smoke level are forbidden; the
+  rule "test names that match 21.2a–e MUST be DOM-level" is
+  enforced by Gate 21.2.disc.
 
 **Mandatory Completion Gates:**
 
@@ -2211,9 +2317,6 @@ Gate 21.1: Full test suite passes
 Gate 21.2a: Smoke E2E "draw line and reload" passes
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "draw line and reload"
   Expected: exactly 1 test matched, passes
-  Rationale: covers the headline draft-save-reload flow. Test name
-  string is the literal grep pattern; renaming the test breaks the
-  gate, which is the intended discipline.
 
 Gate 21.2b: Smoke E2E "pan zoom toggle" passes
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "pan zoom toggle"
@@ -2230,6 +2333,15 @@ Gate 21.2d: Smoke E2E "properties edit" passes
 Gate 21.2e: Smoke E2E "geo-ref chip non-blocking" passes
   Command: pnpm --filter @portplanner/editor-2d test -- --grep "geo-ref chip non-blocking"
   Expected: exactly 1 test matched, passes
+
+Gate 21.2.disc: Smoke E2E discipline — every scenario mounts the
+                component root + fires DOM events (Revision-3 / A18).
+  Command: rg -c "render\(<EditorRoot" packages/editor-2d/tests/smoke-e2e.test.tsx && rg -c "fireEvent\." packages/editor-2d/tests/smoke-e2e.test.tsx
+  Expected: ≥5 matches in first command (one render per scenario);
+            ≥10 matches in second (multiple fireEvent calls per scenario).
+  Rationale: prevents the Codex Round-1 post-commit miss from
+             recurring — gates pass only when the test body actually
+             renders the React tree and fires DOM events.
 
 Gate 21.3: Typecheck passes
   Command: pnpm typecheck
@@ -2251,6 +2363,116 @@ Gate 21.7: Out-of-scope artifacts are absent
   Command: test ! -e docs/handovers && test ! -e services/api && test ! -e packages/viewer-3d && echo OK
   Expected: "OK"
 ```
+
+### Phase 22 — Editor integration (Revision-3)
+
+**Goal:** Wire `EditorRoot` so the running app actually responds to
+keyboard + pointer events. This is the phase that turns the Phase 21
+smoke gates green.
+
+**Files affected:**
+- `packages/editor-2d/src/EditorRoot.tsx` (rewritten — replaces the
+  Phase-8 placeholder with the full integration)
+- `packages/editor-2d/src/canvas/canvas-host.tsx` (extended — add
+  `onCanvasClick`, `onPan`, `onWheelZoom` props + `pointerdown` /
+  `pointermove` / `pointerup` / `wheel` handlers; middle-mouse-drag
+  pans, wheel zooms with focal-point delta, left-click in-tool calls
+  `onCanvasClick(metric, native)`. Also keep the spatial index in sync
+  with `projectStore` mutations.)
+- `packages/editor-2d/src/keyboard/router.ts` (modified — make
+  `registerKeyboardRouter` idempotent: if already registered, call the
+  existing cleanup first then re-register. Required for React 19
+  StrictMode double-effect-invocation + multi-mount test scenarios.)
+- `apps/web/tests/setup.ts` (modified — `ResizeObserver` shim for
+  jsdom; landed in Phase 21 step 1 but verified again here.)
+
+**Steps:**
+1. Rewrite `EditorRoot`:
+   - Read `viewport`, `focusHolder`, `activeToolId` via
+     `useEditorUi`. Maintain a `runningToolRef` for the active tool.
+   - On mount, register the window-level keyboard router with callbacks
+     `onActivateTool`, `onUndo`, `onRedo`, `onAbortCurrentTool`. The
+     `onActivateTool` callback dispatches `lookupTool(id)` → `startTool`
+     and stores the resulting `RunningTool` in the ref. Cleans up on
+     unmount via the returned function.
+   - Wire `onCanvasClick(metric)` → if `runningToolRef.current` exists,
+     `feedInput({ kind: 'point', point: metric })`.
+   - Wire `onPan(dxCss, dyCss)` → `editorUiActions.setViewport({ panX:
+     v.panX - dxCss / v.zoom, panY: v.panY + dyCss / v.zoom })`.
+   - Wire `onWheelZoom(deltaY)` → multiply `viewport.zoom` by
+     `1.1 ** -sign(deltaY)`, clamped to `[0.001, 10000]`.
+   - Wire `CommandBar` `onSubOption` and `onSubmit` callbacks into
+     `runningToolRef.current?.feedInput(...)`. Empty submit (Enter
+     with no text) feeds `{ kind: 'escape' }`. Numeric submits feed
+     `{ kind: 'number', value }`.
+   - On project mount, auto-set `activeLayerId` to the first available
+     layer if it is null (so draw tools have a layer to assign).
+   - Layout: a `display: grid` with `1fr 260px` columns and `1fr auto`
+     rows — canvas / properties on top, command bar across the bottom.
+     Layer Manager and GeoRef are rendered as absolute-positioned
+     overlays gated by local `useState` flags (`layerManagerOpen`).
+   - Add a `ResizeObserver` on the canvas container to keep
+     `viewport.canvasWidthCss / canvasHeightCss / dpr` in sync.
+   - Add a small live overlay showing the active tool + focus holder,
+     plus a shortcuts cheat-sheet hint in the bottom-right.
+2. Extend `canvas-host.tsx` with the four pointer / wheel handlers;
+   update `searchFrustum` subscription to rebuild the spatial index on
+   every `projectStore` change (M1.3a workloads keep this cheap).
+3. Make `registerKeyboardRouter` idempotent (no-throw replace if
+   already registered) so React 19 StrictMode + per-test mounts work.
+4. Run the Phase 21 smoke E2E suite — all five scenarios MUST now pass
+   (they failed against the Phase-8 placeholder; they pass against the
+   wired EditorRoot).
+
+**Invariants introduced:**
+- I-65: `EditorRoot` registers exactly one keyboard-router instance
+  per mount; `registerKeyboardRouter` is idempotent so unmount /
+  remount cycles do not throw.
+- I-66: `EditorRoot` mounts `CanvasHost`, `CommandBar`,
+  `PropertiesPanel`. Layer Manager + GeoRef Dialog mount on demand
+  via local state. Hard grep gate.
+- I-67: Canvas left-click during an active tool feeds a `point` Input
+  to the tool's runner; middle-mouse-drag pans without affecting the
+  tool; wheel zooms without affecting the tool. Verified by Phase 21
+  scenarios (DOM-level).
+- I-68: `EditorRoot` is the only file that subscribes to BOTH the
+  project store (via `projectStore` directly) and the editor-2d UI
+  state store (via `useEditorUi`). Lower-level files subscribe to one
+  or the other, never both. Documented; no automated gate.
+
+**Mandatory Completion Gates:**
+
+```
+Gate 22.1: EditorRoot mounts CanvasHost, CommandBar, PropertiesPanel
+  Command: rg -n "<CanvasHost|<CommandBar|<PropertiesPanel" packages/editor-2d/src/EditorRoot.tsx
+  Expected: ≥3 matches (one per component)
+
+Gate 22.2: EditorRoot registers the keyboard router
+  Command: rg -n "registerKeyboardRouter" packages/editor-2d/src/EditorRoot.tsx
+  Expected: ≥1 match
+
+Gate 22.3: registerKeyboardRouter is idempotent (no throw on re-register)
+  Command: rg -n "if \(registered.*cleanup\(\)" packages/editor-2d/src/keyboard/router.ts
+  Expected: ≥1 match (the idempotent re-register path)
+
+Gate 22.4: CanvasHost wires pointer + wheel handlers
+  Command: rg -n "onPointerDown|onPointerMove|onPointerUp|onWheel" packages/editor-2d/src/canvas/canvas-host.tsx
+  Expected: ≥4 matches
+
+Gate 22.5: Phase 21 smoke E2E (all five DOM-level scenarios) passes
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/smoke-e2e
+  Expected: 5 / 5 tests pass
+
+Gate 22.6: pnpm dev launches without throwing on initial render
+  Command: pnpm --filter @portplanner/web build
+  Expected: build success (no SSR; build is a proxy for "module graph
+            resolves and JSX compiles"; the actual `pnpm dev` smoke
+            check is a manual review item per A18 procedure note)
+```
+
+**Tests added:** none in this phase directly — Phase 21 owns the
+DOM-level smoke tests. The Phase 22 gates verify the wiring exists;
+the Phase 21 gates verify it works.
 
 ## 9. Invariants summary
 
@@ -2320,6 +2542,12 @@ Gate 21.7: Out-of-scope artifacts are absent
 | I-62 | `docs/operator-shortcuts.md` registry exists with version + governance + draw-tool rows | Gate 15.5 |
 | I-63 | Both architecture contracts list ADR-023 in §0.2 binding table; neither references the OLD ADR-022 path | Gate 15.7a + 15.7b |
 | I-64 | ADR README updated — ADR-023 in main `## Index`, ADR-022 in `## Superseded ADRs` section | Gate 15.6 |
+| I-A18-1 | Smoke E2E scenarios mount `<EditorRoot />` + fire DOM events (no action-API smoke) | Gate 21.2.disc |
+| I-A18-2 | Action-API tests at smoke level are forbidden | Gate 21.2.disc + Procedure 02 amendment |
+| I-65 | `EditorRoot` registers exactly one keyboard router per mount; idempotent re-register on remount | Gate 22.2 + 22.3 |
+| I-66 | `EditorRoot` mounts `<CanvasHost>`, `<CommandBar>`, `<PropertiesPanel>`; LayerManager + GeoRef on demand | Gate 22.1 |
+| I-67 | Canvas left-click → tool runner; middle-drag → pan; wheel → zoom; tool isolation preserved | Gate 22.4 + Gate 21.2b/c (smoke) |
+| I-68 | `EditorRoot` is the only file subscribing to both `projectStore` and `editorUiStore` | Documented (Phase 22 prose) |
 
 ## 10. Test strategy
 
@@ -2356,9 +2584,11 @@ Gate 21.7: Out-of-scope artifacts are absent
 
 ## 11. Done Criteria — objective pass/fail
 
-All Phase 1–21 gates pass. Each Done Criteria item below pairs a
+All Phase 1–22 gates pass. Each Done Criteria item below pairs a
 behavioural check with the executable gate / test that verifies it
-(per Codex Round-1 OI-4 — no manual-only UX checkpoints):
+(per Codex Round-1 OI-4 + Revision-3 A18 — every smoke item below maps
+to a DOM-level Phase 21 gate that mounts `<EditorRoot />` and fires
+DOM events; no manual-only UX checkpoints; no action-API substitutes):
 
 - [ ] Plan file committed + pushed — verified by branch state at
   closure (the very fact of this PR existing on `feature/m1-3a-canvas-primitives-layers`).
@@ -2406,12 +2636,26 @@ behavioural check with the executable gate / test that verifies it
 - [ ] Module isolation grep gates (Gate 21.6) pass.
 - [ ] `pnpm test`, `pnpm typecheck`, `pnpm check`, `pnpm build`
   all pass — verified by Gate 21.1 + 21.3 + 21.4 + 21.5.
+- [ ] **EditorRoot is wired (not a placeholder) — `<CanvasHost />`,
+  `<CommandBar />`, `<PropertiesPanel />` mounted; window-level
+  keyboard router registered; pointer events route into the active
+  tool runner.** Verified by Gates 22.1 + 22.2 + 22.4. Behavioural
+  end-to-end verified by Gates 21.2a–e (DOM-level smoke).
+- [ ] **Smoke E2E discipline (Revision-3 / A18):** every Phase 21
+  scenario mounts `<EditorRoot />` and fires DOM events; action-API
+  scenarios at smoke level are forbidden. Verified by Gate 21.2.disc.
+- [ ] **Procedure 02 amendment** committed in the same PR — adds the
+  rule "smoke / E2E for runnable-artifact milestones MUST mount the
+  public component root and fire DOM events" to both
+  `docs/procedures/Claude/02-plan-review.md` and
+  `docs/procedures/Codex/02-plan-review.md`.
 
 ## 12. Risks and Mitigations
 
 | Risk | Mitigation |
 |------|------------|
 | `packages/editor-2d` is large (~30+ source files); review burden | Phased delivery with per-phase completion gates; each phase ships independently runnable tests; no phase requires the next to validate. |
+| **Integration-test class of miss (Revision-3, Codex post-commit Round-1 lesson).** Smoke gates that test the action API instead of the React tree pass procedure-review without proving user acceptance — exactly the failure mode that put the Phase-8 EditorRoot placeholder into production. | Phase 21 rewritten to mount `<EditorRoot />` in jsdom and fire DOM events. Gate 21.2.disc (hard grep) enforces `render(<EditorRoot` + `fireEvent.` calls in the smoke file. Procedure 02 amendment (separate doc commit, same PR) adds the rule globally so the next UI milestone does not replay this. |
 | Three-tolerance snap model easy to conflate | Three named modules (Phase 12); hard directory-scoped grep gates 12.5a/b/c (Codex Round-1 OI-2b hardening); unit tests assert each layer's contract. |
 | Operation emission first wired across all reducers (PI-1 risk) | Single `emitOperation` helper centralises shape; tests per action verify correct `targetKind` + before/after; sequence monotonicity test catches double-emission. |
 | Undo/redo for new entity kinds — zundo partialize scope unchanged | Partialize remains `project` slice; entity maps live inside `project`; undo / redo work transparently. Tested in `packages/project-store/tests/zundo.test.ts` (extended). |
