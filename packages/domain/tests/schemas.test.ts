@@ -40,28 +40,61 @@ describe('CoordinateSystemSchema', () => {
   });
 });
 
-describe('ProjectObjectSchema', () => {
-  it('accepts a minimal object', () => {
+describe('ProjectObjectSchema (ADR-019)', () => {
+  const minimalDirect = () => ({
+    id: newObjectId(),
+    type: 'RTG_BLOCK',
+    geometry: { type: 'Polygon', coordinates: [] },
+    parameters: { containers_wide: 6 },
+    ownership: 'AUTHORED' as const,
+    layerId: LayerId.DEFAULT,
+    displayOverrides: {},
+    sourceKind: 'direct' as const,
+  });
+
+  it('accepts a minimal direct-placed object', () => {
+    expect(ProjectObjectSchema.parse(minimalDirect())).toBeTruthy();
+  });
+
+  it('preserves unknown keys in parameters (JSONB passthrough)', () => {
+    const o = { ...minimalDirect(), parameters: { future_field: 42 } };
+    const parsed = ProjectObjectSchema.parse(o);
+    expect((parsed.parameters as Record<string, unknown>).future_field).toBe(42);
+  });
+
+  it('accepts a promoted object with sourceProvenance', () => {
     const o = {
-      id: newObjectId(),
-      type: 'RTG_BLOCK',
-      geometry: { type: 'Polygon', coordinates: [] },
-      parameters: { containers_wide: 6 },
-      ownership: 'AUTHORED',
+      ...minimalDirect(),
+      sourceKind: 'promoted' as const,
+      sourceProvenance: {
+        primitiveKind: 'rectangle' as const,
+        promotedAt: '2026-04-25T10:00:00.000Z',
+        primitiveId: newPrimitiveId(),
+      },
     };
     expect(ProjectObjectSchema.parse(o)).toBeTruthy();
   });
 
-  it('preserves unknown keys in parameters (JSONB passthrough)', () => {
+  it("rejects 'direct' source with sourceProvenance set", () => {
     const o = {
-      id: newObjectId(),
-      type: 'RTG_BLOCK',
-      geometry: null,
-      parameters: { future_field: 42 },
-      ownership: 'AUTHORED',
+      ...minimalDirect(),
+      sourceProvenance: {
+        primitiveKind: 'rectangle' as const,
+        promotedAt: '2026-04-25T10:00:00.000Z',
+        primitiveId: newPrimitiveId(),
+      },
     };
-    const parsed = ProjectObjectSchema.parse(o);
-    expect(parsed.parameters.future_field).toBe(42);
+    expect(() => ProjectObjectSchema.parse(o)).toThrow();
+  });
+
+  it("rejects 'promoted' source without sourceProvenance", () => {
+    const o = { ...minimalDirect(), sourceKind: 'promoted' as const };
+    expect(() => ProjectObjectSchema.parse(o)).toThrow();
+  });
+
+  it('rejects missing layerId', () => {
+    const { layerId: _omitted, ...o } = minimalDirect();
+    expect(() => ProjectObjectSchema.parse(o)).toThrow();
   });
 });
 
