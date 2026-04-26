@@ -1,40 +1,60 @@
-// Smoke E2E suite for M1.3a per Codex Round-2 H-1 hardening.
-// Each scenario is a named `it(...)` test whose name string is the
-// literal grep pattern used by Gates 21.2a–21.2e in the plan.
+// Smoke E2E suite for M1.3a per A18 + Revision-4 narrowing.
 //
-// Tests exercise the editor stack via the public action surface
-// (project-store actions, ui-state actions, tool registry) without
-// rendering a full canvas pixel scene — pixel-exact rendering needs
-// node-canvas which is intentionally out of toolchain.
+// Each scenario MUST mount <EditorRoot /> via @testing-library/react
+// and exercise the editor through DOM events. Per A18:
+//   - A18-assert  : pass/fail asserted via DOM events.
+//   - A18-uistate : UI-state writes (selection, active tool, focus,
+//                   viewport, F-key toggles) MUST be DOM-driven.
+//   - A18-setup   : project-state seeding via the action API
+//                   permitted as test arrangement (vitest
+//                   arrange / act / assert convention).
+//
+// The discipline meta-test at the bottom enforces Gate 21.2.disc
+// (Revision-4 per-scenario form): for each name in SCENARIOS, the
+// scenario block MUST contain BOTH `render(<EditorRoot` AND
+// `fireEvent.`. SCENARIOS is the in-file SSOT of scenario names.
+//
+// Phase ordering note: when this file runs against the Phase-8
+// EditorRoot placeholder, the five behavioural scenarios fail
+// (no canvas-host in the DOM, no keyboard router, no chrome).
+// Phase 22 (Editor integration) wires EditorRoot and turns them green.
 
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import {
   LayerId,
   type Project,
   defaultLayer,
   deserialize,
-  newGridId,
   newLayerId,
   newPrimitiveId,
   newProjectId,
   serialize,
 } from '@portplanner/domain';
 import {
-  addGrid,
   addLayer,
   addPrimitive,
   createNewProject,
   hydrateProject,
   projectStore,
   resetProjectStoreForTests,
-  updatePrimitive,
 } from '@portplanner/project-store';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { lookupTool } from '../src/tools';
-import { startTool } from '../src/tools/runner';
-import { editorUiActions, editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
+import { EditorRoot } from '../src/EditorRoot';
+import { StatusBarGeoRefChip } from '../src/chrome/StatusBarGeoRefChip';
+import { editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
-const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
+const SCENARIOS = [
+  'draw line and reload',
+  'pan zoom toggle',
+  'layer manager flow',
+  'properties edit',
+  'geo-ref chip non-blocking',
+] as const;
+
+const ACCUMULATOR_FLUSH_MS = 800;
 
 function makeProject(): Project {
   return {
@@ -52,106 +72,154 @@ function makeProject(): Project {
   };
 }
 
-beforeEach(() => createNewProject(makeProject()));
+function getCanvasOrThrow(container: HTMLElement): HTMLCanvasElement {
+  const canvas = container.querySelector<HTMLCanvasElement>('[data-component="canvas-host"]');
+  if (!canvas) {
+    throw new Error(
+      'canvas-host not in DOM — EditorRoot is not mounted as expected (Phase 22 wiring missing?)',
+    );
+  }
+  // jsdom returns a 0×0 rect by default; mock with the default editor
+  // viewport size (800×600 css px) so pointer-event clientX/Y math lines
+  // up with the metric-to-screen transform.
+  canvas.getBoundingClientRect = (): DOMRect => ({
+    x: 0,
+    y: 0,
+    top: 0,
+    left: 0,
+    right: 800,
+    bottom: 600,
+    width: 800,
+    height: 600,
+    toJSON: () => ({}),
+  });
+  return canvas;
+}
+
+const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+beforeEach(() => {
+  resetProjectStoreForTests();
+  resetEditorUiStoreForTests();
+});
+
 afterEach(() => {
   resetProjectStoreForTests();
   resetEditorUiStoreForTests();
 });
 
-describe('M1.3a smoke E2E', () => {
+describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
   it('draw line and reload', async () => {
-    // Draw a line via the registered draw-line tool generator.
-    const tool = startTool('draw-line', lookupTool('draw-line')!);
-    await tick();
-    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
-    await tick();
-    tool.feedInput({ kind: 'point', point: { x: 10, y: 0 } });
-    const result = await tool.done();
-    expect(result.committed).toBe(true);
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
 
-    const drawn = projectStore.getState().project!;
-    const lines = Object.values(drawn.primitives).filter((p) => p.kind === 'line');
+    // A18-uistate: tool activation via window-level keyboard.
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    // A18-uistate: pointer events drive tool inputs.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+
+    // A18-assert: line primitive landed via DOM-driven actions.
+    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'line',
+    );
     expect(lines).toHaveLength(1);
 
-    // Round-trip via serialize / deserialize.
-    const json = serialize(drawn);
+    // Round-trip via serialize / deserialize (persistence assertion).
+    const snapshot = projectStore.getState().project!;
+    const json = serialize(snapshot);
     const reloaded = deserialize(json);
     hydrateProject(reloaded, '2026-04-25T11:00:00.000Z');
 
-    // Assert the line survived.
     const after = Object.values(projectStore.getState().project!.primitives).filter(
       (p) => p.kind === 'line',
     );
     expect(after).toHaveLength(1);
   });
 
-  it('pan zoom toggle', () => {
-    // Mutate viewport via editor ui actions (mimics middle-mouse-drag pan + wheel zoom).
+  it('pan zoom toggle', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
     const before = editorUiStore.getState().viewport;
-    editorUiActions.setViewport({ panX: 50, panY: -30 });
-    expect(editorUiStore.getState().viewport.panX).toBe(50);
 
-    editorUiActions.setViewport({ zoom: before.zoom * 2 });
-    expect(editorUiStore.getState().viewport.zoom).toBe(before.zoom * 2);
+    // A18-uistate: wheel zoom via DOM wheel event.
+    fireEvent.wheel(canvas, { deltaY: -100, clientX: 400, clientY: 300 });
+    expect(editorUiStore.getState().viewport.zoom).toBeGreaterThan(before.zoom);
 
-    // F-key toggles flip state.
+    // A18-uistate: middle-mouse-drag pan via DOM pointer events.
+    fireEvent.mouseDown(canvas, { button: 1, clientX: 400, clientY: 300 });
+    fireEvent.mouseMove(canvas, { button: 1, clientX: 450, clientY: 320, buttons: 4 });
+    fireEvent.mouseUp(canvas, { button: 1, clientX: 450, clientY: 320 });
+    expect(editorUiStore.getState().viewport.panX).not.toBe(before.panX);
+
+    // A18-uistate: F-key toggles via window-level keydown.
     const osnapBefore = editorUiStore.getState().toggles.osnap;
-    editorUiActions.toggleOsnap();
+    fireEvent.keyDown(window, { key: 'F3' });
     expect(editorUiStore.getState().toggles.osnap).toBe(!osnapBefore);
-    editorUiActions.toggleOrtho();
-    editorUiActions.toggleGsnap();
-    editorUiActions.toggleDynamicInput();
+
+    fireEvent.keyDown(window, { key: 'F8' });
     expect(editorUiStore.getState().toggles.ortho).toBe(true);
+
+    fireEvent.keyDown(window, { key: 'F9' });
+    fireEvent.keyDown(window, { key: 'F12' });
     expect(editorUiStore.getState().toggles.gsnap).toBe(false);
     expect(editorUiStore.getState().toggles.dynamicInput).toBe(false);
   });
 
   it('layer manager flow', async () => {
-    // Add a layer and set it active.
-    const layerId = newLayerId();
-    addLayer({
-      id: layerId,
-      name: 'Roads',
-      color: '#FF8800',
-      lineType: 'continuous',
-      lineWeight: 0.25,
-      visible: true,
-      frozen: false,
-      locked: false,
-    });
-    editorUiActions.setActiveLayerId(layerId);
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
 
-    // Draw a line on it via draw-line tool.
-    const tool = startTool('draw-line', lookupTool('draw-line')!);
-    await tick();
-    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
-    await tick();
-    tool.feedInput({ kind: 'point', point: { x: 10, y: 0 } });
-    await tool.done();
+    // A18-uistate: open Layer Manager via L+A multi-letter shortcut.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'A' });
+    await wait(ACCUMULATOR_FLUSH_MS);
 
-    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+    // A18-assert: dialog renders.
+    const dialog = container.querySelector('[data-component="layer-manager-dialog"]');
+    expect(dialog).toBeTruthy();
+
+    // A18-uistate: click "+ New layer" button via DOM.
+    const createBtn = container.querySelector<HTMLButtonElement>(
+      '[data-component="layer-create-button"]',
+    );
+    expect(createBtn).toBeTruthy();
+    const layerCountBefore = Object.keys(projectStore.getState().project!.layers).length;
+    fireEvent.click(createBtn!);
+    expect(Object.keys(projectStore.getState().project!.layers).length).toBe(layerCountBefore + 1);
+
+    // Close dialog via Escape.
+    fireEvent.keyDown(window, { key: 'Escape' });
+
+    // Activate draw-line and click two points.
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 200, clientY: 100 });
+    await wait(50);
+
+    const drawn = Object.values(projectStore.getState().project!.primitives).filter(
       (p) => p.kind === 'line',
     );
-    expect(lines).toHaveLength(1);
-    expect(lines[0]!.layerId).toBe(layerId);
-
-    // Toggle the layer to invisible — paint loop excludes its primitives;
-    // here we assert the state change directly.
-    addGrid({
-      id: newGridId(),
-      origin: { x: 0, y: 0 },
-      angle: 0,
-      spacingX: 6,
-      spacingY: 6,
-      layerId,
-      visible: true,
-      activeForSnap: true,
-    });
-    expect(projectStore.getState().project!.layers[layerId]?.visible).toBe(true);
+    expect(drawn).toHaveLength(1);
+    expect(drawn[0]!.layerId).toBe(editorUiStore.getState().activeLayerId);
   });
 
-  it('properties edit', () => {
-    // Place a primitive and select it.
+  it('properties edit', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+
+    // A18-setup (permitted): seed a primitive via the action API as
+    // legitimate test arrangement.
     const id = newPrimitiveId();
     addPrimitive({
       id,
@@ -161,9 +229,23 @@ describe('M1.3a smoke E2E', () => {
       center: { x: 0, y: 0 },
       radius: 5,
     });
-    editorUiActions.setSelection([id]);
 
-    // Update layer assignment via the same action the Properties panel uses.
+    const canvas = getCanvasOrThrow(container);
+
+    // A18-uistate: drive selection through a canvas pointerDown rather
+    // than editorUiActions.setSelection (Revision-4 narrowing). The
+    // hit-test treats circles as outlines (distance to circumference),
+    // so we click at the right edge of the radius-5 circle —
+    // metric (5,0) maps to screen (450, 300) at zoom=10 with default
+    // viewport size 800×600.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 300 });
+    await wait(20);
+
+    // A18-assert: Properties panel renders the selection's fields.
+    const panel = container.querySelector('[data-component="properties-panel"]');
+    expect(panel).toBeTruthy();
+
+    // A18-uistate (DOM-driven): change layer via select.
     const newLayer = newLayerId();
     addLayer({
       id: newLayer,
@@ -175,29 +257,108 @@ describe('M1.3a smoke E2E', () => {
       frozen: false,
       locked: false,
     });
-    updatePrimitive(id, { layerId: newLayer } as never);
+    // Yield so React flushes the new <option> into the select before
+    // we dispatch the change event — otherwise the value isn't in the
+    // option list yet and jsdom drops it.
+    await wait(20);
+
+    const select = container.querySelector<HTMLSelectElement>(
+      '[data-component="properties-layer-select"]',
+    );
+    expect(select).toBeTruthy();
+    fireEvent.change(select!, { target: { value: newLayer } });
     expect(projectStore.getState().project!.primitives[id]!.layerId).toBe(newLayer);
 
-    // Update displayOverrides.color (the Properties panel color input does this).
-    updatePrimitive(id, {
-      displayOverrides: { color: '#FF0000' },
-    } as never);
-    expect(
-      (projectStore.getState().project!.primitives[id] as { displayOverrides: { color?: string } })
-        .displayOverrides.color,
-    ).toBe('#FF0000');
+    // A18-uistate (DOM-driven): change color override.
+    const colorInput = container.querySelector<HTMLInputElement>(
+      '[data-component="properties-color-input"]',
+    );
+    expect(colorInput).toBeTruthy();
+    fireEvent.change(colorInput!, { target: { value: '#ff0000' } });
+    const after = projectStore.getState().project!.primitives[id]!;
+    expect((after as { displayOverrides: { color?: string } }).displayOverrides.color).toBe(
+      '#ff0000',
+    );
   });
 
   it('geo-ref chip non-blocking', async () => {
-    // coordinateSystem stays null — drafting is unblocked.
+    // §13.2 — chip ownership stays in apps/web/src/shell/StatusBar.tsx
+    // for the running app; the smoke test composes <EditorRoot /> +
+    // <StatusBarGeoRefChip /> as fragment siblings to verify the same
+    // user-facing flow without duplicating the chip in EditorRoot.
+    const { container } = render(
+      <>
+        <EditorRoot />
+        <StatusBarGeoRefChip />
+      </>,
+    );
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // A18-assert: chip is in the DOM with the expected label.
+    const chip = container.querySelector('[data-component="georef-chip"]');
+    expect(chip).toBeTruthy();
+    expect(chip!.textContent).toBe('Not geo-referenced');
+
+    // A18-uistate: clicking the chip opens GeoRefDialog.
+    fireEvent.click(chip!);
+    const dialog = container.querySelector('[data-component="georef-dialog"]');
+    expect(dialog).toBeTruthy();
+
+    // A18-uistate: clicking "Set later" closes the dialog without
+    // setting coordinateSystem.
+    const setLaterBtn = screen.getByText('Set later');
+    fireEvent.click(setLaterBtn);
+    expect(container.querySelector('[data-component="georef-dialog"]')).toBeNull();
     expect(projectStore.getState().project!.coordinateSystem).toBeNull();
 
-    // Draw a primitive successfully without any geodetic anchor.
-    const tool = startTool('draw-point', lookupTool('draw-point')!);
-    await tick();
-    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
-    const result = await tool.done();
-    expect(result.committed).toBe(true);
-    expect(projectStore.getState().project!.coordinateSystem).toBeNull();
+    // A18-assert: drafting still works after closing the chip.
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'line',
+    );
+    expect(lines).toHaveLength(1);
+  });
+});
+
+// Discipline meta-test (Gate 21.2.disc, Revision-4 per-scenario form +
+// §13 mid-execution refinement). Reads its own source, splits on
+// `it(`, and per-scenario asserts the block contains BOTH `<EditorRoot`
+// (JSX usage — direct or inside a fragment / wrapper, allowing the
+// geo-ref scenario's `<><EditorRoot /><StatusBarGeoRefChip /></>`
+// composition) AND `fireEvent.`. Per-scenario structural enforcement
+// of A18-assert + A18-uistate.
+describe('smoke E2E discipline (A18 / Revision-4)', () => {
+  it('every named scenario mounts EditorRoot and fires DOM events', () => {
+    const src = readFileSync(fileURLToPath(import.meta.url), 'utf8');
+
+    for (const name of SCENARIOS) {
+      const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const declRe = new RegExp(`it\\(\\s*['"\`]${escaped}['"\`]`, 'g');
+      const allDecls = src.match(declRe) ?? [];
+      expect(
+        allDecls.length,
+        `scenario "${name}" must have exactly one it(...) declaration; found ${allDecls.length}`,
+      ).toBe(1);
+
+      const findRe = new RegExp(`it\\(\\s*['"\`]${escaped}['"\`]`);
+      const m = findRe.exec(src);
+      expect(m, `scenario "${name}" not found`).toBeTruthy();
+      const blockStart = m!.index;
+
+      // Heuristic block end: next `it(` declaration or end-of-file.
+      const remainder = src.slice(blockStart + 1);
+      const nextItIdx = remainder.search(/\bit\(\s*['"`]/);
+      const blockEnd = nextItIdx === -1 ? src.length : blockStart + 1 + nextItIdx;
+      const body = src.slice(blockStart, blockEnd);
+
+      expect(/<EditorRoot/.test(body), `"${name}" missing <EditorRoot JSX`).toBe(true);
+      expect(/fireEvent\./.test(body), `"${name}" missing fireEvent.`).toBe(true);
+    }
   });
 });

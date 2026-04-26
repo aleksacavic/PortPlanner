@@ -2616,9 +2616,15 @@ Gate 22.3: registerKeyboardRouter is idempotent (no throw on re-register)
   Command: rg -n "if \(registered.*cleanup\(\)" packages/editor-2d/src/keyboard/router.ts
   Expected: ≥1 match (the idempotent re-register path)
 
-Gate 22.4: CanvasHost wires pointer + wheel handlers
-  Command: rg -n "onPointerDown|onPointerMove|onPointerUp|onWheel" packages/editor-2d/src/canvas/canvas-host.tsx
-  Expected: ≥4 matches
+Gate 22.4: CanvasHost wires pointer-class + wheel handlers
+  Command: rg -n "onMouseDown|onMouseMove|onMouseUp|onWheel" packages/editor-2d/src/canvas/canvas-host.tsx
+  Expected: ≥4 matches.
+  Rationale (Revision-4 + §13.3 refinement): mouse events used in
+  place of pointer events for jsdom 25 compatibility — jsdom's
+  PointerEvent constructor drops button/clientX/buttons fields,
+  breaking the smoke E2E. Mouse events are fully populated and cover
+  M1.3a's left-click + middle-drag + wheel-zoom needs. Touch / pen
+  support is post-M1.
 
 Gate 22.5: Phase 21 smoke E2E (all five DOM-level scenarios) passes
   Command: pnpm --filter @portplanner/editor-2d test -- tests/smoke-e2e
@@ -2973,7 +2979,71 @@ scenario MUST mount EditorRoot via `render(...)` and fire DOM
 events) is preserved — JSX presence + `fireEvent.` presence is the
 structural rule.
 
-### §13.3 Procedural compliance
+### §13.3 Canvas event source — mouse events vs pointer events
+
+**Trigger.** Mid-Phase-22 implementation: the smoke E2E `pan zoom
+toggle` scenario fired `fireEvent.pointerDown(canvas, { button: 1,
+clientX, clientY })` and the canvas-host `onPointerDown` handler
+received `e.button === undefined` and `e.clientX === undefined`.
+Diagnosis: jsdom 25's `PointerEvent` constructor drops the
+`PointerEventInit` dict's mouse-derived fields (button, buttons,
+clientX/Y, screenX/Y) so React's synthetic `PointerEvent` props are
+all undefined. This is a known jsdom 25 limitation, not a flaw in
+testing-library or React.
+
+**Decision.** Switch canvas-host event handlers from
+`onPointerDown` / `onPointerMove` / `onPointerUp` to
+`onMouseDown` / `onMouseMove` / `onMouseUp`. `onWheel` is unchanged.
+Mouse events are fully populated in jsdom 25 + React 19 +
+testing-library 16. Touch / pen support is post-M1 (not in M1.3a
+scope per A4 / A5 / A14 / A22). The smoke test fires
+`fireEvent.mouseDown` / `fireEvent.mouseMove` / `fireEvent.mouseUp`
+to match.
+
+**Effect on Gate 22.4.** Original gate text: `rg -n
+"onPointerDown|onPointerMove|onPointerUp|onWheel" packages/editor-
+2d/src/canvas/canvas-host.tsx ; Expected: ≥4 matches`. Refined gate:
+`rg -n "onMouseDown|onMouseMove|onMouseUp|onWheel" packages/editor-
+2d/src/canvas/canvas-host.tsx ; Expected: ≥4 matches`. Intent
+preserved (canvas-host wires four pointer-class + wheel handlers);
+literal swapped to match jsdom-compatible event source.
+
+### §13.4 Tool runner input queue
+
+**Trigger.** Smoke E2E scenarios firing two rapid
+`fireEvent.mouseDown` calls in sequence dropped the second input.
+Cause: the original `runner.ts` `feedInput` discarded inputs when
+`pendingResolve` was null, and the second `mouseDown` arrived
+synchronously before the generator microtask had set
+`pendingResolve` for the second `await nextInput()`.
+
+**Decision.** Add an `inputQueue: Input[]` to the runner. When
+`feedInput` is called and `pendingResolve` is null, push to the
+queue. When `nextInput()` is awaited and the queue is non-empty,
+shift the next input immediately rather than blocking. This makes
+the runner robust against input bursts without changing the
+generator-pattern public API. No invariant changes — I-43 (stateless
+runner; state lives in active-tool slice) is preserved because the
+queue is per-`startTool` invocation and discarded with the runner.
+
+### §13.5 Smoke E2E React-flush yields
+
+**Trigger.** `properties edit` scenario added a new layer via
+`addLayer(...)` then immediately fired `fireEvent.change(select, {
+target: { value: newLayer } })` on the layer-dropdown `<select>`.
+The dispatch happened before React re-rendered the
+`<option value={newLayer}>` for the freshly added layer — jsdom
+treats the change value as invalid (option not present) and resolves
+the select's value to empty.
+
+**Decision.** Insert a brief `await wait(20)` (20 ms real timer)
+between `addLayer(...)` and the `fireEvent.change`. This yields one
+event-loop turn so React flushes the new option before the
+`change` dispatch. Same pattern was added between scenario steps
+that depend on async tool-runner advancement (between rapid
+`mouseDown` pairs that drive a tool's two-prompt sequence).
+
+### §13.6 Procedural compliance
 
 Both refinements were:
 1. Discovered during Phase 22 execution (canvas-host imports

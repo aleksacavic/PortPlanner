@@ -16,9 +16,18 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   const generator = generatorFactory();
   let pendingResolve: ((input: Input) => void) | null = null;
   let aborted = false;
+  const inputQueue: Input[] = [];
 
+  // Inputs may arrive faster than the generator drains them (rapid
+  // pointerDowns from a smoke test, queued bar submits, etc.). Buffer
+  // them in `inputQueue` when no awaiter is pending; pop on the next
+  // `nextInput()` so no input is lost.
   function nextInput(): Promise<Input> {
     return new Promise<Input>((resolve) => {
+      if (inputQueue.length > 0) {
+        resolve(inputQueue.shift() as Input);
+        return;
+      }
       pendingResolve = resolve;
     });
   }
@@ -63,7 +72,9 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         const r = pendingResolve;
         pendingResolve = null;
         r(input);
+        return;
       }
+      inputQueue.push(input);
     },
     abort(): void {
       aborted = true;

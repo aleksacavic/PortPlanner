@@ -25,8 +25,12 @@ let registered = false;
 let cleanup: (() => void) | null = null;
 
 export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () => void {
-  if (registered) {
-    throw new Error('registerKeyboardRouter: a router is already registered for this window');
+  // Idempotent re-register (Phase 22 / I-65). React 19 StrictMode
+  // double-invokes effects, and per-test mounts in the smoke E2E suite
+  // remount EditorRoot many times. If a router is already registered,
+  // call its cleanup first then proceed to register the new one.
+  if (registered && cleanup) {
+    cleanup();
   }
   registered = true;
 
