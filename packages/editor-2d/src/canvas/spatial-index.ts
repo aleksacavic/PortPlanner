@@ -58,6 +58,31 @@ export class PrimitiveSpatialIndex {
     return [...hits, ...this.xlineIds];
   }
 
+  /**
+   * M1.3d Phase 7 — window-selection (fully-enclosed) helper. Returns
+   * finite-bbox primitive ids whose ENTIRE bbox lies inside `rect`.
+   * Implementation: rbush-search the rect for candidates, then filter
+   * by per-item bbox-inside-rect. Xlines are intentionally EXCLUDED
+   * because their infinite extent can never be fully enclosed
+   * (matches AutoCAD behaviour where construction lines are
+   * crossing-only).
+   */
+  searchEnclosed(rect: BBox): PrimitiveId[] {
+    const candidates = this.tree.search(rect);
+    const enclosed: PrimitiveId[] = [];
+    for (const item of candidates) {
+      if (
+        item.minX >= rect.minX &&
+        item.maxX <= rect.maxX &&
+        item.minY >= rect.minY &&
+        item.maxY <= rect.maxY
+      ) {
+        enclosed.push(item.id);
+      }
+    }
+    return enclosed;
+  }
+
   clear(): void {
     this.tree.clear();
     this.byId.clear();

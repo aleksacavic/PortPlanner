@@ -56,6 +56,22 @@ describe('emitCSSVars', () => {
     const strFromEntries = entries.map(([k, v]) => `  --${k}: ${v};`).join('\n');
     expect(strFromEntries).toBe(output);
   });
+
+  // M1.3d Phase 1 — Gate DTP-1.3 evidence (per plan §8 Phase 1, swapped
+  // to test-level assertion in §13 Post-execution notes). The
+  // `canvas.transient.*` sub-namespace is nested; assert the emitter's
+  // recursion produces the expected `--canvas-transient-*` CSS vars
+  // (a sample drawn from each nesting depth — leaf at the transient
+  // root, leaf inside a nested object).
+  it('emits --canvas-transient-* CSS vars for the nested transient namespace', () => {
+    const output = emitCSSVars(dark);
+    expect(output).toContain('--canvas-transient-preview-stroke:');
+    expect(output).toContain('--canvas-transient-preview-dash:');
+    expect(output).toContain('--canvas-transient-label-padding:');
+    expect(output).toContain('--canvas-transient-selection-window-stroke:');
+    expect(output).toContain('--canvas-transient-selection-crossing-fill:');
+    expect(output).toContain('--canvas-transient-hover-highlight-dash:');
+  });
 });
 
 describe('ThemeMode type narrowness (M1.1 progressive implementation)', () => {

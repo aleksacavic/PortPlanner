@@ -10,7 +10,12 @@ import type { ToolGenerator } from '../types';
 export async function* drawRectangleTool(): ToolGenerator {
   const c0 = yield { text: 'Specify first corner', acceptedInputKinds: ['point'] };
   if (c0.kind !== 'point') return { committed: false, reason: 'aborted' };
-  const c1 = yield { text: 'Specify opposite corner', acceptedInputKinds: ['point'] };
+  const corner1 = c0.point;
+  const c1 = yield {
+    text: 'Specify opposite corner',
+    acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({ kind: 'rectangle', corner1, cursor }),
+  };
   if (c1.kind !== 'point') return { committed: false, reason: 'aborted' };
 
   const minX = Math.min(c0.point.x, c1.point.x);

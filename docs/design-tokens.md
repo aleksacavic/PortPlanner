@@ -263,6 +263,8 @@ interface SemanticTokens {
 
     validation_error: Color;      // error object outline colour
     validation_warn:  Color;      // warning object outline colour
+
+    transient:        TransientTokens;   // M1.3d — see Transient overlay tokens
   };
 }
 ```
@@ -334,7 +336,22 @@ const dark: SemanticTokens = {
     detached_tint:  'rgba(245, 166, 35, 0.12)',    // subtle amber
 
     validation_error: color.red[400],
-    validation_warn:  color.amber[400]
+    validation_warn:  color.amber[400],
+
+    transient: {
+      preview_stroke:  '#7d8fa3',
+      preview_fill:    'rgba(125, 143, 163, 0.05)',
+      preview_dash:    '6 4',
+      label_text:      '#c8d4e3',
+      label_bg:        'rgba(13, 20, 32, 0.85)',
+      label_padding:   '4',
+      crosshair:       'rgba(180, 200, 255, 0.35)',
+      crosshair_dash:  'solid',
+      dimension_line:  '#7d8fa3',
+      selection_window:   { stroke: 'rgba(42, 127, 255, 0.9)', fill: 'rgba(42, 127, 255, 0.07)', dash: '6 4' },
+      selection_crossing: { stroke: 'rgba(0, 255, 128, 0.9)',  fill: 'rgba(0, 255, 128, 0.07)',  dash: '6 4' },
+      hover_highlight:    { stroke: 'rgba(180, 200, 255, 0.5)', dash: '4 2' }
+    }
   }
 };
 ```
@@ -408,6 +425,48 @@ const light: SemanticTokens = {
   }
 };
 ```
+
+## Transient overlay tokens (`canvas.transient.*`)
+
+The transient sub-namespace under `canvas` is a **hard SSOT boundary**
+introduced in M1.3d. Painters of in-flight UI — live preview, snap glyph,
+selection rectangle, hover-entity highlight, grip handles, cursor crosshair,
+and transient labels — read EXCLUSIVELY from `canvas.transient.*`. They
+MUST NOT read other `canvas.*` tokens, layer color tokens, or any ByLayer
+styling. The ByLayer ladder is for entities; transient overlays bypass it
+entirely.
+
+This separation matters because the lifecycle is different. Entity styling
+flows through the ByLayer ladder (entity color → layer color → default
+color) and is captured in the project document. Transient overlays exist
+only while a tool is in flight or a selection is active; they are never
+persisted, never serialized, never themed via layer rules.
+
+**Enforcement:** Gate `DTP-T1` greps each transient painter file for
+references to `layer.color` or `effectiveColor.*layer` and fails the build
+if any match. See `docs/plans/feature/m1-3d-drafting-polish.md` §9 for
+the cross-cutting hard gates.
+
+**Storage convention.** Numeric values (dash patterns, padding) are stored
+as strings to preserve the existing `SemanticTokens` leaf-is-string
+contract that `tokens.test.ts` validates. Painters parse on consumption:
+dash patterns split on whitespace and convert to `number[]` for
+`ctx.setLineDash`; padding values pass through `parseInt`.
+
+| Token | Purpose |
+|-------|---------|
+| `preview_stroke` | Stroke color for live-preview shape outlines (line/circle/rect/arc/xline rubber bands). |
+| `preview_fill` | Fill color for live-preview interiors (translucent or near-zero alpha). |
+| `preview_dash` | Dash pattern (space-separated, e.g. `'6 4'`) for `ctx.setLineDash` on preview strokes. |
+| `label_text` | Foreground color for transient labels (length, radius, angle readouts). |
+| `label_bg` | Translucent background for the rounded-pill label backdrop. |
+| `label_padding` | Inner padding (px, stringified) inside the label pill. |
+| `crosshair` | Stroke color for the cursor crosshair. |
+| `crosshair_dash` | Dash pattern for the crosshair. Sentinel `'solid'` means "no dashing" (painter skips `ctx.setLineDash`). Empty strings are forbidden by the leaf-non-empty invariant. |
+| `dimension_line` | Stroke color for transient dimension witness/extension lines (used by M1.3c). |
+| `selection_window.stroke` / `.fill` / `.dash` | Window-selection (L→R drag, fully-enclosed) rectangle styling. |
+| `selection_crossing.stroke` / `.fill` / `.dash` | Crossing-selection (R→L drag, any-touch) rectangle styling. |
+| `hover_highlight.stroke` / `.dash` | Faint outline drawn on the entity under the cursor when no tool is active. |
 
 ## Icon Library
 
@@ -650,6 +709,7 @@ component library work begins.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.0 | 2026-04-26 | Added `canvas.transient.*` sub-namespace for in-flight UI styling (live preview, snap glyph, selection rectangle, hover highlight, grip handles, cursor crosshair, transient labels). Documented as a hard SSOT boundary outside the ByLayer ladder, enforced by Gate DTP-T1. Numeric values (dash patterns, padding) stored as strings to preserve leaf-is-string contract. M1.3d Phase 1. |
 | 1.2.0 | 2026-04-18 | Replaced illustrative `styled.div` examples with CSS-module examples to align with ADR-012 decision #12 (CSS Modules + CSS custom properties). No change to semantic or theme-switching behaviour. Token values unchanged. |
 | 1.1.0 | 2026-04-16 | Added Icon Library section (Lucide). Added Theme Switching section. See ADR-011. |
 | 1.0.0 | 2026-04-16 | Initial specification extracted from prototype-v1.html |

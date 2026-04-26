@@ -12,7 +12,7 @@
 // "click before you can draw" friction so `pnpm dev` opens onto a
 // usable canvas.
 
-import { LayerId, type Project, defaultLayer, newProjectId } from '@portplanner/domain';
+import { LayerId, type Project, defaultLayer, newGridId, newProjectId } from '@portplanner/domain';
 import { createNewProject, hydrateProject, projectStore } from '@portplanner/project-store';
 import { useEffect } from 'react';
 
@@ -20,6 +20,12 @@ import { loadMostRecent } from '../persistence';
 
 function buildDefaultProject(): Project {
   const now = new Date().toISOString();
+  // M1.3d Phase 8 — bootstrap a 5×5m grid on the default layer so the
+  // GSNAP modifier has something to snap to out of the box. The grid
+  // matches typical container width (~6 m) so the user immediately sees
+  // a useful lattice. Disable via Layer Manager → Grid (when grid-
+  // properties UI lands; M1.3d ships only the bootstrap default).
+  const gridId = newGridId();
   return {
     id: newProjectId(),
     schemaVersion: '1.1.0',
@@ -30,7 +36,18 @@ function buildDefaultProject(): Project {
     objects: {},
     primitives: {},
     layers: { [LayerId.DEFAULT]: defaultLayer() },
-    grids: {},
+    grids: {
+      [gridId]: {
+        id: gridId,
+        origin: { x: 0, y: 0 },
+        angle: 0,
+        spacingX: 5,
+        spacingY: 5,
+        layerId: LayerId.DEFAULT,
+        visible: true,
+        activeForSnap: true,
+      },
+    },
     scenarioId: null,
   };
 }

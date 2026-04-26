@@ -23,7 +23,14 @@ export type ToolId =
   | 'draw-rectangle'
   | 'draw-circle'
   | 'draw-arc'
-  | 'draw-xline';
+  | 'draw-xline'
+  // M1.3d Phase 6 + Phase 7 — modeless drag-style tools started by
+  // canvas-host (NOT by keyboard shortcut). They live in the ToolId
+  // union so the registry, runner, and store-isolation can refer to
+  // them, but they're absent from SINGLE_LETTER_SHORTCUTS /
+  // MULTI_LETTER_SHORTCUTS — keyboard activation would be the wrong UX.
+  | 'grip-stretch'
+  | 'select-rect';
 
 /** Single-letter shortcut → tool id (M1.3a essential operators + Line/Arc draw tools). */
 export const SINGLE_LETTER_SHORTCUTS: Record<string, ToolId> = {

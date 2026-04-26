@@ -11,6 +11,7 @@ interface RouterMocks {
   onAbortCurrentTool: ReturnType<typeof vi.fn>;
   onCommitCurrentTool: ReturnType<typeof vi.fn>;
   onSubOption: ReturnType<typeof vi.fn>;
+  onToggleCrosshair: ReturnType<typeof vi.fn>;
 }
 
 let mocks: RouterMocks;
@@ -29,6 +30,7 @@ beforeEach(() => {
     onAbortCurrentTool: vi.fn(),
     onCommitCurrentTool: vi.fn(),
     onSubOption: vi.fn(),
+    onToggleCrosshair: vi.fn(),
   };
   registerKeyboardRouter(mocks);
 });
@@ -153,6 +155,19 @@ describe('keyboard router', () => {
     await new Promise((r) => setTimeout(r, 800));
     expect(mocks.onActivateTool).toHaveBeenCalledWith('copy');
     expect(mocks.onSubOption).not.toHaveBeenCalled();
+  });
+
+  // M1.3d Phase 8 — F7 toggle-crosshair (I-DTP-20).
+  it('F7 fires onToggleCrosshair regardless of focus holder', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('F7');
+    expect(mocks.onToggleCrosshair).toHaveBeenCalledTimes(1);
+    editorUiActions.setFocusHolder('bar');
+    pressKey('F7');
+    expect(mocks.onToggleCrosshair).toHaveBeenCalledTimes(2);
+    editorUiActions.setFocusHolder('dialog');
+    pressKey('F7');
+    expect(mocks.onToggleCrosshair).toHaveBeenCalledTimes(3);
   });
 });
 

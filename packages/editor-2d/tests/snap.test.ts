@@ -16,6 +16,7 @@ const viewport: Viewport = {
   dpr: 1,
   canvasWidthCss: 800,
   canvasHeightCss: 600,
+  crosshairSizePct: 100,
 };
 
 function line(p1: { x: number; y: number }, p2: { x: number; y: number }): Primitive {

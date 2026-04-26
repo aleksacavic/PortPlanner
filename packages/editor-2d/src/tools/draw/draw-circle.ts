@@ -10,7 +10,12 @@ import type { ToolGenerator } from '../types';
 export async function* drawCircleTool(): ToolGenerator {
   const center = yield { text: 'Specify center', acceptedInputKinds: ['point'] };
   if (center.kind !== 'point') return { committed: false, reason: 'aborted' };
-  const edge = yield { text: 'Specify radius (point on circle)', acceptedInputKinds: ['point'] };
+  const ctr = center.point;
+  const edge = yield {
+    text: 'Specify radius (point on circle)',
+    acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({ kind: 'circle', center: ctr, cursor }),
+  };
   if (edge.kind !== 'point') return { committed: false, reason: 'aborted' };
 
   const radius = Math.hypot(edge.point.x - center.point.x, edge.point.y - center.point.y);

@@ -14,6 +14,7 @@ const baseViewport: Viewport = {
   dpr: 1,
   canvasWidthCss: 800,
   canvasHeightCss: 600,
+  crosshairSizePct: 100,
 };
 
 describe('view-transform', () => {

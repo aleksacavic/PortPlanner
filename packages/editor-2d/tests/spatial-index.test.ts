@@ -61,4 +61,46 @@ describe('PrimitiveSpatialIndex', () => {
     const hits = idx.searchFrustum({ minX: 1000, minY: 1000, maxX: 2000, maxY: 2000 });
     expect(hits).toContain(x.id);
   });
+
+  // M1.3d Phase 7 — searchEnclosed (window selection)
+  describe('searchEnclosed (M1.3d Phase 7, I-DTP-16)', () => {
+    it('returns ids whose bbox is FULLY inside the rect', () => {
+      const idx = new PrimitiveSpatialIndex();
+      const inside = line({ x: 1, y: 1 }, { x: 4, y: 4 });
+      const partial = line({ x: 3, y: 3 }, { x: 100, y: 100 });
+      const outside = line({ x: 200, y: 200 }, { x: 210, y: 210 });
+      idx.insert(inside);
+      idx.insert(partial);
+      idx.insert(outside);
+      const hits = idx.searchEnclosed({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+      expect(hits).toContain(inside.id);
+      expect(hits).not.toContain(partial.id);
+      expect(hits).not.toContain(outside.id);
+    });
+
+    it('an entity touching but not strictly inside is NOT enclosed (boundary inclusive)', () => {
+      const idx = new PrimitiveSpatialIndex();
+      // bbox: minX=0, maxX=10. rect: minX=0, maxX=10. Boundary case
+      // — bbox.minX >= rect.minX AND bbox.maxX <= rect.maxX → enclosed.
+      const onBoundary = line({ x: 0, y: 0 }, { x: 10, y: 5 });
+      idx.insert(onBoundary);
+      const hits = idx.searchEnclosed({ minX: 0, minY: 0, maxX: 10, maxY: 10 });
+      expect(hits).toContain(onBoundary.id);
+    });
+
+    it('xlines are EXCLUDED from window selection (infinite extent never fully encloseable)', () => {
+      const idx = new PrimitiveSpatialIndex();
+      const x: Primitive = {
+        id: newPrimitiveId(),
+        kind: 'xline',
+        layerId: LayerId.DEFAULT,
+        displayOverrides: {},
+        pivot: { x: 0, y: 0 },
+        angle: 0,
+      };
+      idx.insert(x);
+      const hits = idx.searchEnclosed({ minX: -1000, minY: -1000, maxX: 1000, maxY: 1000 });
+      expect(hits).not.toContain(x.id);
+    });
+  });
 });

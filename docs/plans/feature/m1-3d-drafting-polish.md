@@ -674,9 +674,18 @@ Gate DTP-1.2: Token namespace present in semantic-dark.ts
   Command: rg -n "transient:" packages/design-system/src/tokens/semantic-dark.ts
   Expected: ≥1 match
 
-Gate DTP-1.3: CSS vars emit transient tokens
-  Command: rg -n "--canvas-transient" packages/design-system/src/tokens/css-vars.ts
-  Expected: ≥1 match (the emitter recognises the nested namespace)
+Gate DTP-1.3: CSS vars emit transient tokens (revised mid-execution; see §13.1)
+  Command: pnpm --filter @portplanner/design-system test -- tests/tokens
+  Expected: passes; tokens.test.ts "emits --canvas-transient-* CSS vars
+            for the nested transient namespace" assertion is green
+  Rationale (Phase 1 mid-execution gate swap, §13.1): the original grep
+  `rg -n "--canvas-transient" packages/design-system/src/tokens/css-vars.ts`
+  is unsatisfiable — `css-vars.ts` is a fully generic recursive flattener
+  with zero token-specific literals. The emitter's nested-namespace
+  handling is verified at runtime: `tokens.test.ts` (a) counts leaves
+  vs declarations in `emitCSSVars(dark)` (existing) and (b) adds an
+  explicit `expect(output).toContain('--canvas-transient-*')` assertion
+  for sample leaves at each nesting depth (Phase 1).
 
 Gate DTP-1.4: docs/design-tokens.md updated
   Command: rg -n "canvas\.transient" docs/design-tokens.md
@@ -1804,6 +1813,223 @@ Gate DTP-T7: canvas-host.tsx never subscribes to editor-ui state (preserves I-68
 | **Runner cursor-subscription teardown on tool abort (C11).** If a tool aborts mid-prompt (Escape), the runner's editorUiStore subscription must unsubscribe AND the previewShape must clear. | Phase 4 step 5 explicitly specifies the lifecycle: subscription created on tool start, cleared on tool completion / abort via the runner's existing try/finally. Verified by tool-runner integration test. |
 | **`editorUiStore.overlay` slice growing into a kitchen sink (C12).** With ~9 fields (cursor, snapTarget, guides, selectionHandles, previewShape, hoverEntity, transientLabels, grips, suppressEntityPaint) plus `viewport.crosshairSizePct`, the overlay slice is becoming load-bearing for many concerns. | Acceptable for M1.3d — splitting into per-concern slices would be premature. M2+ refactor opportunity (e.g. `overlay-cursor`, `overlay-preview`, `overlay-selection` sub-slices) if the slice file exceeds ~400 LOC. Documented; not blocking. |
 | **mouseup whitelist hard-codes drag-style tool ids (C13).** EditorRoot's `handleCanvasMouseUp` filters on `activeToolId === 'select-rect' \|\| activeToolId === 'grip-stretch'` to avoid forwarding mouseup-driven inputs to non-drag tools. Future drag-style tools (e.g. M1.3b STRETCH command with multi-entity crossing-window) would need to be added to the whitelist. | Acceptable for M1.3d — only two drag-style tools. Future cleaner pattern: declare `acceptsMouseUp?: boolean` on the running `Prompt`; EditorRoot reads from `editorUiStore.commandBar.activePrompt` instead of a hard-coded tool-id list. Defer until the third drag-style tool emerges. |
+
+---
+
+## 13. Post-execution notes
+
+Per Procedure 03 §3.7, this section accumulates plan corrections discovered
+during execution. Each entry is dated and tagged with the originating
+phase. The plan body above is the authoritative spec; entries here record
+where the body was insufficient and how execution adapted.
+
+### 13.4 — Phase 4 (2026-04-26)
+
+**Gate DTP-T2 grep matches comments — same pattern as §13.2.** My
+initial paintPreview.ts file-header comment included the literal string
+`ctx.fillText` to explain WHY embedded labels delegate to
+paintTransientLabel. The Gate DTP-T2 substring grep flagged the comment.
+Same resolution as Phase 2: rephrase to omit the forbidden method
+names. Pattern crystallizing across Phases 2/4: substring gates do not
+distinguish comments from code; documentation prose explaining a
+prohibition MUST avoid the prohibited token. Worth carrying into Phase
+5/6/7/8 painter authorship.
+
+**ADR-021 paint-loop pass restoration.** When paintPreview returns,
+its internal `ctx.save()` / `ctx.restore()` pop the metric transform
+the overlay-pass invariant assumes. paint.ts re-applies the metric
+transform via `applyToCanvasContext(ctx, viewport)` after the
+paintPreview call so subsequent overlay-pass painters (paintSnapGlyph,
+labels) start from a consistent state. paintSnapGlyph and
+paintTransientLabel use their own save/restore so they don't disturb
+the metric transform on exit; only paintPreview's internal nested
+calls (it invokes paintTransientLabel inside, which resets to identity)
+require the explicit re-application. Worth knowing for Phase 5+
+painter additions: any painter that internally toggles transform
+(via paintTransientLabel calls or its own setTransform) needs paint.ts
+to re-apply the metric transform after.
+
+**Polyline preview vertex snapshot.** The polyline previewBuilder
+captures the current vertex chain at yield time via a `[...vertices]`
+clone; the runner re-invokes the builder with new cursor values, but
+the chain is frozen. New vertices push into the next yield's snapshot.
+This is the closure-capture pattern from plan §1 step 5 / C14 applied
+specifically to a multi-iteration loop — every iteration captures a
+fresh snapshot, so the runner's single subscription handler always
+sees the right chain.
+
+### 13.3 — Phase 3 (2026-04-26)
+
+**A15 plan-text inaccuracy: M1.3a never wired `resolveSnap` at click
+time.** Plan §2 A15 states "Tools receive the snap-resolved metric on
+mousedown via the snap output (not the raw cursor metric) — this is
+the I-39 bit-copy pattern existing in M1.3a." Investigation in Phase
+3 found that `resolveSnap` (`packages/editor-2d/src/snap/priority.ts`)
+has zero callers in M1.3a — the snap engine is implemented and tested
+but never invoked from the click handler. M1.3d Phase 3 closes this
+gap by wiring `resolveSnap` into both the snap-on-cursor effect (for
+the visible glyph) and `handleCanvasClick` (for the click-time
+commit). The same `commitSnappedVertex` (M1.3a, `snap/commit.ts`)
+performs the I-39 bit-copy. Net effect matches A15's promised
+semantics; the gap was in the wiring, not the design.
+
+**Snap kind names: code uses kebab-case (`'grid-node'`, `'grid-line'`)
+not the plan's snake_case (`'grid_node'`, `'grid_line_fallback'`).**
+The snap engine's `SnapHit['kind']` union (`packages/editor-2d/src/
+snap/priority.ts`) defines `'grid-node' | 'grid-line' | 'cursor'`
+plus the OSNAP kinds. The plan's Phase 3 step 1 uses `'grid_node'` /
+`'grid_line_fallback'` (M1.3a doc-time naming). Phase 3 implementation
+uses the actual code names. Gate DTP-3.2's grep
+(`endpoint|midpoint|intersection|'node'|grid_node`) was widened in
+the gate-results table to also accept `grid-node`. The plan body
+isn't updated because the kind names are an implementation detail
+of the snap engine; the rename of `'grid_line_fallback'` → `'grid-line'`
+already happened in M1.3a, and forcing the plan's literal text
+through code would just churn.
+
+**Grid-line glyph degraded fallback.** The plan calls for a "small
+tick perpendicular to the grid line at the foot of perpendicular
+drop." The snap engine's `SnapHit` for `'grid-line'` carries only
+the snap point, NOT the line direction (the line could be along the
+grid's local X or Y axis, and at any rotation per `Grid.angle`).
+Recovering the direction would require either (a) returning the line
+hit's direction from `resolveSnap` (a snap engine API change beyond
+Phase 3 scope), or (b) re-deriving from the nearest grid + the
+perpendicular-foot math. M1.3d Phase 3 ships a degraded fallback:
+an axis-aligned + tick smaller than the `'grid-node'` glyph so the
+user can distinguish "fell on a node" from "fell on a line." Direction
+fidelity can land in M1.3c when POLAR / OTRACK touch the snap engine
+shape.
+
+**`paintSnapGlyph` reads `canvas.snap_indicator`, NOT
+`canvas.transient.*`.** Plan §1 Phase 3 step 1 explicitly directs the
+glyph color to come from the existing M1.3a `canvas.snap_indicator`
+token. The wider I-DTP-1 invariant says transient painters read SOLELY
+from `canvas.transient.*`, but Gate DTP-T1's literal grep checks for
+`layer\.color|effectiveColor.*layer` — `canvas.snap_indicator` is
+canvas-level, not a layer color, so the gate passes. The two are
+reconciled by treating "transient styling" as the per-namespace styling
+chosen for transient overlays — the snap glyph reuses snap-indicator
+because the snap glyph IS the snap indicator. No new
+`canvas.transient.snap_glyph` token added.
+
+### 13.2 — Phase 2 (2026-04-26)
+
+**Gate DTP-T7's grep matches comments too — keep the forbidden symbol
+out of canvas-host comments.** The Gate DTP-T7 grep
+`"editorUiStore|\buseEditorUi\(|from ['\"]\.\./chrome/use-editor-ui-store['\"]"`
+is a hard substring match on the source file with no comment-stripping
+pass. My initial Phase 2 canvas-host.tsx doc-comments referenced
+`editorUiStore` to explain WHY the file must not import it — those
+comments themselves tripped the grep. Resolution: the comments now
+talk about "the editor-ui store" (with the hyphen) and explicitly
+note that even the symbol name is forbidden so future authors don't
+re-introduce the trap. The discipline mirrors how Gate G3.1 works
+(grep on raw source for layer color tokens in transient painters,
+no comment carve-out).
+
+**jsdom 25 `HTMLCanvasElement.getContext` THROWS instead of returning
+null — `tests/setup.ts` shim doesn't install for it.** The shared
+setup-file shim only installs its no-op `getContext` stub when
+`getContext` is missing OR its `toString()` includes `'Not
+implemented'`. jsdom 25's wrapper IS a real function and its toString
+doesn't include that string, so the shim is skipped and `getContext`
+calls report-exception via jsdom's not-implemented helper. Existing
+smoke-e2e tests pass because their assertions don't depend on
+`paint()` actually running — the rAF callback's `if (!ctx) return`
+short-circuits silently. canvas-host.test.tsx tests, by contrast,
+DO need `paint()` to run (so `getOverlay()` is invoked in the rAF
+callback and we can assert on its call count). Resolution: install
+a local `getContext` stub in canvas-host.test.tsx's `beforeEach` and
+restore in `afterEach`, leaving the shared setup.ts untouched (less
+disturbance to other suites). Future phases that need paint() to
+actually run from a per-component test should follow the same
+pattern; if more than two suites need it, refactor setup.ts to
+unconditionally install the stub.
+
+### 13.1 — Phase 1 (2026-04-26)
+
+**Gate DTP-1.3 swap (mid-execution per §3.10, user ack 2026-04-26).** The
+original gate command `rg -n "--canvas-transient" packages/design-system/
+src/tokens/css-vars.ts` is unsatisfiable: `css-vars.ts` is a fully generic
+recursive flattener (`flatten()` walks any token tree, kebab-cases keys,
+emits string leaves) and contains zero token-specific literals. Every CSS
+variable name is computed at runtime from the input tree. Phase 1 added
+the `canvas.transient.*` sub-namespace to `dark` such that
+`emitCSSVars(dark)` now produces `--canvas-transient-*` lines for every
+leaf, but the literal string `--canvas-transient` does not (and should
+not) appear in the emitter source. The gate was swapped to point at a
+test-level assertion in `packages/design-system/tests/tokens.test.ts`
+that calls `emitCSSVars(dark)` and `expect(output).toContain
+('--canvas-transient-preview-stroke')` for sample leaves at each nesting
+depth (root + nested object). The §8 Phase 1 gate text was updated
+in-place. Plan invariants unchanged — only the verification command
+shape changed.
+
+**Forward-referenced types relocated for type-correctness.** The plan
+defines `PreviewShape` in Phase 4 step 2 (in `tools/types.ts`) and
+`Grip` in Phase 5 step 1 (in `canvas/grip-positions.ts`), but the
+overlay slice in Phase 1 step 6 references both via `previewShape:
+PreviewShape | null` and `grips: Grip[] | null`. To make Phase 1 type-
+check, Phase 1 introduced both up-front:
+
+- `PreviewShape` discriminated union → defined in
+  `packages/editor-2d/src/tools/types.ts` verbatim per the Phase 4 step
+  2 spec (8 arms: `'line'`, `'polyline'`, `'rectangle'`, `'circle'`,
+  `'arc-2pt'`, `'arc-3pt'`, `'xline'`, `'selection-rect'`). Phase 4 step
+  2 becomes a no-op confirmation; Phase 4 only adds `paintPreview.ts`
+  and the runner cursor-subscription. No relocation of the SSOT.
+- `Grip` and `TransientLabel` interfaces → defined in
+  `packages/editor-2d/src/ui-state/store.ts` (the slice that owns these
+  fields). Phase 5 step 1's `gripsOf(p): Grip[]` will import `Grip`
+  from `../ui-state/store` instead of re-defining it. Phase 4's
+  `paintTransientLabel` will import `TransientLabel` from the same
+  location. Light relocation; SSOT is co-located with the slice.
+- `SnapTarget` → type alias in `store.ts` for the existing
+  `SnapHit` from `../snap/priority`. Re-uses the snap engine's return
+  shape so the overlay carries the same record the resolver produces.
+  Phase 3's paintSnapGlyph reads `snapTarget.point` (the existing
+  `SnapHit` field name); the plan's Phase 3 step 2 prose mentions
+  `snapTarget.target`, which is a doc inconsistency from plan-time vs
+  M1.3a code. Phase 3 will use `.point` and note the prose deviation
+  here when it lands.
+
+**`Viewport.crosshairSizePct` field placement.** The plan stipulates
+`editorUiStore.viewport.crosshairSizePct` (Phase 1 step 5; Phase 8 step
+7; I-DTP-3 / I-DTP-18). Two compatible interpretations existed: extend
+the `Viewport` interface in `view-transform.ts`, or add a sibling field
+on `EditorUiState` next to `viewport`. Phase 1 chose the former so the
+plan's literal access path holds. Trade-off acknowledged: `Viewport`
+now mixes camera transform (pan/zoom/dpr/canvas-size) with a UI cursor
+preference. Three test fixtures (`view-transform.test.ts`,
+`hit-test.test.ts`, `snap.test.ts`) and the `createInitialEditorUiState`
+default were updated to include `crosshairSizePct: 100`. If a future
+M1.3c+ refactor moves UI-only fields off Viewport, both call-sites
+(canvas-host CSS-style toggle, paintCrosshair) update together.
+
+**Token storage convention — strings instead of `number[]`.** The plan
+spec for transient tokens uses `number[]` for dash patterns
+(`preview_dash: [6, 4]`) and `number` for paddings (`label_padding: 4`).
+Phase 1 stored these as strings (`preview_dash: '6 4'`, `label_padding:
+'4'`) to preserve the existing `SemanticTokens = Color = string` leaf
+contract that `tokens.test.ts` validates ("emits exactly one declaration
+per leaf token" counts only `typeof === 'string'` leaves). Painters
+parse on consumption via small helpers (`parseDashPattern`,
+`parseInt`) — this surface lands in Phase 4 (`paintTransientLabel.ts`,
+`paintPreview.ts`). `docs/design-tokens.md` documents the convention
+in the new "Transient overlay tokens" section.
+
+**`crosshair_dash: 'solid'` sentinel for "no dashing".** The plan spec
+treated an empty dash array (`[]`) as the "no dashing" representation,
+which translated to `crosshair_dash: ''` in the string-storage scheme
+above. That value trips the pre-existing `every SemanticTokens leaf has
+a non-empty string value` assertion in `tokens.test.ts` (which guards
+against accidentally-blank tokens). Resolution: use the literal
+sentinel `'solid'` (one of CSS's standard `border-style` values, so it
+reads naturally) and have Phase 8's `paintCrosshair` helper detect the
+sentinel and skip `ctx.setLineDash`. The `TransientTokens.crosshair_dash`
+field doc and the `docs/design-tokens.md` token table both record the
+sentinel + the rationale.
 
 ---
 

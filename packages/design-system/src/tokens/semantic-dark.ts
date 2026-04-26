@@ -65,5 +65,30 @@ export const dark: SemanticTokens = {
     detached_tint: 'rgba(245, 166, 35, 0.12)',
     validation_error: color.red[400],
     validation_warn: color.amber[400],
+    transient: {
+      preview_stroke: '#7d8fa3',
+      preview_fill: 'rgba(125, 143, 163, 0.05)',
+      preview_dash: '6 4',
+      label_text: '#c8d4e3',
+      label_bg: 'rgba(13, 20, 32, 0.85)',
+      label_padding: '4',
+      crosshair: 'rgba(180, 200, 255, 0.35)',
+      crosshair_dash: 'solid',
+      dimension_line: '#7d8fa3',
+      selection_window: {
+        stroke: 'rgba(42, 127, 255, 0.9)',
+        fill: 'rgba(42, 127, 255, 0.07)',
+        dash: '6 4',
+      },
+      selection_crossing: {
+        stroke: 'rgba(0, 255, 128, 0.9)',
+        fill: 'rgba(0, 255, 128, 0.07)',
+        dash: '6 4',
+      },
+      hover_highlight: {
+        stroke: 'rgba(180, 200, 255, 0.5)',
+        dash: '4 2',
+      },
+    },
   },
 };

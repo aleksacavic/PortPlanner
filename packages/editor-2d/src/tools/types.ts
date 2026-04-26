@@ -12,11 +12,57 @@ export interface SubOption {
 
 export type AcceptedInputKind = 'point' | 'number' | 'angle' | 'distance' | 'entity' | 'subOption';
 
+/**
+ * In-flight visualisation a tool yields alongside a Prompt. The tool
+ * runner re-invokes `Prompt.previewBuilder` on every cursor change and
+ * writes the result to `editorUiStore.overlay.previewShape`. The paint
+ * loop's overlay pass dispatches by `kind` — see `paintPreview` (line /
+ * polyline / rectangle / circle / arc-2pt / arc-3pt / xline) and
+ * `paintSelectionRect` (selection-rect arm).
+ *
+ * Defined in Phase 1 of M1.3d for type-correctness of the
+ * `overlay.previewShape: PreviewShape | null` slice field; consumed
+ * by Phase 4 (paintPreview, runner subscription) and Phase 7
+ * (select-rect tool, paintSelectionRect dispatcher). Forward-compat
+ * note: M1.3b modify operators may add a `'modified-entities'` arm;
+ * extension is purely additive.
+ */
+export type PreviewShape =
+  | { kind: 'line'; p1: Point2D; cursor: Point2D }
+  | { kind: 'polyline'; vertices: Point2D[]; cursor: Point2D; closed: boolean }
+  | { kind: 'rectangle'; corner1: Point2D; cursor: Point2D }
+  | { kind: 'circle'; center: Point2D; cursor: Point2D }
+  | { kind: 'arc-2pt'; p1: Point2D; cursor: Point2D }
+  | { kind: 'arc-3pt'; p1: Point2D; p2: Point2D; cursor: Point2D }
+  | { kind: 'xline'; pivot: Point2D; cursor: Point2D }
+  | {
+      kind: 'selection-rect';
+      start: Point2D;
+      end: Point2D;
+      direction: 'window' | 'crossing';
+    };
+
 export interface Prompt {
   text: string;
   subOptions?: SubOption[];
   defaultValue?: string;
   acceptedInputKinds: AcceptedInputKind[];
+  /**
+   * M1.3d Phase 4 — optional cursor-driven preview builder. When set,
+   * the tool runner subscribes to `editorUiStore.overlay.cursor` and
+   * re-invokes this on every cursor change, writing the result to
+   * `overlay.previewShape`. The paint loop's overlay pass dispatches
+   * the shape to `paintPreview` (or `paintSelectionRect` for the
+   * `'selection-rect'` arm). Tools that don't need a preview omit
+   * this field.
+   *
+   * Contract: `previewBuilder` MUST be a pure function of the cursor
+   * — captured tool-local state (start point, accumulated vertices)
+   * is bound by closure at yield time. The runner does NOT cache or
+   * dedupe previewBuilder outputs; it writes whatever the function
+   * returns.
+   */
+  previewBuilder?: (cursor: Point2D) => PreviewShape;
 }
 
 export type Input =

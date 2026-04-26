@@ -189,3 +189,114 @@ describe('seven primitive draw tools', () => {
     expect(result.committed).toBe(false);
   });
 });
+
+// M1.3d Phase 4 — assert each draw tool yields a previewBuilder on the
+// expected prompt(s). We drive the generator directly (bypassing the
+// runner) so the assertion is on what the tool yields, not what the
+// runner does with it.
+describe('draw tools yield previewBuilder (M1.3d Phase 4)', () => {
+  beforeEach(() => createNewProject(makeProject()));
+  afterEach(() => resetProjectStoreForTests());
+
+  it('draw-line yields previewBuilder on the second prompt only', async () => {
+    const factory = lookupTool('draw-line')!;
+    const gen = factory();
+    const first = await gen.next();
+    expect((first.value as { previewBuilder?: unknown }).previewBuilder).toBeUndefined();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    expect(typeof (second.value as { previewBuilder?: unknown }).previewBuilder).toBe('function');
+    const built = (
+      second.value as { previewBuilder: (c: { x: number; y: number }) => unknown }
+    ).previewBuilder({ x: 5, y: 0 });
+    expect(built).toEqual({ kind: 'line', p1: { x: 0, y: 0 }, cursor: { x: 5, y: 0 } });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-rectangle yields previewBuilder on the second prompt', async () => {
+    const factory = lookupTool('draw-rectangle')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 1, y: 2 } });
+    const builder = (second.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(typeof builder).toBe('function');
+    expect(builder!({ x: 4, y: 6 })).toEqual({
+      kind: 'rectangle',
+      corner1: { x: 1, y: 2 },
+      cursor: { x: 4, y: 6 },
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-circle yields previewBuilder on the second prompt', async () => {
+    const factory = lookupTool('draw-circle')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    const builder = (second.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(typeof builder).toBe('function');
+    expect(builder!({ x: 5, y: 0 })).toEqual({
+      kind: 'circle',
+      center: { x: 0, y: 0 },
+      cursor: { x: 5, y: 0 },
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-arc yields arc-2pt on prompt 2 and arc-3pt on prompt 3', async () => {
+    const factory = lookupTool('draw-arc')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    const builder2 = (second.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(builder2!({ x: 1, y: 0 })).toMatchObject({ kind: 'arc-2pt' });
+    const third = await gen.next({ kind: 'point', point: { x: 1, y: 1 } });
+    const builder3 = (third.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(builder3!({ x: 2, y: 0 })).toMatchObject({ kind: 'arc-3pt' });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-xline yields previewBuilder on the second prompt', async () => {
+    const factory = lookupTool('draw-xline')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    const builder = (second.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(builder!({ x: 1, y: 1 })).toMatchObject({ kind: 'xline' });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-polyline yields previewBuilder on every loop iteration', async () => {
+    const factory = lookupTool('draw-polyline')!;
+    const gen = factory();
+    await gen.next();
+    const loop1 = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    const builder1 = (loop1.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(typeof builder1).toBe('function');
+    expect(builder1!({ x: 5, y: 5 })).toEqual({
+      kind: 'polyline',
+      vertices: [{ x: 0, y: 0 }],
+      cursor: { x: 5, y: 5 },
+      closed: false,
+    });
+    const loop2 = await gen.next({ kind: 'point', point: { x: 10, y: 0 } });
+    const builder2 = (loop2.value as { previewBuilder?: (c: unknown) => unknown }).previewBuilder;
+    expect(builder2!({ x: 5, y: 5 })).toEqual({
+      kind: 'polyline',
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 10, y: 0 },
+      ],
+      cursor: { x: 5, y: 5 },
+      closed: false,
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-point does NOT yield previewBuilder (single-click commit)', async () => {
+    const factory = lookupTool('draw-point')!;
+    const gen = factory();
+    const first = await gen.next();
+    expect((first.value as { previewBuilder?: unknown }).previewBuilder).toBeUndefined();
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+});

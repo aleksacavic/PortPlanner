@@ -43,8 +43,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { EditorRoot } from '../src/EditorRoot';
+import { StatusBarCoordReadout } from '../src/chrome/StatusBarCoordReadout';
 import { StatusBarGeoRefChip } from '../src/chrome/StatusBarGeoRefChip';
-import { editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
+import { editorUiActions, editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
 const SCENARIOS = [
   'draw line and reload',
@@ -52,6 +53,12 @@ const SCENARIOS = [
   'layer manager flow',
   'properties edit',
   'geo-ref chip non-blocking',
+  // M1.3d Phase 9 — polish surface scenarios.
+  'live preview during line draw',
+  'snap glyph appears at endpoint',
+  'window vs crossing selection',
+  'grip stretch updates primitive',
+  'cursor coords update on mousemove',
 ] as const;
 
 const ACCUMULATOR_FLUSH_MS = 800;
@@ -256,13 +263,16 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     const canvas = getCanvasOrThrow(container);
 
-    // A18-uistate: drive selection through a canvas pointerDown rather
-    // than editorUiActions.setSelection (Revision-4 narrowing). The
-    // hit-test treats circles as outlines (distance to circumference),
-    // so we click at the right edge of the radius-5 circle —
-    // metric (5,0) maps to screen (450, 300) at zoom=10 with default
-    // viewport size 800×600.
+    // A18-uistate: drive selection through a canvas pointerDown +
+    // pointerUp pair (Revision-4 narrowing). The hit-test treats
+    // circles as outlines (distance to circumference), so we click at
+    // the right edge of the radius-5 circle — metric (5,0) maps to
+    // screen (450, 300) at zoom=10 with default viewport size 800×600.
+    // M1.3d Phase 7 update: single-click selection now flows through
+    // the select-rect tool's click-without-drag branch, which commits
+    // on mouseup. The test fires both events at the same screen point.
     fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 300 });
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 300 });
     await wait(20);
 
     // A18-assert: Properties panel renders the selection's fields.
@@ -347,6 +357,172 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
       (p) => p.kind === 'line',
     );
     expect(lines).toHaveLength(1);
+  });
+
+  // ============================================================
+  // M1.3d Phase 9 — polish surface scenarios.
+  // Each mounts <EditorRoot /> and drives the polish item via DOM
+  // events. End-to-end wire-up only; per-painter / per-helper unit
+  // tests exhaust the kind matrix (paintSnapGlyph, grip-positions,
+  // grip-stretch, select-rect, etc.).
+  // ============================================================
+
+  it('live preview during line draw', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate draw-line via keyboard, click first point, fire
+    // mousemove and assert overlay.previewShape is a line shape.
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 500, clientY: 300 });
+    await wait(60);
+
+    const ps = editorUiStore.getState().overlay.previewShape;
+    expect(ps).not.toBeNull();
+    expect(ps?.kind).toBe('line');
+
+    // Commit the second point and assert the preview clears.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+    expect(editorUiStore.getState().overlay.previewShape).toBeNull();
+  });
+
+  it('snap glyph appears at endpoint', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    // Seed a horizontal line with endpoints at metric (0,0) and (10,0)
+    // — viewport zoom=10, so screen (400, 300) is metric (0,0) and
+    // (500, 300) is metric (10, 0).
+    addPrimitive({
+      id: newPrimitiveId(),
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate draw-line so a 'point' input is awaited (snap-on-cursor
+    // gates on this), click first point, then move cursor near the
+    // existing line's endpoint at screen (500, 300) — well inside the
+    // 16-px snap tolerance from M1.3a.
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 502, clientY: 300 });
+    await wait(60);
+
+    const snap = editorUiStore.getState().overlay.snapTarget;
+    expect(snap).not.toBeNull();
+    expect(snap?.kind).toBe('endpoint');
+  });
+
+  it('window vs crossing selection', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    // Seed two lines: A is fully inside the window (1..4 metric), B
+    // straddles into outside (3..50 metric). Window selects only A;
+    // crossing selects both.
+    const idA = newPrimitiveId();
+    const idB = newPrimitiveId();
+    addPrimitive({
+      id: idA,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 1, y: 1 },
+      p2: { x: 4, y: 4 },
+    });
+    addPrimitive({
+      id: idB,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 3, y: 3 },
+      p2: { x: 50, y: 50 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // L→R drag (window). Viewport: 800×600, zoom=10. Metric (0,0) →
+    // screen (400, 300). Metric (10, 10) → screen (500, 200) (Y flips).
+    // Use a pure rect that captures only A (fully) but cuts off B.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 250 }); // metric (5, 5)
+    await wait(20);
+    let sel = editorUiStore.getState().selection;
+    expect(sel).toContain(idA);
+    expect(sel).not.toContain(idB);
+
+    // Clear and try R→L drag (crossing). Same metric area but reversed.
+    editorUiActions.setSelection([]);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 250 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    sel = editorUiStore.getState().selection;
+    expect(sel).toContain(idA);
+    expect(sel).toContain(idB);
+  });
+
+  it('grip stretch updates primitive', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const id = newPrimitiveId();
+    addPrimitive({
+      id,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    // Select the line so its grips populate (Phase 5 effect).
+    editorUiActions.setSelection([id]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+    // p1 grip is at metric (0, 0) → screen (400, 300). Grab it and
+    // drag to metric (5, 5) → screen (450, 250). Mouseup commits.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 250 });
+    await wait(50);
+
+    const after = projectStore.getState().project!.primitives[id]!;
+    expect((after as { p1: { x: number; y: number } }).p1.x).toBeCloseTo(5, 6);
+    expect((after as { p1: { x: number; y: number } }).p1.y).toBeCloseTo(5, 6);
+  });
+
+  it('cursor coords update on mousemove', async () => {
+    const { container } = render(
+      <>
+        <EditorRoot />
+        <StatusBarCoordReadout />
+      </>,
+    );
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Initial readout shows placeholder.
+    let readout = container.querySelector('[data-component="coord-readout"]');
+    expect(readout?.textContent).toContain('X: —');
+
+    // Move cursor and wait for the rAF flush + render.
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(80);
+
+    readout = container.querySelector('[data-component="coord-readout"]');
+    expect(readout?.textContent).toMatch(/X: 5\.000/);
+    expect(readout?.textContent).toMatch(/Y: 0\.000/);
   });
 });
 

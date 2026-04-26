@@ -25,6 +25,10 @@ export interface KeyboardRouterCallbacks {
    *  Beats tool-activation accumulator so the in-flight tool keeps
    *  control. Routed by EditorRoot to a `subOption` Input. */
   onSubOption: (label: string) => void;
+  /** F7 — toggle the cursor crosshair size between full-canvas (100%)
+   *  and pickbox (5%) presets. M1.3d Phase 8. EditorRoot owns the
+   *  toggle behaviour; the router just fires the callback. */
+  onToggleCrosshair: () => void;
 }
 
 const ACCUMULATOR_TIMEOUT_MS = 750;
@@ -92,6 +96,11 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     if (key === 'F12') {
       e.preventDefault();
       editorUiActions.toggleDynamicInput();
+      return;
+    }
+    if (key === 'F7') {
+      e.preventDefault();
+      callbacks.onToggleCrosshair();
       return;
     }
     if ((e.ctrlKey || e.metaKey) && (key === 'z' || key === 'Z')) {

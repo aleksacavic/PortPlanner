@@ -1,0 +1,11 @@
+.coordReadout {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-family: var(--font-mono, "JetBrains Mono", Consolas, monospace);
+  font-size: 11px;
+  color: var(--text-secondary, #aaa);
+  white-space: nowrap;
+  user-select: none;
+  letter-spacing: 0.02em;
+}

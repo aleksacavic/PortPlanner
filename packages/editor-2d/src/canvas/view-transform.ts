@@ -22,6 +22,15 @@ export interface Viewport {
   canvasWidthCss: number;
   /** Canvas CSS height (independent of DPR). */
   canvasHeightCss: number;
+  /**
+   * Cursor crosshair size as a percentage of canvas height (0..100).
+   * 100 = full-canvas crosshair (AutoCAD CURSORSIZE default).
+   * 5 = pickbox-sized cross at cursor.
+   * F7 toggles between presets (M1.3d Phase 8). Continuous values
+   * permitted for a future settings slider; clamped to [0, 100] at
+   * the action level (I-DTP-3 / I-DTP-18).
+   */
+  crosshairSizePct: number;
 }
 
 export interface ScreenPoint {

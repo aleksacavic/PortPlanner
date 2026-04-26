@@ -1,7 +1,7 @@
 # Operator Shortcut Registry
 
-**Version:** 1.0.0
-**Date:** 2026-04-25
+**Version:** 1.0.1
+**Date:** 2026-04-26
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
 
 This registry is the going-forward source of truth for keyboard
@@ -47,6 +47,7 @@ is the snapshot at supersession; this file is the active registry.
 | `F8` | Ortho toggle | |
 | `F9` | GSNAP toggle | |
 | `F12` | Dynamic Input / command bar toggle | |
+| `F7` | toggle-crosshair | Toggle crosshair size between full-canvas and pickbox preset (M1.3d) |
 | `PT` | Point (draw) | M1.3a primitive |
 | `L` | Line (draw) | M1.3a primitive |
 | `PL` | Polyline (draw) | M1.3a primitive (bulges deferred to M1.3c) |
@@ -103,4 +104,5 @@ is the snapshot at supersession; this file is the active registry.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.0.1 | 2026-04-26 | Add `F7` → toggle-crosshair (full-canvas / pickbox preset). M1.3d Phase 8. |
 | 1.0.0 | 2026-04-25 | Initial registry. Seeded from ADR-023 shortcut map at supersession of ADR-022. M1.3a / M1.3b / M1.3c sections populated. |

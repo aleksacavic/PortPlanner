@@ -17,18 +17,25 @@ import { LayerId, type Point2D } from '@portplanner/domain';
 import { projectStore } from '@portplanner/project-store';
 import { type ReactElement, useEffect, useRef, useState } from 'react';
 
-import { CanvasHost } from './canvas/canvas-host';
+import { CanvasHost, type CanvasHostHandle } from './canvas/canvas-host';
+import { gripHitTest } from './canvas/grip-hit-test';
+import { gripsOf } from './canvas/grip-positions';
 import { hitTest } from './canvas/hit-test';
 import { PrimitiveSpatialIndex } from './canvas/spatial-index';
-import { screenToMetric } from './canvas/view-transform';
+import { type ScreenPoint, screenToMetric } from './canvas/view-transform';
 import { CommandBar } from './chrome/CommandBar';
 import { LayerManagerDialog } from './chrome/LayerManagerDialog';
 import { PropertiesPanel } from './chrome/PropertiesPanel';
 import { useEditorUi } from './chrome/use-editor-ui-store';
 import { registerKeyboardRouter } from './keyboard/router';
+import { commitSnappedVertex } from './snap/commit';
+import { resolveSnap } from './snap/priority';
 import { lookupTool } from './tools';
+import { gripStretchTool } from './tools/grip-stretch';
 import { type RunningTool, startTool } from './tools/runner';
-import { editorUiActions, editorUiStore } from './ui-state/store';
+import { selectRectTool } from './tools/select-rect';
+import type { Grip } from './ui-state/store';
+import { type OverlayState, editorUiActions, editorUiStore } from './ui-state/store';
 
 const ZOOM_MIN = 0.001;
 const ZOOM_MAX = 10000;
@@ -36,8 +43,24 @@ const ZOOM_STEP = 1.1;
 
 export function EditorRoot(): ReactElement {
   const viewport = useEditorUi((s) => s.viewport);
+  // M1.3d Phase 2 — overlay subscription drives paint requests on
+  // overlay changes (cursor, snapTarget, previewShape, hoverEntity,
+  // etc.). The selector returns `s.overlay` (a stable reference until
+  // any field changes) so React only re-renders when overlay actually
+  // mutates. EditorRoot is the legitimate dual-store subscriber per
+  // I-68 / Gate 22.7.
+  const overlay = useEditorUi((s) => s.overlay);
   const runningToolRef = useRef<RunningTool | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const canvasHostRef = useRef<CanvasHostHandle | null>(null);
+  // Stable callback: returns the latest overlay snapshot via a one-shot
+  // getState read. Passing this to canvas-host as `getOverlay` lets
+  // canvas-host's paint rAF read overlay without subscribing to the
+  // editor-ui store (I-DTP-22 / Gate DTP-T7). The ref is created once
+  // (initial-fn form) and never reassigned, so its identity is stable
+  // across renders — important so canvas-host's paint useEffect doesn't
+  // re-subscribe on every parent render.
+  const getOverlayRef = useRef<() => OverlayState | null>(() => editorUiStore.getState().overlay);
   const [layerManagerOpen, setLayerManagerOpen] = useState(false);
 
   // Auto-set activeLayerId to LayerId.DEFAULT on first project mount so
@@ -102,6 +125,14 @@ export function EditorRoot(): ReactElement {
         // routes the same way the [Close]/[Undo] bracket clicks do.
         runningToolRef.current?.feedInput({ kind: 'subOption', optionLabel: label });
       },
+      onToggleCrosshair: () => {
+        // M1.3d Phase 8 — F7 toggle. M1.3d ships only the two presets
+        // (full-canvas 100, pickbox 5). A future settings dialog can
+        // expose a slider for arbitrary 0..100 values; this handler
+        // just flips between the two extremes.
+        const current = editorUiStore.getState().viewport.crosshairSizePct;
+        editorUiActions.setCrosshairSizePct(current >= 50 ? 5 : 100);
+      },
     });
   }, []);
 
@@ -125,21 +156,174 @@ export function EditorRoot(): ReactElement {
     return () => ro.disconnect();
   }, []);
 
+  // M1.3d Phase 2 — overlay-driven repaint. canvas-host's own paint
+  // subscription only fires on projectStore changes, so we need to
+  // explicitly nudge the paint loop when overlay state mutates (e.g.
+  // cursor move → preview rebuild → paint). Because schedulePaint is
+  // rAF-coalesced, requestPaint() from a 60Hz cursor stream still
+  // collapses to ≤60 frames/s — no over-paint. The `overlay` value
+  // isn't read inside the effect; it's a *change trigger* (Biome's
+  // useExhaustiveDependencies rule mis-flags this — we read overlay's
+  // identity via the dep array to know WHEN to re-paint).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: trigger-only dep
+  useEffect(() => {
+    canvasHostRef.current?.requestPaint();
+  }, [overlay]);
+
+  // M1.3d Phase 3 — snap-on-cursor. When a tool is running, awaiting a
+  // 'point' input, AND OSNAP / GSNAP is on, run resolveSnap() against
+  // the cursor and publish the result to overlay.snapTarget. paintSnapGlyph
+  // (Phase 3) reads it during the overlay pass. handleCanvasClick (below)
+  // reads the same target so a click commits the snap-resolved metric,
+  // not the raw cursor — this is the visible side of the snap engine
+  // that M1.3a deferred (I-DTP-7 + the A15 click-time bit-copy contract;
+  // see plan §13.3 for the M1.3a wiring gap closed here).
+  useEffect(() => {
+    const ui = editorUiStore.getState();
+    const cursor = overlay.cursor;
+    const clear = (): void => {
+      if (editorUiStore.getState().overlay.snapTarget !== null) {
+        editorUiActions.setSnapTarget(null);
+      }
+    };
+    if (!cursor) {
+      clear();
+      return;
+    }
+    if (ui.activeToolId === null || !ui.commandBar.acceptedInputKinds.includes('point')) {
+      clear();
+      return;
+    }
+    if (!ui.toggles.osnap && !ui.toggles.gsnap) {
+      clear();
+      return;
+    }
+    const project = projectStore.getState().project;
+    if (!project) {
+      clear();
+      return;
+    }
+    const hit = resolveSnap({
+      cursor: cursor.metric,
+      priorPoint: null,
+      primitives: Object.values(project.primitives),
+      grids: Object.values(project.grids),
+      viewport: ui.viewport,
+      toggles: { osnap: ui.toggles.osnap, gsnap: ui.toggles.gsnap, ortho: ui.toggles.ortho },
+    });
+    if (hit.kind === 'cursor') {
+      clear();
+      return;
+    }
+    const current = editorUiStore.getState().overlay.snapTarget;
+    if (
+      current &&
+      current.kind === hit.kind &&
+      current.point.x === hit.point.x &&
+      current.point.y === hit.point.y
+    ) {
+      // No-op write avoidance: identical snap target already published.
+      return;
+    }
+    editorUiActions.setSnapTarget(hit);
+  }, [overlay.cursor]);
+
+  const handleCanvasHover = (metric: Point2D, screen: ScreenPoint): void => {
+    editorUiActions.setCursor({ metric, screen });
+  };
+
+  // M1.3d Phase 5 — hover entity highlight. When NO tool is active
+  // (I-DTP-12) and the cursor is over the canvas, hit-test against the
+  // primitives and set overlay.hoverEntity. The paint loop's overlay
+  // pass renders the faint outline. Gating on activeToolId === null
+  // keeps the highlight from appearing while a draw tool is in flight
+  // (where it would compete with the snap glyph and preview shapes).
+  useEffect(() => {
+    const ui = editorUiStore.getState();
+    const cursor = overlay.cursor;
+    const clear = (): void => {
+      if (editorUiStore.getState().overlay.hoverEntity !== null) {
+        editorUiActions.setHoverEntity(null);
+      }
+    };
+    if (!cursor || ui.activeToolId !== null) {
+      clear();
+      return;
+    }
+    const project = projectStore.getState().project;
+    if (!project) {
+      clear();
+      return;
+    }
+    const idx = new PrimitiveSpatialIndex();
+    for (const p of Object.values(project.primitives)) idx.insert(p);
+    const hit = hitTest(cursor.screen, ui.viewport, idx, project.primitives);
+    if (hit !== editorUiStore.getState().overlay.hoverEntity) {
+      editorUiActions.setHoverEntity(hit);
+    }
+  }, [overlay.cursor]);
+
+  // M1.3d Phase 5 — selection-grips recompute. When selection or
+  // primitive geometry changes, rebuild overlay.grips from the
+  // currently selected primitives. Empty selection → null grips.
+  const selection = useEditorUi((s) => s.selection);
+  useEffect(() => {
+    const project = projectStore.getState().project;
+    if (!project || selection.length === 0) {
+      if (editorUiStore.getState().overlay.grips !== null) {
+        editorUiActions.setGrips(null);
+      }
+      return;
+    }
+    const grips = selection.flatMap((id) => {
+      const p = project.primitives[id];
+      return p ? gripsOf(p) : [];
+    });
+    editorUiActions.setGrips(grips);
+  }, [selection]);
+
+  // M1.3a kept the overlay-grips computation in sync with primitive
+  // mutations via projectStore subscription; M1.3d Phase 5 reuses that
+  // pathway for grip refresh after grip-stretch commits land in Phase 6.
+  useEffect(() => {
+    const recompute = (): void => {
+      const ui = editorUiStore.getState();
+      if (ui.selection.length === 0) {
+        if (ui.overlay.grips !== null) editorUiActions.setGrips(null);
+        return;
+      }
+      const project = projectStore.getState().project;
+      if (!project) return;
+      const grips = ui.selection.flatMap((id) => {
+        const p = project.primitives[id];
+        return p ? gripsOf(p) : [];
+      });
+      editorUiActions.setGrips(grips);
+    };
+    const unsubscribe = projectStore.subscribe(recompute);
+    return () => unsubscribe();
+  }, []);
+
   const handleCanvasClick = (metric: Point2D, screen: { x: number; y: number }): void => {
     const tool = runningToolRef.current;
     if (tool) {
-      tool.feedInput({ kind: 'point', point: metric });
+      // M1.3d Phase 3 — if the snap engine resolved a target this frame,
+      // feed the snap-resolved metric (bit-copied per I-39) instead of
+      // the raw cursor metric. The visible snap glyph and the committed
+      // vertex are the same point.
+      const snap = editorUiStore.getState().overlay.snapTarget;
+      const point = snap ? commitSnappedVertex(snap.point) : metric;
+      tool.feedInput({ kind: 'point', point });
       return;
     }
-    // No active tool — hit-test for selection (Phase 22 wiring; the
-    // canvas-host owns its own spatial index for paint, but selection
-    // builds a one-shot index here to keep canvas-host single-purpose).
-    const project = projectStore.getState().project;
-    if (!project) return;
-    const idx = new PrimitiveSpatialIndex();
-    for (const p of Object.values(project.primitives)) idx.insert(p);
-    const hit = hitTest(screen, viewport, idx, project.primitives);
-    editorUiActions.setSelection(hit ? [hit] : []);
+    // M1.3d Phase 7 — no tool active: do NOTHING here. The mousedown
+    // also fires onSelectRectStart which spawns the select-rect tool;
+    // that tool's click-without-drag branch performs the same single-
+    // entity hit-test selection that M1.3a's inline code did. Both
+    // handlers running selection logic on the same click would
+    // double-select.
+    void metric;
+    void screen;
   };
 
   const handlePan = (dxCss: number, dyCss: number): void => {
@@ -195,6 +379,54 @@ export function EditorRoot(): ReactElement {
     runningToolRef.current?.feedInput({ kind: 'commit' });
   };
 
+  // M1.3d Phase 6 — grip hit-test + grip-stretch lifecycle. canvas-host
+  // calls handleGripHitTest BEFORE its onCanvasClick. If a grip hits,
+  // we abort the active tool (if any), start grip-stretch, and route
+  // the eventual mouseup as the 'point' commit. The mouseup wiring
+  // lands in Phase 7 (canvas-host onCanvasMouseUp + tool runner input
+  // routing); for now, the user releases the mouse off-canvas or
+  // clicks again to commit the new position.
+  const handleGripHitTest = (screen: ScreenPoint): Grip | null => {
+    const grips = editorUiStore.getState().overlay.grips;
+    if (!grips || grips.length === 0) return null;
+    return gripHitTest(screen, grips, viewport);
+  };
+
+  const handleGripDown = (grip: Grip): void => {
+    runningToolRef.current?.abort();
+    runningToolRef.current = null;
+    const factory = gripStretchTool(grip);
+    const running = startTool('grip-stretch', factory);
+    runningToolRef.current = running;
+    running.done().finally(() => {
+      if (runningToolRef.current === running) runningToolRef.current = null;
+    });
+  };
+
+  // M1.3d Phase 7 — selection-rect autostart on left-mousedown when
+  // no tool is active. canvas-host fires onSelectRectStart on EVERY
+  // mousedown; we gate on activeToolId === null here.
+  const handleSelectRectStart = (metric: Point2D, screen: ScreenPoint): void => {
+    if (runningToolRef.current !== null) return;
+    const factory = selectRectTool(metric, screen);
+    const running = startTool('select-rect', factory);
+    runningToolRef.current = running;
+    running.done().finally(() => {
+      if (runningToolRef.current === running) runningToolRef.current = null;
+    });
+  };
+
+  // M1.3d Phase 7 — mouseup whitelist (C13). Only forward mouseup as a
+  // 'point' input when the active tool is one of the drag-style tools
+  // that expects an mouseup-driven commit. Other tools (line, circle,
+  // arc, etc.) take their points from mousedown via onCanvasClick;
+  // forwarding a mouseup point would cause an unwanted "extra point".
+  const handleCanvasMouseUp = (metric: Point2D, _screen: ScreenPoint): void => {
+    const id = editorUiStore.getState().activeToolId;
+    if (id !== 'select-rect' && id !== 'grip-stretch') return;
+    runningToolRef.current?.feedInput({ kind: 'point', point: metric });
+  };
+
   return (
     <div
       ref={containerRef}
@@ -212,11 +444,18 @@ export function EditorRoot(): ReactElement {
         style={{ position: 'relative', overflow: 'hidden', gridColumn: 1, gridRow: 1 }}
       >
         <CanvasHost
+          ref={canvasHostRef}
           viewport={viewport}
           onCanvasClick={handleCanvasClick}
           onCanvasCommit={handleCanvasCommit}
+          onCanvasHover={handleCanvasHover}
           onPan={handlePan}
           onWheelZoom={handleWheelZoom}
+          getOverlay={getOverlayRef.current}
+          onGripHitTest={handleGripHitTest}
+          onGripDown={handleGripDown}
+          onSelectRectStart={handleSelectRectStart}
+          onCanvasMouseUp={handleCanvasMouseUp}
         />
       </div>
       <div data-component="properties-area" style={{ gridColumn: 2, gridRow: 1, overflow: 'auto' }}>
