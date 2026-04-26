@@ -170,6 +170,30 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     fireEvent.keyDown(window, { key: 'F12' });
     expect(editorUiStore.getState().toggles.gsnap).toBe(false);
     expect(editorUiStore.getState().toggles.dynamicInput).toBe(false);
+
+    // Focal-point zoom contract: wheeling at an off-centre cursor must
+    // keep the metric point under that cursor stationary across the
+    // zoom step (Codex Round-1 quality-gap fix). With viewport size
+    // 800×600 + zoom=10, screen (600, 200) maps to metric (20, 10) at
+    // the pre-wheel viewport — that metric coordinate must remain at
+    // screen (600, 200) after the wheel updates pan + zoom together.
+    {
+      const focal = { x: 600, y: 200 };
+      const v0 = editorUiStore.getState().viewport;
+      const metricBefore = {
+        x: v0.panX + (focal.x - v0.canvasWidthCss / 2) / v0.zoom,
+        y: v0.panY - (focal.y - v0.canvasHeightCss / 2) / v0.zoom,
+      };
+      fireEvent.wheel(canvas, { deltaY: -100, clientX: focal.x, clientY: focal.y });
+      const v1 = editorUiStore.getState().viewport;
+      const metricAfter = {
+        x: v1.panX + (focal.x - v1.canvasWidthCss / 2) / v1.zoom,
+        y: v1.panY - (focal.y - v1.canvasHeightCss / 2) / v1.zoom,
+      };
+      expect(v1.zoom).toBeGreaterThan(v0.zoom);
+      expect(Math.abs(metricAfter.x - metricBefore.x)).toBeLessThan(1e-9);
+      expect(Math.abs(metricAfter.y - metricBefore.y)).toBeLessThan(1e-9);
+    }
   });
 
   it('layer manager flow', async () => {

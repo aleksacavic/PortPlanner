@@ -3077,7 +3077,39 @@ default layer present). The malformed-record test is unchanged.
 Also added a placeholder SVG favicon to `apps/web/index.html` to
 silence the `:5173/favicon.ico` 404 in the browser console.
 
-### §13.6 Procedural compliance
+### §13.8 Focal-point wheel zoom (Codex Round-1 quality-gap fix)
+
+**Trigger.** Codex Round-1 post-commit audit at `1eba04d..1fe4848`
+returned **Go** at 9.4/10 with one Quality gap: CanvasHost computes
++ forwards a `focal` arg to `onWheelZoom(deltaY, focal)`, but
+EditorRoot's handler used delta-only zoom and ignored `focal`. The
+canvas centre was the implicit zoom pivot regardless of cursor
+position — surprising in CAD UX where wheel-zoom should pivot
+around the cursor.
+
+**Decision.** Implement focal-point zoom in EditorRoot's
+`handleWheelZoom`. Derivation:
+```
+metric_under_cursor = screenToMetric(focal, viewport)
+After zoom we want screenToMetric(focal, viewport') ≡ metric_under_cursor
+→ panX' = M.x - (focal.x - cw/2) / nextZoom
+  panY' = M.y + (focal.y - ch/2) / nextZoom    (y-flip in screenToMetric)
+```
+The handler captures the metric point under the cursor before
+applying the zoom factor, computes the new pan that keeps that
+metric point at the same screen coordinate, and writes both `zoom +
+panX + panY` in one `setViewport` call.
+
+**Test coverage.** Phase 21 `pan zoom toggle` smoke scenario was
+extended with a focal-point assertion at the end: a wheel at
+off-centre coord `(600, 200)` (≠ canvas centre) must leave the
+metric point under that screen coordinate unchanged within `1e-9`
+across the zoom step. The existing on-centre wheel + middle-drag
+pan + F-key toggle assertions are preserved.
+
+No invariant changes; the `Viewport` shape and the
+`metricToScreen` / `screenToMetric` round-trip identity (I-22) are
+unchanged.
 
 Both refinements were:
 1. Discovered during Phase 22 execution (canvas-host imports

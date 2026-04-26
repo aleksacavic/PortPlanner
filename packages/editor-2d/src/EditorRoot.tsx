@@ -20,6 +20,7 @@ import { type ReactElement, useEffect, useRef, useState } from 'react';
 import { CanvasHost } from './canvas/canvas-host';
 import { hitTest } from './canvas/hit-test';
 import { PrimitiveSpatialIndex } from './canvas/spatial-index';
+import { screenToMetric } from './canvas/view-transform';
 import { CommandBar } from './chrome/CommandBar';
 import { LayerManagerDialog } from './chrome/LayerManagerDialog';
 import { PropertiesPanel } from './chrome/PropertiesPanel';
@@ -137,11 +138,26 @@ export function EditorRoot(): ReactElement {
     });
   };
 
-  const handleWheelZoom = (deltaY: number): void => {
+  const handleWheelZoom = (deltaY: number, focal: { x: number; y: number }): void => {
+    // Focal-point zoom: keep the metric point under the cursor stationary
+    // across the zoom step. Without this, wheel-zoom pivots around the
+    // canvas centre regardless of cursor position — surprising in CAD UX.
+    //
+    // Derivation: screenToMetric(focal, v) = M (the metric point under
+    // the cursor). After zooming we want screenToMetric(focal, v') = M
+    // again, where v' has the new zoom. Solving for v'.panX / panY:
+    //   newPanX = M.x - (focal.x - cw/2) / nextZoom
+    //   newPanY = M.y + (focal.y - ch/2) / nextZoom   (y-flip in screenToMetric)
     const v = editorUiStore.getState().viewport;
     const factor = ZOOM_STEP ** -Math.sign(deltaY);
-    const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v.zoom * factor));
-    editorUiActions.setViewport({ zoom: next });
+    const nextZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, v.zoom * factor));
+    if (nextZoom === v.zoom) return;
+    const M = screenToMetric(focal, v);
+    const halfW = v.canvasWidthCss / 2;
+    const halfH = v.canvasHeightCss / 2;
+    const nextPanX = M.x - (focal.x - halfW) / nextZoom;
+    const nextPanY = M.y + (focal.y - halfH) / nextZoom;
+    editorUiActions.setViewport({ zoom: nextZoom, panX: nextPanX, panY: nextPanY });
   };
 
   const handleCommandSubOption = (label: string): void => {
