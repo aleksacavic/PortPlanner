@@ -34,6 +34,9 @@ export interface CanvasHostProps {
   viewport: Viewport;
   onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   onCanvasClick?: (metric: Point2D, screen: { x: number; y: number }) => void;
+  /** Right-click — commit in-flight tool (CAD convention; distinct from
+   *  Escape which aborts). EditorRoot routes this to a `commit` Input. */
+  onCanvasCommit?: () => void;
   onPan?: (dxCss: number, dyCss: number) => void;
   onWheelZoom?: (deltaY: number, focal: { x: number; y: number }) => void;
 }
@@ -122,6 +125,12 @@ export function CanvasHost(props: CanvasHostProps): ReactElement {
       panStateRef.current = { x: e.clientX, y: e.clientY };
       return;
     }
+    if (e.button === 2) {
+      // Right-click commits in-flight tool (CAD convention).
+      e.preventDefault();
+      props.onCanvasCommit?.();
+      return;
+    }
     if (e.button === 0) {
       const rect = canvas.getBoundingClientRect();
       const screen = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -159,6 +168,9 @@ export function CanvasHost(props: CanvasHostProps): ReactElement {
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}
       onWheel={onWheel}
+      // Suppress the native context menu so right-click can serve as
+      // the CAD "commit in-flight tool" gesture.
+      onContextMenu={(e) => e.preventDefault()}
     />
   );
 }

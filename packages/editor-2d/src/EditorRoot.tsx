@@ -90,6 +90,13 @@ export function EditorRoot(): ReactElement {
         runningToolRef.current = null;
         setLayerManagerOpen(false);
       },
+      onCommitCurrentTool: () => {
+        // Enter on canvas focus — feed a `commit` Input. Polyline uses
+        // this to end its open-ended loop and commit-open. Tools with
+        // fixed-arity prompts (line, rectangle, circle, arc) abort
+        // gracefully because their next yield expects a 'point'.
+        runningToolRef.current?.feedInput({ kind: 'commit' });
+      },
     });
   }, []);
 
@@ -166,13 +173,21 @@ export function EditorRoot(): ReactElement {
 
   const handleCommandSubmit = (raw: string): void => {
     if (raw.length === 0) {
-      runningToolRef.current?.feedInput({ kind: 'escape' });
+      // Empty Enter in the command bar = "I'm done with my open-ended
+      // input loop" (e.g. end an open polyline). Distinct from Escape
+      // which aborts.
+      runningToolRef.current?.feedInput({ kind: 'commit' });
       return;
     }
     const num = Number(raw);
     if (Number.isFinite(num)) {
       runningToolRef.current?.feedInput({ kind: 'number', value: num });
     }
+  };
+
+  const handleCanvasCommit = (): void => {
+    // Right-click on canvas = commit in-flight tool (CAD convention).
+    runningToolRef.current?.feedInput({ kind: 'commit' });
   };
 
   return (
@@ -194,6 +209,7 @@ export function EditorRoot(): ReactElement {
         <CanvasHost
           viewport={viewport}
           onCanvasClick={handleCanvasClick}
+          onCanvasCommit={handleCanvasCommit}
           onPan={handlePan}
           onWheelZoom={handleWheelZoom}
         />

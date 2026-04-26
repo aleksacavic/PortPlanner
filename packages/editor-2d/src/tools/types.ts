@@ -26,6 +26,14 @@ export type Input =
   | { kind: 'distance'; metres: number }
   | { kind: 'entity'; entityId: string; entityKind: TargetKind }
   | { kind: 'subOption'; optionLabel: string }
+  // 'commit' is a tool-level "I'm done with my open-ended input loop;
+  // commit what you have". Distinct from 'escape' (which aborts and
+  // discards). Sources: empty Enter in the command bar, Enter on canvas
+  // focus, right-click on canvas. Tools with a fixed-arity prompt chain
+  // (line, rectangle, circle, arc) treat unexpected `commit` as
+  // aborted; tools with an open-ended loop (polyline) use it to end
+  // the loop and commit the in-flight result if it's valid.
+  | { kind: 'commit' }
   | { kind: 'escape' };
 
 export type ToolGenerator = AsyncGenerator<Prompt, ToolResult, Input>;

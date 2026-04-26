@@ -39,7 +39,14 @@ export async function* drawPolylineTool(): ToolGenerator {
       vertices.push(next.point);
       continue;
     }
-    // Other input kinds: treat as commit-open intent.
+    if (next.kind === 'commit') {
+      // Right-click / Enter on canvas focus / empty Enter in command bar
+      // all route here. End the loop and commit-open if the polyline has
+      // enough vertices.
+      break;
+    }
+    // Any other (unexpected) input kind: treat as commit-open intent —
+    // safer than silently dropping the input.
     break;
   }
 

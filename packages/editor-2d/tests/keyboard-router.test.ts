@@ -9,6 +9,7 @@ interface RouterMocks {
   onUndo: ReturnType<typeof vi.fn>;
   onRedo: ReturnType<typeof vi.fn>;
   onAbortCurrentTool: ReturnType<typeof vi.fn>;
+  onCommitCurrentTool: ReturnType<typeof vi.fn>;
 }
 
 let mocks: RouterMocks;
@@ -25,6 +26,7 @@ beforeEach(() => {
     onUndo: vi.fn(),
     onRedo: vi.fn(),
     onAbortCurrentTool: vi.fn(),
+    onCommitCurrentTool: vi.fn(),
   };
   registerKeyboardRouter(mocks);
 });
@@ -97,6 +99,19 @@ describe('keyboard router', () => {
     editorUiActions.setFocusHolder('canvas');
     pressKey('Delete');
     expect(mocks.onActivateTool).toHaveBeenCalledWith('erase');
+  });
+
+  it('Enter on canvas focus calls onCommitCurrentTool (commit, not abort)', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('Enter');
+    expect(mocks.onCommitCurrentTool).toHaveBeenCalledTimes(1);
+    expect(mocks.onAbortCurrentTool).not.toHaveBeenCalled();
+  });
+
+  it('Enter on bar focus does NOT call onCommitCurrentTool (form Enter wins)', () => {
+    editorUiActions.setFocusHolder('bar');
+    pressKey('Enter');
+    expect(mocks.onCommitCurrentTool).not.toHaveBeenCalled();
   });
 });
 

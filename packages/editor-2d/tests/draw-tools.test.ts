@@ -152,4 +152,40 @@ describe('seven primitive draw tools', () => {
     const result = await tool.done();
     expect(result.committed).toBe(false);
   });
+
+  it('draw-polyline commit-open ends the loop and saves an open polyline (>=2 vertices)', async () => {
+    // commit Input mirrors the runtime path: empty Enter in the command
+    // bar / Enter on canvas focus / right-click on canvas all feed
+    // { kind: 'commit' } so the open-ended polyline loop can exit.
+    const tool = startTool('draw-polyline', lookupTool('draw-polyline')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 10, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 10, y: 5 } });
+    await tick();
+    tool.feedInput({ kind: 'commit' });
+    const result = await tool.done();
+    expect(result.committed).toBe(true);
+    const polys = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'polyline',
+    );
+    expect(polys).toHaveLength(1);
+    const poly = polys[0] as Polyline;
+    expect(poly.closed).toBe(false);
+    expect(poly.vertices).toHaveLength(3);
+    // Open polyline: bulges length === vertices.length - 1 (per ADR-016 / I-5).
+    expect(poly.bulges).toHaveLength(2);
+  });
+
+  it('draw-polyline commit-open with only 1 vertex aborts (cannot make a 1-vertex polyline)', async () => {
+    const tool = startTool('draw-polyline', lookupTool('draw-polyline')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'commit' });
+    const result = await tool.done();
+    expect(result.committed).toBe(false);
+  });
 });

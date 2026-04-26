@@ -17,6 +17,9 @@ export interface KeyboardRouterCallbacks {
   onUndo: () => void;
   onRedo: () => void;
   onAbortCurrentTool: () => void;
+  /** Enter on canvas focus — commit the in-flight tool (e.g. end an
+   *  open polyline). Distinct from `onAbortCurrentTool` (Escape). */
+  onCommitCurrentTool: () => void;
 }
 
 const ACCUMULATOR_TIMEOUT_MS = 750;
@@ -101,6 +104,14 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       flushAccumulator();
       callbacks.onAbortCurrentTool();
       editorUiActions.setFocusHolder('canvas');
+      return;
+    }
+    if (key === 'Enter' && focus === 'canvas') {
+      // Enter on canvas focus = commit in-flight tool (end open polyline,
+      // etc.). Bar focus has its own Enter via the form's onSubmit.
+      e.preventDefault();
+      flushAccumulator();
+      callbacks.onCommitCurrentTool();
       return;
     }
     if (key === 'Delete' && focus === 'canvas') {
