@@ -1746,7 +1746,12 @@ Gate DTP-T7: canvas-host.tsx never subscribes to editor-ui state (preserves I-68
 - [ ] All Phase 1-9 gates pass per §8.
 - [ ] Smoke E2E suite shows 10 / 10 polish + drafting scenarios pass
   + discipline meta-test pass (verified by Gate DTP-9.2).
-- [ ] Cross-cutting hard gates (DTP-T1, DTP-T2, DTP-T6) pass.
+- [ ] Cross-cutting hard gates (DTP-T1, DTP-T2, DTP-T6, **DTP-T7**)
+  pass. DTP-T7 is the I-DTP-22 / C2 store-isolation gate that
+  protects I-68 from M1.3a — closure MUST verify it explicitly
+  alongside the other T-gates (Codex Round-1 high-risk fix:
+  earlier checklist omitted T7 even though it's the most critical
+  architectural protection in this plan).
 - [ ] `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build`
   all pass.
 - [ ] `canvas.transient.*` token namespace lives in design-system;
