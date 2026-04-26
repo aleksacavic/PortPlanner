@@ -49,24 +49,22 @@ export function wireIntersectsRect(p: Primitive, rect: BBox): boolean {
     }
     case 'rectangle': {
       const corners = rectangleCorners(p);
-      // Any corner inside the selection rect → intersects.
+      // Any entity corner inside the selection rect → wire touches /
+      // entity-fully-inside-rect (when all 4 corners hit, the whole
+      // rectangle wire is inside the selection rect).
       for (const c of corners) if (pointInRect(c, rect)) return true;
-      // Any side intersects the selection rect.
+      // Any entity side intersects the selection rect.
       for (let i = 0; i < 4; i += 1) {
         if (segmentIntersectsRect(corners[i]!, corners[(i + 1) % 4]!, rect)) return true;
       }
-      // Selection rect fully inside the entity rectangle: check if any
-      // selection-rect corner is inside the entity polygon. Simple
-      // even-odd ray cast.
-      const selectionCorners: Point2D[] = [
-        { x: rect.minX, y: rect.minY },
-        { x: rect.maxX, y: rect.minY },
-        { x: rect.maxX, y: rect.maxY },
-        { x: rect.minX, y: rect.maxY },
-      ];
-      for (const sc of selectionCorners) {
-        if (pointInPolygon(sc, corners)) return true;
-      }
+      // M1.3d-Rem-2 Procedure-05 round (post-commit bug fix): the
+      // earlier "selection rect inside entity polygon → true" branch
+      // was REMOVED. Selection rect fully inside the entity rectangle
+      // means the entity's wire is OUTSIDE the selection rect (the
+      // wire surrounds the rect). AutoCAD's crossing semantic
+      // ("wire touches box") rejects this — entity NOT selected.
+      // Tests in wire-intersect.test.ts cover both the rejection
+      // (regression) and the correct "wire touches" cases.
       return false;
     }
     case 'circle': {
@@ -76,22 +74,16 @@ export function wireIntersectsRect(p: Primitive, rect: BBox): boolean {
       for (const seg of sides) {
         if (seg.intersect(circle).length > 0) return true;
       }
-      // Selection rect fully inside circle (all corners within radius).
-      const corners: Point2D[] = [
-        { x: rect.minX, y: rect.minY },
-        { x: rect.maxX, y: rect.minY },
-        { x: rect.maxX, y: rect.maxY },
-        { x: rect.minX, y: rect.maxY },
-      ];
-      let allInside = true;
-      for (const c of corners) {
-        if (Math.hypot(c.x - p.center.x, c.y - p.center.y) > p.radius) {
-          allInside = false;
-          break;
-        }
-      }
-      if (allInside) return true;
-      // Circle fully inside selection rect (bbox-fully-inside).
+      // M1.3d-Rem-2 Procedure-05 round (post-commit bug fix): the
+      // earlier "selection rect fully inside circle → true" branch
+      // was REMOVED. Selection rect inside circle means the circle's
+      // wire (outline) is OUTSIDE the rect; AutoCAD's crossing
+      // semantic ("wire touches box") rejects this — circle NOT
+      // selected. Regression test in wire-intersect.test.ts.
+      //
+      // Circle fully inside selection rect (entity bbox-fully-inside-
+      // rect → wire is inside the rect → select). This is the OPPOSITE
+      // direction; correct to keep.
       const cb = {
         minX: p.center.x - p.radius,
         maxX: p.center.x + p.radius,
@@ -213,19 +205,6 @@ function rectSides(rect: BBox): Segment[] {
     new Segment(c11, c01),
     new Segment(c01, c00),
   ];
-}
-
-/** Even-odd ray cast — point inside an arbitrary polygon. */
-function pointInPolygon(p: Point2D, poly: Point2D[]): boolean {
-  let inside = false;
-  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const a = poly[i]!;
-    const b = poly[j]!;
-    const intersects =
-      a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x;
-    if (intersects) inside = !inside;
-  }
-  return inside;
 }
 
 /**

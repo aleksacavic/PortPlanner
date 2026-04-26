@@ -551,6 +551,51 @@ within existing files, not net-new). Workspace count: 346 + 7 = ≥ 353.
 
 ---
 
+## 13. Post-commit remediation log
+
+(Per Procedure 05 §5.6 — appended chronologically. Each entry covers one
+post-commit remediation round triggered by Codex post-commit review or
+direct user testing.)
+
+### 13.1 — Procedure 05 round (Codex post-commit Round-1 H1 + user bug, 2026-04-27)
+
+**Triggered by:**
+- **Codex post-commit Round-1** on `c053f17..4983a8c` returned 8.8/10 Go-conditional with one High-risk: missing rectangle + arc test suites in `wire-intersect.test.ts` despite implementation having those branches. Codex correctly noted arc was the highest-risk row in plan §9 and should have had explicit test coverage from the first execution commit.
+- **User testing**: dragging a selection rectangle INSIDE a circle or rectangle entity (without the selection rect touching the entity's wire) was incorrectly selecting the entity. Real bug.
+
+**What was found (Bug, classified as High-risk equivalent):**
+- `packages/editor-2d/src/canvas/wire-intersect.ts` had two erroneous "selection rect fully inside entity → true" branches that violated the AutoCAD wire-touches semantic the plan specified:
+  - **Circle case** — `if (allInside) return true` where `allInside` = "all selection-rect corners within circle radius." This selected the circle whenever the selection rect sat inside it, even though the circle's outline (wire) was OUTSIDE the rect.
+  - **Rectangle case** — `for (const sc of selectionCorners) if (pointInPolygon(sc, corners)) return true`. Same shape of bug for rectangle entities.
+- Codex's missing-test-coverage finding directly enabled the bug to ship: had rectangle + arc suites been authored, the regression case would have caught both bugs at green-bar time.
+
+**What was changed:**
+- `packages/editor-2d/src/canvas/wire-intersect.ts` —
+  - Removed the circle "rect fully inside circle → true" branch. Replaced with a comment pointing readers at the regression test in wire-intersect.test.ts. The OPPOSITE-direction check (entity bbox-fully-inside-rect → wire is inside the rect → select) stays — that case correctly matches AutoCAD's "wholly within" arm of the crossing semantic.
+  - Removed the rectangle "selection corner inside entity polygon → true" branch with the same comment. The OPPOSITE-direction check (entity-fully-inside-rect, captured automatically by the existing first-corner-inside-rect check) stays correct.
+  - Removed the now-unused `pointInPolygon` helper.
+- `packages/editor-2d/tests/wire-intersect.test.ts` —
+  - Updated the existing "rect inside circle (all corners within radius) → true" test to "→ false" with REGRESSION label; documented the bug in the test body.
+  - Added new "circle fully inside rect (entity wire inside selection rect) → true" test covering the opposite-direction case that should still pass.
+  - Added new "circle wire tangent to rect side → true" test verifying flatten-js's tangent handling.
+  - Added new `describe('wireIntersectsRect — rectangle')` suite (Codex H1 closure): 5 tests covering REGRESSION (selection inside entity → false), entity-inside-selection (all 4 corners hit → true), entity-side-crosses-selection-side, fully-outside, rotated entity wire crossing.
+  - Added new `describe('wireIntersectsRect — arc')` suite (Codex H1 closure): 5 tests covering arc endpoint inside rect, arc midpoint inside rect, arc curve crossing rect side (no endpoint inside), arc convex region encloses rect but wire doesn't touch (regression-shaped — false), arc fully outside rect.
+- `docs/plans/feature/m1-3d-drafting-polish-remediation-2.md` — this §13.1 entry.
+
+**How verified:**
+- `pnpm typecheck` — clean.
+- `pnpm --filter @portplanner/editor-2d test -- tests/wire-intersect` — 26/26 pass (was 11; +15 from the rectangle/arc suites + bug regressions).
+- `pnpm test` — 391/391 across 6 packages (was 379; +12 from new tests).
+- `pnpm check` — clean (Biome auto-fixed one formatting nit).
+- `pnpm build` — clean (bundle unchanged at 441kB raw, 127kB gz).
+- Cross-cutting hard gates DTP-T1/T2/T6/T7 — 0 offenders each.
+
+**Binding-spec impact.** None. Bug fix and additional test coverage; no spec change.
+
+**Procedural lesson refined:** when implementing per-kind / per-arm geometric helpers, the test suite MUST cover EVERY described kind in the implementation (not just the easy cases). Self-audit gate: count `case` branches in the implementation switch + ensure each has a `describe` block in the test file. Same shape of lesson as Rem-2 Rev-1 H1 (mounted-EditorRoot smoke for user-facing behavior changes); applied at a different layer.
+
+---
+
 ## Plan Review Handoff
 
 (Footer convention per Round-1 Rev-5 lesson: revision-history table is
