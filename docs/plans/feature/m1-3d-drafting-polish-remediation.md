@@ -6,9 +6,16 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-26
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan authored — awaiting Codex review
+**Status:** Plan Revision-1 — Codex Round-1 fixes applied (1 high-risk + 1 quality gap)
 
 ---
+
+## Revision history
+
+| Rev | Date | Driver | Changes |
+|-----|------|--------|---------|
+| Rev-1 | 2026-04-26 | Codex Round-1 (8.9/10) | H1: R4 test SSOT — smoke-e2e is the only validation surface; tool-level snap tests dropped from grip-stretch.test.ts and select-rect.test.ts. Q1: Gate REM-4 hardened to targeted multiline grep within handleCanvasMouseUp's body. |
+| Rev-0 | 2026-04-26 | Initial draft | All four findings (R1/R2a/R2b/R4) scoped + §1.3 three-round audit. |
 
 ## 1. Request summary
 
@@ -66,8 +73,7 @@ User-confirmed in chat 2026-04-26:
 | `packages/editor-2d/src/canvas/canvas-host.tsx` | (R2a) Add `style={{ cursor: 'none' }}` to the `<canvas>` element. |
 | `packages/editor-2d/src/canvas/painters/paintCrosshair.ts` | (R2b) Rework to draw four line segments (skipping a `PICKBOX_HALF_CSS = 5` gap around the cursor center) + a `strokeRect` for the pickbox outline. Existing color / dash / dpr logic preserved. |
 | `packages/editor-2d/tests/paintCrosshair.test.ts` | Update existing line-count assertions (now 4 moveTo + 4 lineTo per crosshair) + add explicit assertion for the pickbox `strokeRect` + add assertion that no line segment crosses the pickbox region. |
-| `packages/editor-2d/tests/grip-stretch.test.ts` | New test: with `overlay.snapTarget` set on the editor-ui store before `feedInput`, the resulting `updatePrimitive` patch uses the snap-resolved metric. |
-| `packages/editor-2d/tests/select-rect.test.ts` | New test: with `overlay.snapTarget` set before mouseup commit, the rect's end-corner uses the snap-resolved metric (asserted via the resolved selection or the previewBuilder's last `end` value). |
+| `packages/editor-2d/tests/smoke-e2e.test.tsx` | (R4 SSOT — Codex Round-1 H1 fix) Add ONE new smoke scenario `'snap honored on grip-stretch mouseup'` to `SCENARIOS` const + matching `it()` block. The scenario mounts `<EditorRoot />`, seeds two primitives (target line + line to grip-stretch), grip-stretches near the target's endpoint with OSNAP on, asserts the primitive's stretched endpoint EXACTLY matches the snap-resolved metric (not the raw mouseup metric). This is the SOLE validation surface for R4. Discipline meta-test picks it up automatically via `SCENARIOS` iteration. |
 
 ### 3.2 In scope — files created
 
@@ -161,12 +167,16 @@ multiple Procedure-03 phases would be overhead. One phase covers all four.
    - `paintCrosshair.test.ts` — assertion counts updated to 4 moveTo + 4 lineTo;
      new test for pickbox `strokeRect`; new test asserting line segments do not
      cross the pickbox region (per-segment endpoint extents check).
-   - `grip-stretch.test.ts` — new test: pre-set `overlay.snapTarget`, fire
-     mouseup, assert the resulting `updatePrimitive` patch uses the snap-
-     resolved metric (not the raw `feedInput` point).
-   - `select-rect.test.ts` — new test: pre-set `overlay.snapTarget`, drive a
-     drag-style commit, assert the resolved direction / rect uses the snap-
-     resolved end metric.
+   - `smoke-e2e.test.tsx` — extend `SCENARIOS` with `'snap honored on grip-
+     stretch mouseup'` and add the matching `it()` block. **This is the SOLE
+     validation surface for R4** (Codex Round-1 H1 fix — tool-level tests in
+     grip-stretch.test.ts / select-rect.test.ts CANNOT validate R4 because
+     the snap-on-mouseup wiring lives in EditorRoot.handleCanvasMouseUp,
+     not in the runner; calling `tool.feedInput` directly bypasses that
+     route entirely and a tool-level test would pass even with R4 unfixed).
+   - `grip-stretch.test.ts`, `select-rect.test.ts` — **NO new tests added.**
+     The existing tool-level coverage stays as-is. R4 is integration-layer
+     concern only.
 
 ### Mandatory completion gates
 
@@ -183,9 +193,15 @@ Gate REM-3: paintCrosshair has the PICKBOX_HALF_CSS constant + strokeRect call
   Command: rg -n "PICKBOX_HALF_CSS|strokeRect" packages/editor-2d/src/canvas/painters/paintCrosshair.ts
   Expected: ≥2 matches (constant declaration + at least one strokeRect site)
 
-Gate REM-4: handleCanvasMouseUp consumes snap
-  Command: rg -n "commitSnappedVertex" packages/editor-2d/src/EditorRoot.tsx
-  Expected: ≥2 matches (handleCanvasClick existing + handleCanvasMouseUp new)
+Gate REM-4: handleCanvasMouseUp body contains commitSnappedVertex
+            (Revision-1 hardening — Codex Round-1 Q1 fix)
+  Command: rg -A 10 -n "const handleCanvasMouseUp =" packages/editor-2d/src/EditorRoot.tsx | rg "commitSnappedVertex"
+  Expected: ≥1 match (commitSnappedVertex appears within 10 lines after
+            the handleCanvasMouseUp declaration — tight enough that a
+            comment elsewhere or a reference in handleCanvasClick can't
+            satisfy this gate falsely). Behavioral verification continues
+            via Gate REM-5 / REM-6 (smoke scenario asserts snap-resolved
+            metric is used at commit time).
 
 Gate REM-5: Test additions present
   Command: pnpm --filter @portplanner/editor-2d test -- tests/paintCrosshair tests/grip-stretch tests/select-rect
@@ -323,34 +339,51 @@ in the plan body or recorded as a documented trade-off below.
 
 **Tests added by this remediation:**
 
-- `tests/paintCrosshair.test.ts`: existing line-count assertions UPDATED (2 → 4
-  segments per axis), 2 NEW tests:
+- `tests/paintCrosshair.test.ts` (R2b coverage): existing line-count
+  assertions UPDATED (2 → 4 segments per axis), 2 NEW tests:
   - "draws a pickbox square at the cursor" — asserts `strokeRect` is called
     with the cursor as center and `PICKBOX_HALF_CSS * dpr` as the half-extent.
   - "line segments do not cross the pickbox region" — asserts every line
     segment endpoint sits at `cx ± pbHalf` or beyond, never inside the
     pickbox square.
-- `tests/grip-stretch.test.ts`: 1 NEW test — pre-set `overlay.snapTarget`,
-  feed `'point'` input via `tool.feedInput` (test path mirrors the runtime
-  mouseup path's snap consumption), assert the resulting `updatePrimitive`
-  patch uses the snap point. (Note: test calls feedInput directly not the
-  mouseup path; the snap consumption is in EditorRoot. To test fully, can
-  either test EditorRoot integration OR test that handleCanvasMouseUp's snap-
-  resolution logic is in EditorRoot. The cleanest unit-level assertion is on
-  the EditorRoot effect — but since EditorRoot is a React component, we test
-  via the smoke E2E layer instead.) **Revised approach:** the test covers
-  the EditorRoot path via mounting `<EditorRoot />`, seeding a primitive +
-  snap target, firing mousedown on the grip + mouseup, asserting the
-  primitive's grip endpoint matches the snap-resolved metric.
-- `tests/select-rect.test.ts`: 1 NEW test, same pattern as grip-stretch but
-  for select-rect's mouseup commit.
+- `tests/smoke-e2e.test.tsx` (R4 coverage — SOLE validation surface):
+  1 NEW scenario added to `SCENARIOS` const + matching `it()` block:
+  - **`'snap honored on grip-stretch mouseup'`** — mounts `<EditorRoot />`,
+    seeds two primitives (a target line whose endpoint will be the snap
+    target + a second line to grip-stretch). With OSNAP on (default),
+    fires mousedown on the second line's p1 grip, mousemove near the
+    target line's endpoint (so `overlay.snapTarget` is set by the snap-on-
+    cursor effect), waits for the rAF flush via `wait(80)` (existing
+    smoke pattern), fires mouseup AT a slightly-off screen position, and
+    asserts the second line's p1 endpoint EXACTLY matches the target's
+    snap-resolved metric (NOT the slightly-off mouseup metric). The
+    "exactly matches" assertion uses `toBeCloseTo(..., 9)` since
+    `commitSnappedVertex` bit-copies via `Object.is` semantics.
+
+**Why the smoke layer is the SOLE R4 validation surface (Codex Round-1 H1
+fix):** the snap-on-mouseup wiring is in `EditorRoot.handleCanvasMouseUp`
+which calls `commitSnappedVertex(snap.point)` before forwarding to
+`runningToolRef.current?.feedInput`. Tool-level tests in
+`grip-stretch.test.ts` / `select-rect.test.ts` call `tool.feedInput` directly
+— they bypass EditorRoot entirely. A tool-level "snap" test would PASS even
+with R4 unfixed (because the test would feed in a pre-snapped point itself).
+Only an EditorRoot-mounted integration test exercises the actual wiring.
+Smoke E2E is the established surface for that style of test (M1.3d Phase 9).
+
+Select-rect mouseup-snap is symmetric to grip-stretch (same code path,
+same `handleCanvasMouseUp`, same `commitSnappedVertex` call). The grip-
+stretch scenario is representative — adding a select-rect duplicate
+scenario buys redundant coverage of the same wiring.
 
 **Tests intentionally not added (deferred):**
 
+- `tests/grip-stretch.test.ts`, `tests/select-rect.test.ts` — NO snap tests
+  added. These are tool-level unit tests; the snap-on-mouseup behavior is
+  EditorRoot's, not the tool's. (Codex Round-1 H1 — single-SSOT R4 testing.)
 - Visual-regression for the crosshair shape — out of scope for M1.3d (no
   image-diff infrastructure in place).
-- Multi-tool interaction tests for snap on mouseup — covered by the
-  per-tool unit tests + smoke E2E suite.
+- Per-tool select-rect snap-on-mouseup smoke scenario — symmetric to grip-
+  stretch's wiring; representative grip-stretch coverage suffices.
 
 ## 11. Risks and Mitigations
 
