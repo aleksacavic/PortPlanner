@@ -284,13 +284,15 @@ User-confirmed in pre-response acknowledgment dated 2026-04-26:
 - `packages/editor-2d/src/ui-state/store.ts` — extend
   `EditorUiState.viewport` with `crosshairSizePct: number`. Extend
   `EditorUiState.overlay` with `cursor: { metric: Point2D, screen:
-  ScreenPoint } | null`, `previewShape: PreviewShape | null`,
-  `snapTarget: SnapTarget | null` (already declared, keep), `hoverEntity:
-  PrimitiveId | null`, `selectionRect: { start: Point2D, end: Point2D,
-  direction: 'window' | 'crossing' } | null`, `transientLabels:
-  TransientLabel[]`, `grips: Grip[] | null`. New actions: `setCursor`,
-  `setPreviewShape`, `setSnapTarget`, `setHoverEntity`,
-  `setSelectionRect`, `setTransientLabels`, `setGrips`,
+  ScreenPoint } | null`, `previewShape: PreviewShape | null` (the
+  union has a `'selection-rect'` arm — selection-rect overlay state
+  rides the previewShape field, no separate `selectionRect` field
+  per Phase 4 step 2 + Phase 7 step 4), `snapTarget: SnapTarget | null`
+  (already declared, keep), `hoverEntity: PrimitiveId | null`,
+  `transientLabels: TransientLabel[]`, `grips: Grip[] | null`,
+  `suppressEntityPaint: PrimitiveId | null`. New actions:
+  `setCursor`, `setPreviewShape`, `setSnapTarget`, `setHoverEntity`,
+  `setTransientLabels`, `setGrips`, `setSuppressEntityPaint`,
   `setCrosshairSizePct`.
 - `packages/editor-2d/src/canvas/style.ts` — no change (transient
   styles bypass ByLayer).
@@ -578,15 +580,65 @@ overlay slice extensions that the rest of M1.3d will consume.
      selectionHandles: Array<Point2D>;      // existing — kept; possibly deprecated by grips
      previewShape: PreviewShape | null;
      hoverEntity: PrimitiveId | null;
-     selectionRect: { startMetric: Point2D; endMetric: Point2D; direction: 'window' | 'crossing' } | null;
+     // NB: selectionRect is NOT a separate field; it's an arm of
+     // PreviewShape (kind: 'selection-rect') so the runner's existing
+     // previewBuilder mechanism + paint.ts's overlay-pass dispatcher
+     // handle it uniformly. See Phase 4 step 2 + Phase 7 step 4.
      transientLabels: TransientLabel[];
      grips: Grip[] | null;
+     /**
+      * When set, paint.ts skips painting the entity with this id during
+      * the entity pass. Used by grip-stretch (Phase 6) so the user sees
+      * only the modified-entity preview during a drag, not the original
+      * entity AND the preview overlapping. Cleared on grip-stretch
+      * commit / abort.
+      */
+     suppressEntityPaint: PrimitiveId | null;
    }
    ```
-   Add the corresponding actions on `editorUiActions`.
+   Add the corresponding actions on `editorUiActions`:
+   `setCursor`, `setPreviewShape`, `setSnapTarget`, `setHoverEntity`,
+   `setTransientLabels`, `setGrips`, `setSuppressEntityPaint`,
+   `setCrosshairSizePct`.
 7. Update `tests/ui-state.test.ts` to cover the new fields and
    actions (default values, idempotent setters, isolation across
    slices).
+8. **Architectural contract for overlay access from the paint loop
+   (C2 — I-68-safe data flow).** The paint loop (`canvas-host.tsx`
+   already-existing rAF callback) MUST NOT subscribe to
+   `editorUiStore` directly — canvas-host already subscribes to
+   `projectStore`, and a second subscription would make canvas-host
+   a dual-store subscriber, violating I-68 / Gate 22.7. Instead:
+   - `canvas-host.tsx` accepts a new prop:
+     `getOverlay?: () => OverlayState | null`.
+   - `paint.ts` `paint()` signature gains an `overlay: OverlayState |
+     null` parameter (alongside existing `project / viewport /
+     spatialIndex`).
+   - Inside canvas-host's existing rAF callback (the paint scheduler
+     from M1.3a), call `props.getOverlay?.()` ONCE per frame and pass
+     the result into `paint(...)`. Read frequency is bounded by the
+     existing rAF coalescing — no new subscription.
+   - `EditorRoot.tsx` provides `getOverlay` as a stable callback ref:
+     ```tsx
+     const getOverlayRef = useRef<() => OverlayState | null>(() =>
+       editorUiStore.getState().overlay,
+     );
+     // pass getOverlayRef.current as the prop
+     ```
+     `getOverlayRef.current` is a one-shot reader of editorUiStore;
+     calling it doesn't establish a long-lived subscription. EditorRoot
+     itself already subscribes to editorUiStore via `useEditorUi`
+     (which is the legitimate dual-store subscriber per I-68); the
+     getOverlay callback is just a thin reader handed down to
+     canvas-host.
+   - This keeps canvas-host as a single-side (project-store-only)
+     subscriber, preserves I-68 / Gate 22.7, and avoids the
+     React-re-render storm that would result from passing overlay as
+     a value-prop on every cursor frame.
+9. **Tests for the overlay data flow contract:** assert that
+   canvas-host does NOT import `editorUiStore` (Gate DTP-T7) and that
+   `paint(...)` is called with the latest overlay snapshot via the
+   getOverlay callback (canvas-host integration test).
 
 **Invariants introduced:**
 
@@ -599,6 +651,12 @@ overlay slice extensions that the rest of M1.3d will consume.
   otherwise. Tests cover both transitions.
 - I-DTP-3: `EditorUiState.viewport.crosshairSizePct` is clamped to
   [0, 100] at the action level. Tests cover boundary values.
+- **I-DTP-22: `canvas-host.tsx` accesses overlay state EXCLUSIVELY
+  via the `getOverlay: () => OverlayState | null` prop callback,
+  NEVER by subscribing to or importing `editorUiStore`.** Preserves
+  I-68 (canvas-host stays single-side projectStore subscriber).
+  Enforced by **Gate DTP-T7** (hard grep — `canvas-host.tsx` MUST NOT
+  import `editorUiStore` from `../ui-state/store`).
 
 **Mandatory Completion Gates:**
 
@@ -644,8 +702,11 @@ to `overlay.cursor`. This is the foundation that unlocks Phases 3,
 
 **Steps:**
 
-1. Add `onCanvasHover?: (metric: Point2D, screen: ScreenPoint) => void`
-   to `CanvasHostProps`.
+1. Add to `CanvasHostProps`:
+   - `onCanvasHover?: (metric: Point2D, screen: ScreenPoint) => void`
+     for cursor tracking.
+   - `getOverlay?: () => OverlayState | null` for paint-loop overlay
+     access (per Phase 1 step 8 / I-DTP-22).
 2. canvas-host's `onMouseMove` is currently only used for middle-
    mouse-drag pan. Refactor:
    - If `panStateRef.current` is set → existing pan handling.
@@ -657,12 +718,46 @@ to `overlay.cursor`. This is the foundation that unlocks Phases 3,
      flushed value, call `onCanvasHover(metric, screen)`.
 3. Add a single rAF coalescing pattern via a `cursorRafRef` (mirror
    of the existing `rafRef` for paint). On unmount, cancel.
-4. EditorRoot's new `handleCanvasHover` prop calls
-   `editorUiActions.setCursor({ metric, screen })`.
-5. Tests: assert that synchronous `mousemove` events produce at
+4. **paint() signature extended.** Update `paint.ts` so `paint()` takes
+   an `overlay: OverlayState | null` parameter alongside the existing
+   `project / viewport / spatialIndex`. Inside canvas-host's existing
+   paint rAF callback (M1.3a), call `props.getOverlay?.() ?? null`
+   ONCE before invoking `paint(...)`. The overlay value is captured
+   per-frame and passed into the paint pass. **canvas-host does NOT
+   subscribe to editorUiStore** — Gate DTP-T7.
+5. EditorRoot's new `handleCanvasHover` prop calls
+   `editorUiActions.setCursor({ metric, screen })`. EditorRoot also
+   provides `getOverlay = () => editorUiStore.getState().overlay` as
+   a stable ref-captured callback passed to canvas-host (Phase 1
+   step 8 contract).
+6. **Re-trigger paint on overlay change — explicit pattern.**
+   canvas-host exposes `requestPaint(): void` via
+   `useImperativeHandle` on a forwarded ref. The method just calls
+   the existing `schedulePaint()` (M1.3a internal) which is
+   rAF-coalesced — multiple `requestPaint()` calls within a single
+   frame collapse to one paint.
+   ```tsx
+   const CanvasHost = forwardRef<{ requestPaint: () => void }, CanvasHostProps>((props, ref) => {
+     // ... existing internals ...
+     useImperativeHandle(ref, () => ({ requestPaint: schedulePaint }), []);
+     // ... existing render ...
+   });
+   ```
+   EditorRoot holds a ref to canvas-host and subscribes to
+   editorUiStore via `useEditorUi((s) => s.overlay)` (existing
+   subscription). On every render where `overlay` reference changes,
+   an effect calls `canvasHostRef.current?.requestPaint()`. Because
+   schedulePaint is rAF-coalesced, even at 60 cursor-update fps this
+   results in at most 60 paint frames per second — no over-paint.
+   This pattern keeps canvas-host single-side (projectStore-only)
+   subscriber (Gate DTP-T7); EditorRoot is the legitimate dual-store
+   subscriber (per I-68 exemption). The imperative ref is the
+   minimum-React-state-churn way to bridge them.
+7. Tests: assert that synchronous `mousemove` events produce at
    most ONE cursor update per RAF tick. Use a fake-timers RAF
    shim if available, or just rely on the coalescing pattern
-   being verifiable via internal call counts.
+   being verifiable via internal call counts. Plus assert
+   `paint(...)` called with the overlay snapshot from `getOverlay()`.
 
 **Invariants introduced:**
 
@@ -822,8 +917,24 @@ length / radius / angle / dimension labels.
      | { kind: 'circle'; center: Point2D; cursor: Point2D }
      | { kind: 'arc-2pt'; p1: Point2D; cursor: Point2D }    // first leg, no arc shape yet
      | { kind: 'arc-3pt'; p1: Point2D; p2: Point2D; cursor: Point2D }  // arc through 3 points
-     | { kind: 'xline'; pivot: Point2D; cursor: Point2D };
+     | { kind: 'xline'; pivot: Point2D; cursor: Point2D }
+     // Selection-rectangle preview (Phase 7). Drawn by paintSelectionRect
+     // (NOT paintPreview); paint.ts's overlay-pass dispatcher routes
+     // PreviewShape arms by kind. This keeps the runner's previewBuilder
+     // contract uniform — select-rect's previewBuilder is the same shape
+     // as a draw tool's, and EditorRoot doesn't need any selection-rect-
+     // specific routing.
+     | { kind: 'selection-rect'; start: Point2D; end: Point2D; direction: 'window' | 'crossing' };
    ```
+   **Forward compatibility note (C10):** When M1.3b adds modify-operator
+   previews (Move shows ghost, Rotate shows arc, Scale shows scaled
+   shape), the union extends additively. Grip-stretch's previewBuilder
+   in M1.3d reuses the existing primitive-kind arms (a stretched
+   line is `{ kind: 'line', p1, cursor }` with the moved endpoint as
+   `cursor`); a future M1.3b move-with-multiple-entities preview MAY
+   want a new `{ kind: 'modified-entities', entities: Primitive[] }`
+   arm. Not added in M1.3d; documented here so M1.3b knows the
+   extension point.
 3. **Author `paintPreview.ts`** dispatching on `PreviewShape.kind`:
    - line: dashed line p1→cursor + label "{length} m" at midpoint.
    - polyline: chain segments + dashed rubber-band last→cursor +
@@ -857,11 +968,42 @@ length / radius / angle / dimension labels.
      previewBuilder?: (cursor: Point2D) => PreviewShape;
    }
    ```
-5. **Update tool runner** to subscribe to `editorUiStore.overlay.cursor`
-   in addition to its own input queue. When the active prompt has a
-   `previewBuilder` and cursor changes, re-build the preview and
-   `setPreviewShape(builder(cursor.metric))`. When the prompt resolves,
-   `setPreviewShape(null)` + setTransientLabels([]).
+5. **Update tool runner — explicit subscription contract.** The runner
+   gains a `currentPrompt: Prompt | null` field. Lifecycle:
+   - When the generator yields a `Prompt`, runner sets
+     `currentPrompt = prompt` and calls
+     `editorUiActions.setPrompt(...)` (existing).
+   - **If `currentPrompt.previewBuilder` is non-null,** runner
+     subscribes to `editorUiStore` via `editorUiStore.subscribe(fn)`
+     ONCE per tool start (single subscription for the tool's lifetime;
+     not per-prompt to avoid resubscribe churn). The subscriber reads
+     `state.overlay.cursor` on every store change and, when cursor is
+     non-null AND `currentPrompt.previewBuilder` exists, calls
+     `editorUiActions.setPreviewShape(currentPrompt.previewBuilder(cursor.metric))`.
+   - When `currentPrompt` resolves (input received), runner clears
+     the preview: `setPreviewShape(null)`. The subscription stays alive
+     for the next prompt.
+   - On tool completion (committed) OR abort (escape): runner unsubscribes
+     and clears `setPreviewShape(null)`. Cleanup is the runner's
+     existing `try { ... } finally { ... }` block in
+     `tools/runner.ts`.
+   - Throttling: the subscription fires on every editorUiStore change
+     (cursor, snapTarget, etc. all in the same store). To avoid
+     re-running previewBuilder on non-cursor changes, the subscriber
+     compares `state.overlay.cursor` against a captured-last value and
+     only re-builds when cursor actually changed.
+   - I-68 compliance: runner subscribes to editorUiStore (single side).
+     Runner DOES NOT subscribe to projectStore (only `.getState()`
+     reads at commit time, which is one-shot). Verified via existing
+     Gate 22.7 — runner.ts is not currently an offender; the new
+     subscription keeps it single-side.
+   - **Closure capture clarification (C14).** The subscription
+     handler captures `() => currentPrompt?.previewBuilder` (re-read
+     on each fire), NOT the previewBuilder value at subscribe time.
+     `currentPrompt` is a runner-local mutable reference updated when
+     the generator yields. This way, the same one-shot subscription
+     handles every prompt the tool yields without resubscribing per
+     prompt.
 6. **Update each draw tool** to yield `previewBuilder` on the
    appropriate prompts (per the `PreviewShape.kind` table):
    - draw-line: second prompt yields `previewBuilder: (c) => ({ kind:
@@ -961,7 +1103,14 @@ hover.
      square + 1 px white outline using `canvas.handle_move`.
 4. EditorRoot effect: on cursor change, run hit-test (existing
    `hitTest(...)` from `canvas/hit-test.ts`) on the cursor metric.
-   `setHoverEntity(hit ?? null)`.
+   `setHoverEntity(hit ?? null)`. **Spatial-index reuse pattern (C8):**
+   matches the M1.3a `handleCanvasClick` pattern — build a fresh
+   `PrimitiveSpatialIndex` at hit-test time, populate it from
+   `projectStore.getState().project.primitives`, run `hitTest(...)`,
+   discard. With M1.3a workloads (10s–100s of primitives), the build
+   cost is negligible at 60fps. If profiling later shows this is hot,
+   refactor to a memoised index keyed on project version. M1.3d does
+   not pre-optimise.
 5. EditorRoot effect: on selection change OR primitives change, recompute
    `overlay.grips` from selected entities + their gripsOf shapes.
    `setGrips(grips)`.
@@ -1136,47 +1285,71 @@ L→R = window/blue/fully-enclosed. R→L = crossing/green/any-touch.
    `searchFrustum(rect)`, check that its bbox is fully inside `rect`
    (`item.minX >= rect.minX && item.maxX <= rect.maxX && ...`).
    Return only those.
-2. Author `paintSelectionRect.ts`. Reads
-   `overlay.selectionRect`. If non-null, paints a dashed rectangle:
-   stroke + light fill from
-   `canvas.transient.selection_window` (direction === 'window') OR
-   `canvas.transient.selection_crossing` (direction === 'crossing').
+2. Author `paintSelectionRect.ts`. Receives the selection-rect arm
+   of `overlay.previewShape` (paint.ts's overlay-pass dispatcher
+   routes `previewShape.kind === 'selection-rect'` here, and the
+   other arms to `paintPreview`). Paints a dashed rectangle: stroke
+   + light fill from `canvas.transient.selection_window` (direction
+   === 'window') OR `canvas.transient.selection_crossing` (direction
+   === 'crossing'). Reset transform to identity for a screen-space
+   draw (the rectangle's visual size matches viewport coordinates,
+   not metric scaling — same convention as paintSnapGlyph and
+   paintCrosshair).
 3. Author `select-rect.ts`. Tool generator:
    - Started by canvas-host on left-mousedown when no active tool.
-   - First Input: `'point'` = mousedown screen → metric. Stored as
-     `start`. Direction undecided yet.
-   - Subsequent: cursor mousemove updates `end`. Direction is
-     `start.x < end.x ? 'window' : 'crossing'`.
-   - Yields `previewBuilder` that returns selection-rect overlay
-     state (this is consumed by EditorRoot to set
-     `overlay.selectionRect` rather than the previewShape — slight
-     wrinkle, see step 4).
-   - Final Input: `'point'` again (mouseup). Resolve hits:
+     The tool factory closure receives the start point (metric)
+     captured at mousedown.
+   - First yield: a `Prompt` with `previewBuilder: (cursor) =>
+     ({ kind: 'selection-rect', start, end: cursor, direction:
+     start.x < cursor.x ? 'window' : 'crossing' })`.
+     This is the standard PreviewShape-arm route from Phase 4 step 2
+     — the runner writes the result to `overlay.previewShape`,
+     paint.ts's overlay-pass dispatcher routes the `'selection-rect'`
+     arm to `paintSelectionRect` (instead of `paintPreview`).
+     **No EditorRoot routing needed; no `overlay.selectionRect` field
+     in the slice.** (C6 fix.)
+   - Awaits a `'point'` Input (the mouseup point). Resolves direction
+     from `start.x < end.x ? 'window' : 'crossing'`. Resolves hits:
      - window: `searchEnclosed(rect)` → ids fully inside.
      - crossing: `searchFrustum(rect)` → ids intersecting.
      - Plus per-entity precise check for non-bbox geometry (xlines:
        skip; arcs / circles: bbox is tight enough).
-   - On commit: `editorUiActions.setSelection(ids)`.
-   - Special case: if `start === end` (no drag, just click): hit-test
-     on `start` → if hit, single-entity-select; else clear selection.
-4. EditorRoot needs to write `overlay.selectionRect` from the running
-   select-rect tool. Cleanest: select-rect's previewBuilder writes
-   to selectionRect instead of previewShape. Implementation:
-   `previewBuilder: (cursor) => ({ kind: 'selection-rect', start,
-   end: cursor, direction })` and EditorRoot routes
-   `previewShape.kind === 'selection-rect'` to setSelectionRect
-   instead of setPreviewShape. (Alternate cleaner: a separate field
-   on Prompt: `selectionRectBuilder?` — but more types. The
-   discriminated-union route is cleaner.)
-5. canvas-host's onMouseDown when no active tool + no grip hit:
-   start select-rect tool. On mousemove during select-rect:
-   feedInput `{ kind: 'point', point: cursorMetric }`. On mouseup:
-   feedInput same to commit. Implementation note: select-rect needs
-   a special "drag-style" Input pattern — three feedInputs: down,
-   move (zero or many), up. Cleanest is to keep the tool's
-   generator simple: it yields once awaiting "drag complete," and
-   the runner / canvas-host track mousemove and mouseup separately,
-   passing the final endpoint on mouseup.
+   - On commit: `editorUiActions.setSelection(ids)`. Returns
+     `{ committed: true, description: '...' }`.
+   - Special case: if `start === end` (no drag — mousedown and
+     mouseup at the same point within tolerance): hit-test on `start`;
+     if hit, single-entity-select; else clear selection. Same return
+     `committed: true`.
+4. **canvas-host onMouseUp callback for select-rect commit (C7).** Add
+   to `CanvasHostProps`:
+   `onCanvasMouseUp?: (metric: Point2D, screen: ScreenPoint) => void`.
+   In canvas-host's existing onMouseUp handler (which currently only
+   resets `panStateRef`), call `props.onCanvasMouseUp?.(metric,
+   screen)` after pan-state reset. EditorRoot's
+   `handleCanvasMouseUp` routes to the running tool:
+   `runningToolRef.current?.feedInput({ kind: 'point', point: metric })`.
+   Tools that don't expect mouseup-driven commits (line, circle, arc,
+   etc. all use mousedown for points) ignore the input — their next
+   `await nextInput()` resolves with the mouseup metric, but the
+   generator is already awaiting the next `'point'` input which it
+   would also accept; that's fine for select-rect (its only `'point'`
+   await IS the mouseup) but causes an unwanted "extra point" in
+   draw tools.
+   **Mitigation:** canvas-host fires `onCanvasMouseUp` ONLY when no
+   active tool is running OR the active tool is `select-rect` /
+   `grip-stretch` (the two drag-style tools). Other tools never
+   receive mouseup-driven inputs. Implementation: canvas-host reads
+   `props.activeToolId` (new prop) — but cleaner: canvas-host doesn't
+   need to know; EditorRoot's `handleCanvasMouseUp` checks
+   `activeToolId === 'select-rect' || activeToolId === 'grip-stretch'`
+   before forwarding. Simple, contained.
+5. canvas-host's onMouseDown when no active tool AND no grip hit:
+   start select-rect tool with the mousedown point as `start`.
+   Subsequent cursor changes update the previewBuilder via the
+   runner's existing cursor-subscription mechanism (Phase 4 step 5).
+   Mouseup → onCanvasMouseUp → EditorRoot routes the metric as a
+   `'point'` Input to the running select-rect tool → tool resolves
+   and commits.
 6. paint.ts overlay pass adds paintSelectionRect after paintPreview.
 7. Tests: searchEnclosed correctness; select-rect for both directions
    commits the right selection; paintSelectionRect path commands
@@ -1396,6 +1569,18 @@ assertion paths must be DOM-driven.
    include the five new scenarios automatically (they're already in
    `SCENARIOS`; the meta-test iterates SCENARIOS).
 
+**Coverage tradeoff (C9 from §1.3 Round 2 self-audit).** The smoke
+suite covers each polish item with ONE representative DOM-level
+scenario. Exhaustive coverage of every glyph kind / every primitive
+kind for grip-stretch / every selection-rect direction edge case
+lives in the per-painter / per-helper unit tests (paintSnapGlyph,
+grip-positions, grip-stretch, select-rect, etc.). Smoke verifies the
+end-to-end wire-up (cursor → snap engine → overlay → painter); units
+verify the painter / helper correctness. This is a documented
+tradeoff, not a gap — five smoke scenarios for five distinct
+features keeps the suite fast (the suite's runtime growth budget
+is ~5s for M1.3d).
+
 **Invariants introduced:**
 
 - I-DTP-21: All five new polish scenarios mount `<EditorRoot />` and
@@ -1464,6 +1649,7 @@ Gate DTP-9.3: Full workspace test suite passes
 | I-DTP-19 | paintCrosshair runs in screen-space | Painter test (Phase 8) |
 | I-DTP-20 | F7 fires onToggleCrosshair regardless of focus holder | Keyboard router test (Phase 8) |
 | I-DTP-21 | All polish smoke scenarios mount `<EditorRoot />` + fire DOM events | Gate 21.2.disc (existing per-scenario meta-test) |
+| I-DTP-22 | `canvas-host.tsx` accesses overlay state EXCLUSIVELY via the `getOverlay: () => OverlayState \| null` prop callback; NEVER subscribes to or imports `editorUiStore`. Preserves I-68 (Gate 22.7). | Gate DTP-T7 (hard grep on canvas-host.tsx) |
 
 ### Cross-cutting hard gates (run once at end):
 
@@ -1479,6 +1665,15 @@ Gate DTP-T2: Only paintTransientLabel calls ctx.fillText / strokeText (paintGrid
 Gate DTP-T6: paintPreview never imports projectStore
   Command: rg -n "from '@portplanner/project-store'" packages/editor-2d/src/canvas/painters/paintPreview.ts
   Expected: 0 matches
+
+Gate DTP-T7: canvas-host.tsx never imports editorUiStore (preserves I-68)
+  Command: rg -n "from ['\"].*ui-state/store['\"]|editorUiStore" packages/editor-2d/src/canvas/canvas-host.tsx
+  Expected: 0 matches
+  Rationale (C2): canvas-host already subscribes to projectStore; a
+  second subscription to editorUiStore would make canvas-host a
+  dual-store subscriber, violating I-68 / Gate 22.7. canvas-host
+  accesses overlay state exclusively via the getOverlay prop callback
+  passed by EditorRoot. See Phase 1 step 8 for the data flow contract.
 ```
 
 ## 10. Test strategy
@@ -1503,12 +1698,19 @@ Gate DTP-T6: paintPreview never imports projectStore
   - `tests/grip-stretch.test.ts` (Phase 6)
   - `tests/select-rect.test.ts` (Phase 7)
   - `tests/StatusBarCoordReadout.test.tsx` (Phase 8)
-  - `tests/canvas-host.test.tsx` (extended — mousemove coalescing,
-    grip hit-test routing)
+  - `tests/canvas-host.test.tsx` (new — mousemove coalescing, getOverlay
+    callback wired, requestPaint imperative ref, grip hit-test
+    routing, NO editorUiStore import per Gate DTP-T7)
+  - `tests/tool-runner.test.ts` (extended — runner cursor-subscription
+    lifecycle: subscribe on tool start, unsubscribe on commit / abort,
+    no leak across tool runs, closure-captured currentPrompt re-read
+    on each fire — addresses C14 + C19)
   - `tests/spatial-index.test.ts` (extended — searchEnclosed)
   - `tests/keyboard-router.test.ts` (extended — F7 + onToggleCrosshair)
   - `tests/draw-tools.test.ts` (extended — previewBuilder yields)
-  - `tests/ui-state.test.ts` (extended — new overlay slice fields)
+  - `tests/ui-state.test.ts` (extended — new overlay slice fields
+    including suppressEntityPaint per C5; selection-rect arm of
+    PreviewShape per C6)
   - `tests/smoke-e2e.test.tsx` (extended — five new scenarios)
 - apps/web:
   - `tests/auto-load.test.tsx` (extended — default grid in
@@ -1576,6 +1778,10 @@ Gate DTP-T6: paintPreview never imports projectStore
 | **Token namespace boundary (transient vs ByLayer) is enforceable by grep but not by type system.** | Gate DTP-T1 catches accidental imports / usages. Long-term: a stronger boundary (separate module for transient tokens) is a refactor opportunity post-M1. |
 | **paintTransientLabel rendering text in screen-space requires the font to load before paint.** | Use a system-default font stack (no web fonts) so paint is synchronous on canvas: `'12px system-ui, -apple-system, sans-serif'`. Captured in the painter contract. |
 | **smoke E2E expansion from 5 → 10 scenarios increases test runtime ~2x.** | Each scenario is ~1s in the editor-2d test suite; total ~5s extra. Acceptable. |
+| **PreviewShape forward-compatibility for M1.3b modify-operator previews (C10).** Move / Rotate / Scale on multiple entities want a "modified-entities" preview kind that doesn't fit the single-entity arms. | M1.3d ships the 8 arms it needs (7 primitive kinds + selection-rect); M1.3b extends additively with a new `modified-entities` arm if needed. Documented in Phase 4 step 2. No breaking change. |
+| **Runner cursor-subscription teardown on tool abort (C11).** If a tool aborts mid-prompt (Escape), the runner's editorUiStore subscription must unsubscribe AND the previewShape must clear. | Phase 4 step 5 explicitly specifies the lifecycle: subscription created on tool start, cleared on tool completion / abort via the runner's existing try/finally. Verified by tool-runner integration test. |
+| **`editorUiStore.overlay` slice growing into a kitchen sink (C12).** With ~9 fields (cursor, snapTarget, guides, selectionHandles, previewShape, hoverEntity, transientLabels, grips, suppressEntityPaint) plus `viewport.crosshairSizePct`, the overlay slice is becoming load-bearing for many concerns. | Acceptable for M1.3d — splitting into per-concern slices would be premature. M2+ refactor opportunity (e.g. `overlay-cursor`, `overlay-preview`, `overlay-selection` sub-slices) if the slice file exceeds ~400 LOC. Documented; not blocking. |
+| **mouseup whitelist hard-codes drag-style tool ids (C13).** EditorRoot's `handleCanvasMouseUp` filters on `activeToolId === 'select-rect' \|\| activeToolId === 'grip-stretch'` to avoid forwarding mouseup-driven inputs to non-drag tools. Future drag-style tools (e.g. M1.3b STRETCH command with multi-entity crossing-window) would need to be added to the whitelist. | Acceptable for M1.3d — only two drag-style tools. Future cleaner pattern: declare `acceptsMouseUp?: boolean` on the running `Prompt`; EditorRoot reads from `editorUiStore.commandBar.activePrompt` instead of a hard-coded tool-id list. Defer until the third drag-style tool emerges. |
 
 ---
 
