@@ -103,4 +103,46 @@ describe('PrimitiveSpatialIndex', () => {
       expect(hits).not.toContain(x.id);
     });
   });
+
+  // M1.3d-Remediation-2 R5 — searchCrossing (geometric wire intersect)
+  describe('searchCrossing (M1.3d-Remediation-2 R5)', () => {
+    it('returns ids whose actual wire intersects the rect', () => {
+      const idx = new PrimitiveSpatialIndex();
+      const insideLine = line({ x: 1, y: 1 }, { x: 4, y: 4 });
+      const crossingLine = line({ x: -5, y: 5 }, { x: 15, y: 5 });
+      idx.insert(insideLine);
+      idx.insert(crossingLine);
+      const primitives = {
+        [insideLine.id]: insideLine,
+        [crossingLine.id]: crossingLine,
+      };
+      const hits = idx.searchCrossing({ minX: 0, minY: 0, maxX: 10, maxY: 10 }, primitives);
+      expect(hits).toContain(insideLine.id);
+      expect(hits).toContain(crossingLine.id);
+    });
+
+    it('REJECTS bbox-overlap candidates whose wire does NOT cross the rect (the diagonal-line regression)', () => {
+      const idx = new PrimitiveSpatialIndex();
+      // Diagonal line whose AABB encompasses the rect but whose wire
+      // stays well clear: from (-5, 50) to (50, -5). At rect's x ∈ [10, 15],
+      // the line's y is ~33-37 (well above rect's y ∈ [10, 15]).
+      const diagonal = line({ x: -5, y: 50 }, { x: 50, y: -5 });
+      idx.insert(diagonal);
+      const primitives = { [diagonal.id]: diagonal };
+      // searchFrustum (bbox-only, the OLD behavior) WOULD return this id.
+      const frustumHits = idx.searchFrustum({
+        minX: 10,
+        minY: 10,
+        maxX: 15,
+        maxY: 15,
+      });
+      expect(frustumHits).toContain(diagonal.id); // bbox-only: false positive
+      // searchCrossing (wire-aware, the NEW behavior) MUST NOT return it.
+      const crossingHits = idx.searchCrossing(
+        { minX: 10, minY: 10, maxX: 15, maxY: 15 },
+        primitives,
+      );
+      expect(crossingHits).not.toContain(diagonal.id);
+    });
+  });
 });

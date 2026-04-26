@@ -69,9 +69,14 @@ export const dark: SemanticTokens = {
       preview_stroke: '#7d8fa3',
       preview_fill: 'rgba(125, 143, 163, 0.05)',
       preview_dash: '6 4',
-      label_text: '#c8d4e3',
-      label_bg: 'rgba(13, 20, 32, 0.85)',
-      label_padding: '4',
+      // M1.3d-Remediation-2 R6 — small blue rounded pill for in-flight
+      // measurements. blue matches selection_window.stroke / accent.primary
+      // for consistent "selection / accent" visual vocabulary across
+      // overlay surfaces. White text on blue for max contrast on the
+      // dark canvas background. Padding shrunk 4 → 3 for compactness.
+      label_text: '#ffffff',
+      label_bg: 'rgba(42, 127, 255, 0.9)',
+      label_padding: '3',
       crosshair: 'rgba(180, 200, 255, 0.35)',
       crosshair_dash: 'solid',
       dimension_line: '#7d8fa3',

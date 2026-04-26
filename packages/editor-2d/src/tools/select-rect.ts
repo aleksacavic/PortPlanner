@@ -89,8 +89,15 @@ export function selectRectTool(start: Point2D, startScreen: ScreenPoint): () => 
     };
     const idx = new PrimitiveSpatialIndex();
     for (const p of Object.values(project.primitives)) idx.insert(p);
+    // M1.3d-Remediation-2 R5 — crossing now uses geometric wire-vs-rect
+    // narrow-phase (searchCrossing) instead of the bbox-only
+    // searchFrustum. Window stays bbox-fully-inside (equivalent to
+    // wire-fully-inside for our convex/connected primitives — verified
+    // in spatial-index.ts).
     const ids: PrimitiveId[] =
-      direction === 'window' ? idx.searchEnclosed(rect) : idx.searchFrustum(rect);
+      direction === 'window'
+        ? idx.searchEnclosed(rect)
+        : idx.searchCrossing(rect, project.primitives);
     editorUiActions.setSelection(ids);
     return {
       committed: true,

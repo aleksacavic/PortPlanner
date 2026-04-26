@@ -104,11 +104,12 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     // (mid-grip-stretch — Phase 6) since the entity is hidden during
     // the drag; the preview shape stands in for it.
     const grips = overlay.grips ?? [];
+    const hoveredGripKey = overlay.hoveredGrip;
     for (const id of overlay.grips ? collectSelectedIds(grips) : []) {
       if (suppressId !== null && id === suppressId) continue;
       const selected = project.primitives[id];
       if (!selected) continue;
-      paintSelection(ctx, selected, grips, viewport, dark);
+      paintSelection(ctx, selected, grips, viewport, dark, hoveredGripKey);
     }
     // Phase 4 — live preview. The 'selection-rect' arm routes to
     // paintSelectionRect (Phase 7); paintPreview ignores it. Re-apply

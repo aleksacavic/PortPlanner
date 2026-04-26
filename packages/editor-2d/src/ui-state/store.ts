@@ -146,6 +146,15 @@ export interface OverlayState {
    * AND the preview overlapping. Cleared on grip-stretch commit/abort.
    */
   suppressEntityPaint: PrimitiveId | null;
+  /**
+   * M1.3d-Remediation-2 R7 — pointer to the grip the cursor is closest
+   * to (within `gripHitTest`'s 4 CSS-px tolerance). When set, paintSelection
+   * renders THAT grip with amber fill + 9×9 CSS px instead of the default
+   * blue + 7×7. Set by an EditorRoot cursor-effect; null when no grip is
+   * within tolerance OR when no entity is selected (`overlay.grips === null`).
+   * AutoCAD parity: signals to the user which grip clicking will grab.
+   */
+  hoveredGrip: { entityId: PrimitiveId; gripKind: string } | null;
 }
 
 export interface EditorUiState {
@@ -208,6 +217,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     transientLabels: [],
     grips: null,
     suppressEntityPaint: null,
+    hoveredGrip: null,
   },
 });
 
@@ -345,6 +355,11 @@ export const editorUiActions = {
   setSuppressEntityPaint(id: PrimitiveId | null): void {
     editorUiStore.setState((s) => {
       s.overlay.suppressEntityPaint = id;
+    });
+  },
+  setHoveredGrip(grip: { entityId: PrimitiveId; gripKind: string } | null): void {
+    editorUiStore.setState((s) => {
+      s.overlay.hoveredGrip = grip;
     });
   },
   /**

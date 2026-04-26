@@ -263,6 +263,39 @@ export function EditorRoot(): ReactElement {
     }
   }, [overlay.cursor]);
 
+  // M1.3d-Remediation-2 R7 — hovered-grip highlight. When grips are
+  // visible (entity selected) and the cursor is on canvas, compute
+  // gripHitTest with the existing 4 CSS-px tolerance and publish the
+  // result to overlay.hoveredGrip. paintSelection reads it during the
+  // overlay pass and renders the matching grip with amber + 9×9 instead
+  // of the default blue + 7×7. Effect dep is overlay.cursor — same
+  // trigger pattern as the snap-on-cursor and hover-entity effects.
+  useEffect(() => {
+    const ui = editorUiStore.getState();
+    const cursor = overlay.cursor;
+    const grips = ui.overlay.grips;
+    const clear = (): void => {
+      if (editorUiStore.getState().overlay.hoveredGrip !== null) {
+        editorUiActions.setHoveredGrip(null);
+      }
+    };
+    if (!cursor || !grips || grips.length === 0) {
+      clear();
+      return;
+    }
+    const hit = gripHitTest(cursor.screen, grips, ui.viewport);
+    if (!hit) {
+      clear();
+      return;
+    }
+    const current = editorUiStore.getState().overlay.hoveredGrip;
+    if (current && current.entityId === hit.entityId && current.gripKind === hit.gripKind) {
+      // No-op write avoidance.
+      return;
+    }
+    editorUiActions.setHoveredGrip({ entityId: hit.entityId, gripKind: hit.gripKind });
+  }, [overlay.cursor]);
+
   // M1.3d Phase 5 — selection-grips recompute. When selection or
   // primitive geometry changes, rebuild overlay.grips from the
   // currently selected primitives. Empty selection → null grips.

@@ -236,3 +236,100 @@ describe('paintPreview — Gate DTP-T6 source-import isolation (I-DTP-9)', () =>
     expect(src).not.toMatch(/from\s+['"]@portplanner\/project-store['"]/);
   });
 });
+
+// M1.3d-Remediation-2 R6 — per-arm angleRad assertions. paintPreview
+// rotates the embedded transient label to align with the element
+// direction. line / polyline / circle / arc-2pt rotate; rectangle /
+// arc-3pt stay horizontal. The rotation is applied via ctx.rotate
+// inside paintTransientLabel, so we capture rotate calls in the proxy
+// and verify the angle.
+describe('paintPreview — per-arm element-aligned label rotation (R6)', () => {
+  it('line preview rotates label to align with p1 → cursor', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(ctx, { kind: 'line', p1: { x: 0, y: 0 }, cursor: { x: 3, y: 4 } }, viewport, dark);
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeDefined();
+    // angleRad = -atan2(4, 3) ≈ -0.927; in (-π/2, π/2], no flip.
+    expect(rotate?.args[0]).toBeCloseTo(-Math.atan2(4, 3), 9);
+  });
+
+  it('polyline preview rotates label along last → cursor (rubber-band)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'polyline',
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 5, y: 0 },
+        ],
+        cursor: { x: 5, y: 5 },
+        closed: false,
+      },
+      viewport,
+      dark,
+    );
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeDefined();
+    // last = (5, 0); cursor = (5, 5); angle = -atan2(5, 0) = -π/2 (vertical).
+    // In (-π/2, π/2]: -π/2 itself is at the boundary — normalizeReadable
+    // folds (-π/2 condition is `<=`) so it gets +π → π/2.
+    expect(Math.abs(Math.abs(rotate?.args[0] as number) - Math.PI / 2)).toBeLessThan(1e-9);
+  });
+
+  it('circle preview rotates label along radius (center → cursor)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      { kind: 'circle', center: { x: 0, y: 0 }, cursor: { x: 5, y: 0 } },
+      viewport,
+      dark,
+    );
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeDefined();
+    // angle = -atan2(0, 5) = 0 → no visible rotation.
+    expect(rotate?.args[0]).toBe(-0); // -atan2(0, 5) is -0 in IEEE 754
+  });
+
+  it('arc-2pt preview rotates label along p1 → cursor (same shape as line)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      { kind: 'arc-2pt', p1: { x: 0, y: 0 }, cursor: { x: 3, y: 4 } },
+      viewport,
+      dark,
+    );
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeDefined();
+    expect(rotate?.args[0]).toBeCloseTo(-Math.atan2(4, 3), 9);
+  });
+
+  it('rectangle preview does NOT rotate the label (W×H reads horizontally)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      { kind: 'rectangle', corner1: { x: 0, y: 0 }, cursor: { x: 4, y: 3 } },
+      viewport,
+      dark,
+    );
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeUndefined();
+  });
+
+  it('arc-3pt preview does NOT rotate the label (chord direction ambiguous)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'arc-3pt',
+        p1: { x: 0, y: 0 },
+        p2: { x: 5, y: 5 },
+        cursor: { x: 10, y: 0 },
+      },
+      viewport,
+      dark,
+    );
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeUndefined();
+  });
+});

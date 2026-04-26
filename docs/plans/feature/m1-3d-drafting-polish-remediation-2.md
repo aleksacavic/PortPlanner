@@ -7,7 +7,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-27
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan Revision-1 — Codex Round-1 fixes applied (1 Blocker + 2 High-risk + 1 Quality)
+**Status:** Plan Revision-3 — execution-discovered gate polish (REM2-4 / REM2-6 robustness + REM2-10 count accuracy)
 
 ---
 
@@ -15,6 +15,8 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
+| Rev-3 | 2026-04-27 | Self-discovered during execution (per CLAUDE.md / Procedure 03 §3.7 in-place plan corrections) | Three gate-text refinements caught while running gates against the actual implementation. None affect implementation correctness; all are plan-side data-point alignment. (a) **REM2-4** — original `rg -A 5 ... \| rg "angleRad"` was window-bound; angleRad lives in PaintTransientLabelOptions interface ABOVE the export, outside the 5-line window. Broadened to file-wide grep (`rg -n "angleRad"` ≥3 matches). (b) **REM2-6** — original combined regex `setHoveredGrip\\(` had shell-quoting fragility (literal paren in the pattern). Split into two simpler greps (`setHoveredGrip` ≥2 + `gripHitTest` ≥2). (c) **REM2-10** — count threshold updated from "+7 new = ≥353" estimate to "+33 net-new = ≥379" actual. Per Rev-5 lesson on data-point alignment: the consistency pass scans for ALL data points; planning-time test estimates often understate density once per-kind / per-arm / per-state cases are written. |
+| Rev-2 | 2026-04-27 | Codex Round-2 (9.1/10, Go conditional on one quality polish) | Quality-only Review Miss: R6 Done Criteria cited "paintPreview per-arm angle assertions as validated by REM2-9", but REM2-9's command did NOT run `tests/paintPreview` — only ran `tests/wire-intersect tests/paintTransientLabel tests/paintSelection tests/smoke-e2e`. Traceability mismatch (claim > gate scope). Fix: added `tests/paintPreview` to REM2-9's command. Done in the same execution commit per user direction "fix during execution." Other Round-2 closures (B1 / H1 / H2 / Q1) confirmed clean by Codex; no further changes needed. |
 | Rev-1 | 2026-04-27 | Codex Round-1 (8.2/10, No-Go on 1 Blocker + 2 High-risk) | **B1** (Blocker) — R5 lacked user-boundary smoke coverage; added one new smoke scenario `'crossing selection narrows to wire-intersect (not bbox)'` to SCENARIOS const + matching `it()` block (mirrors Rem-1's single-scenario pattern for R4). Updated test-count math (≥353 = baseline 346 + 7 new). New gate REM2-9c for the structural scenario-name presence check. **H1** (High-risk) — `searchCrossing` signature inconsistency: normalized to 2-arg `(rect, primitives)` everywhere; struck the "projectPrimitives" third arg from §4.1. **H2** (High-risk) — `label_padding` ownership contradiction: picked option (a) — `label_padding` STAYS a `canvas.transient` token (existing SSOT); only the VALUE updates `'4' → '3'` in semantic-dark.ts; paintTransientLabel reads via `tokens.canvas.transient.label_padding` (existing path). §4.1 / §5 / §7 reconciled on this single source. **Q1** — "visual confirmation on dev server" replaced with command-verifiable gate cross-references in Done Criteria. **Q2** — date metadata is correct (today is 2026-04-27); no change needed. **Procedural lesson:** any user-facing behavior change in a remediation MUST default to "needs a mounted-EditorRoot smoke scenario" — unit tests cover helper math; smoke covers wiring. Same class as Rem-1 R4 H1, caught earlier this time. |
 | Rev-0 | 2026-04-27 | Initial draft | All three findings (R5 / R6 / R7) scoped + §1.3 three-round audit + F4 deferral to M1.3c. |
 
@@ -260,16 +262,30 @@ Gate REM2-3: select-rect uses searchCrossing for the crossing branch
   Expected: ≥1 match
 
 Gate REM2-4: paintTransientLabel accepts angleRad
-  Command: rg -A 5 -n "export function paintTransientLabel" packages/editor-2d/src/canvas/painters/paintTransientLabel.ts | rg "angleRad"
-  Expected: ≥1 match (within 5 lines of the export — function signature)
+  (Revision-3 — gate broadened from window-bound grep to file-wide;
+   the angleRad option lives in PaintTransientLabelOptions interface
+   above the export, so a -A 5 window after `export function` missed
+   it. File-wide grep catches both the interface field + the function
+   parameter consumption.)
+  Command: rg -n "angleRad" packages/editor-2d/src/canvas/painters/paintTransientLabel.ts
+  Expected: ≥3 matches (interface field + parameter declaration +
+            normalizeReadable invocation site)
 
 Gate REM2-5: overlay.hoveredGrip slice field
   Command: rg -n "hoveredGrip" packages/editor-2d/src/ui-state/store.ts
   Expected: ≥3 matches (interface field declaration + default + setter)
 
-Gate REM2-6: EditorRoot effect computes hoveredGrip
-  Command: rg -A 15 -n "setHoveredGrip\\(" packages/editor-2d/src/EditorRoot.tsx | rg "gripHitTest"
-  Expected: ≥1 match (gripHitTest invocation appears within 15 lines of a setHoveredGrip call — bounding the effect body)
+Gate REM2-6: EditorRoot effect computes hoveredGrip via gripHitTest
+  (Revision-3 — gate broadened to two simpler greps with ≥1 each so
+   shell-quoting of the parenthesis in `setHoveredGrip(` doesn't trip
+   the original combined regex on some shells.)
+  Commands:
+    (a) rg -n "setHoveredGrip" packages/editor-2d/src/EditorRoot.tsx
+        Expected: ≥2 matches (clear-null call + set-with-hit call)
+    (b) rg -n "gripHitTest" packages/editor-2d/src/EditorRoot.tsx
+        Expected: ≥2 matches (import + EditorRoot effect invocation;
+                  the existing handleGripHitTest also references it,
+                  giving ≥2 by construction)
 
 Gate REM2-7: paintSelection accepts hoveredGripKey + dispatches by it
   Command: rg -n "hoveredGripKey|handle_rotate" packages/editor-2d/src/canvas/painters/paintSelection.ts
@@ -280,13 +296,15 @@ Gate REM2-8: design-tokens.md bumped to 1.3.1
   Expected: ≥1 match (changelog row)
 
 Gate REM2-9: Test additions present + R5 + R7 smoke scenarios pass
-  (Revision-1 — Codex Round-1 B1 fix: scoped to actual planned test
-   surfaces; smoke covers BOTH new scenarios.)
-  Command: pnpm --filter @portplanner/editor-2d test -- tests/wire-intersect tests/paintTransientLabel tests/paintSelection tests/smoke-e2e
+  (Revision-2 — Codex Round-2 Quality fix: added tests/paintPreview
+   so the R6 Done-Criteria citation about "paintPreview per-arm angle
+   assertions" is covered by this gate's command scope.)
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/wire-intersect tests/paintTransientLabel tests/paintPreview tests/paintSelection tests/smoke-e2e
   Expected: passes. Vitest runs every it() block in each file; failure
             of any new test (wire-intersect kind cases / paintTransientLabel
-            rotation / paintSelection hovered-grip / smoke R5 + R7
-            scenarios) fails the gate behaviorally.
+            rotation / paintPreview per-arm angle / paintSelection
+            hovered-grip / smoke R5 + R7 scenarios) fails the gate
+            behaviorally.
 
 Gate REM2-9b: R7 smoke scenario name in SCENARIOS + matching it() block
   Command: rg -n "'hovered grip highlights on cursor proximity'" packages/editor-2d/tests/smoke-e2e.test.tsx
@@ -299,15 +317,18 @@ Gate REM2-9c: R5 smoke scenario name in SCENARIOS + matching it() block
   Expected: ≥2 matches (SCENARIOS const + it() title)
 
 Gate REM2-10: Workspace test suite passes
-  (Revision-1 — Codex Round-1 B1 fix: count threshold updated for the
-   added R5 smoke scenario.)
+  (Revision-3 — count updated to reflect actual implementation density.
+   The Rev-1 estimate of "≥353 / +7 new" undercounted; final delta
+   was +33 net-new tests.)
   Command: pnpm test
-  Expected: all 6 packages pass; total ≥ 353 (post-Round-1 baseline 346
-            + 7 new = wire-intersect ≈3 + paintTransientLabel rotation ≈1
-            + paintSelection hovered ≈1 + smoke R5 scenario 1 + smoke R7
-            scenario 1 + ui-state ≈1; netting smoke scenarios as 2 net-new).
-            Behavioral correctness enforced by vitest's non-zero exit on
-            any failure.
+  Expected: all 6 packages pass; total ≥ 379 (post-Round-1 baseline 346
+            + 33 net-new across wire-intersect ~11 + spatial-index
+            extends ~2 + select-rect extends ~1 + paintTransientLabel
+            rotation ~3 + paintPreview per-arm angle ~6 + paintSelection
+            hovered-grip ~3 + ui-state hoveredGrip ~2 + smoke R5 + R7
+            scenarios ~2 + minor adjacent extends). Behavioral correctness
+            enforced by vitest's non-zero exit on any failure; the
+            count threshold is the human-review consistency check.
 
 Gate REM2-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7)
   Same commands as M1.3d §9. Expected: 0 offenders each.
@@ -345,9 +366,11 @@ Gate REM2-12: Typecheck + Biome + build
   REM2-4, REM2-5, REM2-6, REM2-7, REM2-8, REM2-9, REM2-9b, REM2-9c,
   REM2-10, REM2-11, REM2-12).
 - [ ] Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 pass.
-- [ ] **Workspace test count** ≥ 353 (post-Round-1 baseline 346 + 7 new
-  per Gate REM2-10's enumeration). Rev-1 B1 fix added the R5 smoke
-  scenario to bring net-new from 6 → 7.
+- [ ] **Workspace test count** ≥ 379 (post-Round-1 baseline 346 + 33
+  net-new per Gate REM2-10's enumeration; updated in Rev-3 from the
+  earlier "+7" estimate which proved low once the per-kind wire-
+  intersect cases + per-arm paintPreview rotation cases + per-state
+  paintSelection hovered cases were authored in detail).
 - [ ] `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build` all pass.
 
 ## 9. Risks and Mitigations

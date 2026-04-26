@@ -108,4 +108,57 @@ describe('paintSelection — outline + grip squares (I-DTP-11)', () => {
     expect(calls.find((c) => c.method === 'fillText')).toBeUndefined();
     expect(calls.find((c) => c.method === 'strokeText')).toBeUndefined();
   });
+
+  // M1.3d-Remediation-2 R7 — hovered-grip differential rendering.
+
+  it('R7: hovered grip paints amber + 9×9, others stay blue + 7×7', () => {
+    const p = line(); // 2 grips: p1 + p2
+    const grips = gripsOf(p);
+    const hoveredGripKey = { entityId: p.id, gripKind: 'p1' };
+    const { ctx, calls } = makeCtxRecorder();
+    paintSelection(ctx, p, grips, viewport, dark, hoveredGripKey);
+    const fillRects = calls.filter((c) => c.method === 'fillRect');
+    expect(fillRects).toHaveLength(2);
+    // Find the hovered (p1) and non-hovered (p2) fillRect calls.
+    // p1 is at (0, 0) → screen (400, 300); 9×9 means half = 4.5 → top-left
+    // (395.5, 295.5), w/h = 9.
+    const hoveredFR = fillRects.find((c) => (c.args[2] as number) === 9);
+    expect(hoveredFR).toBeDefined();
+    // p2 is at (10, 0) → screen (500, 300); 7×7 → top-left (496.5, 296.5),
+    // w/h = 7.
+    const defaultFR = fillRects.find((c) => (c.args[2] as number) === 7);
+    expect(defaultFR).toBeDefined();
+    // Verify fill colors: hovered uses canvas.handle_rotate (amber);
+    // default uses canvas.handle_move (blue).
+    const fillSetCalls = calls.filter((c) => c.method === 'set:fillStyle');
+    const colors = fillSetCalls.map((c) => c.args[0]);
+    expect(colors).toContain(dark.canvas.handle_rotate);
+    expect(colors).toContain(dark.canvas.handle_move);
+  });
+
+  it('R7: when hoveredGripKey is null, all grips paint default (blue + 7×7)', () => {
+    const p = line();
+    const grips = gripsOf(p);
+    const { ctx, calls } = makeCtxRecorder();
+    paintSelection(ctx, p, grips, viewport, dark, null);
+    const fillRects = calls.filter((c) => c.method === 'fillRect');
+    expect(fillRects).toHaveLength(2);
+    // Both grips should have w/h = 7 (default).
+    expect(fillRects.every((c) => (c.args[2] as number) === 7)).toBe(true);
+    // No amber fillStyle should be set.
+    const fillSetCalls = calls.filter((c) => c.method === 'set:fillStyle');
+    const colors = fillSetCalls.map((c) => c.args[0]);
+    expect(colors).not.toContain(dark.canvas.handle_rotate);
+  });
+
+  it('R7: hoveredGripKey for a different entityId does not affect rendering', () => {
+    const p1 = line();
+    const grips = gripsOf(p1);
+    const hoveredGripKey = { entityId: 'some-other-id' as never, gripKind: 'p1' };
+    const { ctx, calls } = makeCtxRecorder();
+    paintSelection(ctx, p1, grips, viewport, dark, hoveredGripKey);
+    const fillRects = calls.filter((c) => c.method === 'fillRect');
+    // Both grips paint as default (none hovered, since entityId mismatches).
+    expect(fillRects.every((c) => (c.args[2] as number) === 7)).toBe(true);
+  });
 });

@@ -90,12 +90,17 @@ function drawLinePreview(
     x: (shape.p1.x + shape.cursor.x) / 2,
     y: (shape.p1.y + shape.cursor.y) / 2,
   };
+  // R6: rotate label to align with line direction p1 → cursor (screen
+  // y is flipped relative to metric y, so negate the y-delta when
+  // computing the screen-space rotation angle the painter applies).
+  const angleRad = -Math.atan2(shape.cursor.y - shape.p1.y, shape.cursor.x - shape.p1.x);
   paintTransientLabel(
     ctx,
     { metric: mid, screenOffset: { dx: 8, dy: -8 } },
     `${length.toFixed(3)} m`,
     viewport,
     tokens,
+    { angleRad },
   );
 }
 
@@ -122,12 +127,15 @@ function drawPolylinePreview(
     x: (last.x + shape.cursor.x) / 2,
     y: (last.y + shape.cursor.y) / 2,
   };
+  // R6: align label with the rubber-band segment last → cursor.
+  const angleRad = -Math.atan2(shape.cursor.y - last.y, shape.cursor.x - last.x);
   paintTransientLabel(
     ctx,
     { metric: mid, screenOffset: { dx: 8, dy: -8 } },
     `${length.toFixed(3)} m`,
     viewport,
     tokens,
+    { angleRad },
   );
 }
 
@@ -172,12 +180,15 @@ function drawCirclePreview(
     x: (shape.center.x + shape.cursor.x) / 2,
     y: (shape.center.y + shape.cursor.y) / 2,
   };
+  // R6: align label with the radius line center → cursor.
+  const angleRad = -Math.atan2(shape.cursor.y - shape.center.y, shape.cursor.x - shape.center.x);
   paintTransientLabel(
     ctx,
     { metric: mid, screenOffset: { dx: 8, dy: -8 } },
     `R ${radius.toFixed(3)} m`,
     viewport,
     tokens,
+    { angleRad },
   );
 }
 
@@ -197,12 +208,15 @@ function drawArc2ptPreview(
     x: (shape.p1.x + shape.cursor.x) / 2,
     y: (shape.p1.y + shape.cursor.y) / 2,
   };
+  // R6: align label with the leg p1 → cursor (same as line preview).
+  const angleRad = -Math.atan2(shape.cursor.y - shape.p1.y, shape.cursor.x - shape.p1.x);
   paintTransientLabel(
     ctx,
     { metric: mid, screenOffset: { dx: 8, dy: -8 } },
     `${length.toFixed(3)} m`,
     viewport,
     tokens,
+    { angleRad },
   );
 }
 

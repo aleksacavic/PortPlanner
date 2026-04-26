@@ -89,8 +89,8 @@ describe('select-rect — window (L→R) selects only fully-enclosed entities', 
   });
 });
 
-describe('select-rect — crossing (R→L) selects any-touch entities', () => {
-  it('selects entities whose bbox intersects the drag rect (incl. partials)', async () => {
+describe('select-rect — crossing (R→L) selects any-touch entities (R5: wire, not bbox)', () => {
+  it('selects entities whose wire intersects the drag rect (incl. partials whose wire crosses)', async () => {
     const inside = lineP({ x: 1, y: 1 }, { x: 4, y: 4 });
     const partial = lineP({ x: 3, y: 3 }, { x: 50, y: 50 });
     const outside = lineP({ x: 200, y: 200 }, { x: 210, y: 210 });
@@ -104,8 +104,25 @@ describe('select-rect — crossing (R→L) selects any-touch entities', () => {
     await tool.done();
     const sel = editorUiStore.getState().selection;
     expect(sel).toContain(inside.id);
-    expect(sel).toContain(partial.id);
+    expect(sel).toContain(partial.id); // wire actually crosses the rect (passes through (3,3))
     expect(sel).not.toContain(outside.id);
+  });
+
+  it('R5 REGRESSION: a diagonal line with bbox OVERLAPPING the drag rect but wire OUTSIDE is NOT selected', async () => {
+    // Same regression case as wire-intersect.test.ts and
+    // spatial-index.test.ts. Pre-R5 (bbox-only crossing) WOULD have
+    // selected this; post-R5 (wire-aware crossing) MUST NOT.
+    const diagonal = lineP({ x: -5, y: 50 }, { x: 50, y: -5 });
+    hydrateProject(makeProjectWith([diagonal]), '2026-04-27T00:00:00.000Z');
+    // R→L drag over (10, 10) - (15, 15). end.x < start.x → crossing.
+    const start = { x: 15, y: 15 };
+    const startScreen = metricToScreen(start, viewport);
+    const tool = startTool('select-rect', selectRectTool(start, startScreen));
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 10, y: 10 } });
+    await tool.done();
+    const sel = editorUiStore.getState().selection;
+    expect(sel).not.toContain(diagonal.id);
   });
 });
 

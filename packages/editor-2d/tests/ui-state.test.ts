@@ -132,6 +132,24 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(editorUiStore.getState().overlay.suppressEntityPaint).toBeNull();
   });
 
+  // M1.3d-Remediation-2 R7 — overlay.hoveredGrip.
+
+  it('R7: overlay.hoveredGrip default is null', () => {
+    const o = editorUiStore.getState().overlay;
+    expect(o.hoveredGrip).toBeNull();
+  });
+
+  it('R7: setHoveredGrip stores and clears via null', () => {
+    const id = newPrimitiveId();
+    editorUiActions.setHoveredGrip({ entityId: id, gripKind: 'p1' });
+    expect(editorUiStore.getState().overlay.hoveredGrip).toEqual({
+      entityId: id,
+      gripKind: 'p1',
+    });
+    editorUiActions.setHoveredGrip(null);
+    expect(editorUiStore.getState().overlay.hoveredGrip).toBeNull();
+  });
+
   it('individual setters do not disturb sibling overlay fields', () => {
     const id = newPrimitiveId();
     editorUiActions.setHoverEntity(id);

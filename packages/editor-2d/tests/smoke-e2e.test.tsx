@@ -63,6 +63,17 @@ const SCENARIOS = [
   // inputs. SOLE validation surface for R4 (handleCanvasMouseUp's
   // commitSnappedVertex wiring lives in EditorRoot, not in tools).
   'snap honored on grip-stretch mouseup',
+  // M1.3d-Remediation-2 R5 — crossing selection uses geometric
+  // wire-vs-rect intersect, not bbox-intersect. SOLE integration
+  // validation surface for R5 (wire-intersect.test.ts covers per-kind
+  // helper math; smoke verifies EditorRoot → select-rect → searchCrossing
+  // wiring).
+  'crossing selection narrows to wire-intersect (not bbox)',
+  // M1.3d-Remediation-2 R7 — hovered-grip differential rendering.
+  // SOLE integration validation surface for R7 (paintSelection.test.ts
+  // covers the rendering math; smoke verifies the EditorRoot
+  // cursor-effect → setHoveredGrip → paintSelection consumption wiring).
+  'hovered grip highlights on cursor proximity',
 ] as const;
 
 const ACCUMULATOR_FLUSH_MS = 800;
@@ -588,6 +599,87 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     // (toBeCloseTo with 9-decimal tolerance handles any float artefact).
     expect(p1.x).toBeCloseTo(5, 9);
     expect(p1.y).toBeCloseTo(0, 9);
+  });
+
+  it('crossing selection narrows to wire-intersect (not bbox)', async () => {
+    // M1.3d-Remediation-2 R5 — SOLE integration validation surface.
+    // Pre-R5: crossing used bbox-intersects, so a diagonal line with
+    // bbox overlapping the rect would be selected even if its wire
+    // didn't cross. Post-R5: searchCrossing uses wireIntersectsRect
+    // (Liang-Barsky for segments), so bbox-only-overlap is filtered out.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    // Two primitives:
+    //   wireCrosser — small line whose actual wire crosses the rect.
+    //                 (1, 1) → (4, 4): bbox AND wire both inside rect (10x10).
+    //                 We use a smaller-than-rect line entirely inside.
+    //   bboxOnly    — diagonal whose bbox covers the rect but wire stays
+    //                 well clear. Same shape as wire-intersect.test.ts:
+    //                 (-5, 50) → (50, -5). Bbox = (-5,-5)→(50,50).
+    //                 At x ∈ [10, 15], y ≈ 33-37 (above rect's [10, 15]).
+    const wireCrosserId = newPrimitiveId();
+    addPrimitive({
+      id: wireCrosserId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 11, y: 11 },
+      p2: { x: 14, y: 14 },
+    });
+    const bboxOnlyId = newPrimitiveId();
+    addPrimitive({
+      id: bboxOnlyId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: -5, y: 50 },
+      p2: { x: 50, y: -5 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // R→L drag for crossing selection over the rect (10, 10) → (15, 15).
+    // Viewport: zoom=10, pan (0,0). Metric (15, 15) → screen (550, 150).
+    // Metric (10, 10) → screen (500, 200). end.x < start.x → crossing.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 550, clientY: 150 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 500, clientY: 200 });
+    await wait(50);
+
+    const sel = editorUiStore.getState().selection;
+    expect(sel).toContain(wireCrosserId);
+    expect(sel).not.toContain(bboxOnlyId);
+  });
+
+  it('hovered grip highlights on cursor proximity', async () => {
+    // M1.3d-Remediation-2 R7 — SOLE integration validation surface.
+    // EditorRoot's cursor effect runs gripHitTest on overlay.cursor change
+    // and writes overlay.hoveredGrip when a grip is within tolerance.
+    // paintSelection consumes the field for differential rendering.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const id = newPrimitiveId();
+    addPrimitive({
+      id,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    // Select the line so its grips populate.
+    editorUiActions.setSelection([id]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+    // p1 grip at metric (0, 0) → screen (400, 300).
+    // Move cursor to (401, 301) — well inside the 4-CSS-px tolerance.
+    fireEvent.mouseMove(canvas, { clientX: 401, clientY: 301 });
+    await wait(80);
+
+    const hovered = editorUiStore.getState().overlay.hoveredGrip;
+    expect(hovered).not.toBeNull();
+    expect(hovered?.entityId).toBe(id);
+    expect(hovered?.gripKind).toBe('p1');
   });
 });
 

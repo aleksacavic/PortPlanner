@@ -14,16 +14,27 @@
 //   - Restores transform on exit so the caller's overlay-pass state
 //     is preserved.
 //   - Reads color / background / padding from `canvas.transient.*`
-//     tokens (I-DTP-1).
+//     tokens (I-DTP-1). M1.3d-Remediation-2 R6: tokens now carry the
+//     blue palette (label_bg → blue rgba; label_text → white;
+//     label_padding → 3 px) — no painter-side change needed for the
+//     value bumps.
 //   - Uses a system-default font stack so paint is synchronous (no
 //     web-font async wait).
+//
+// M1.3d-Remediation-2 R6 — optional `options.angleRad` rotates the
+// label around its anchor to match the element direction (e.g. line
+// preview rotates label along p1→cursor; circle radius along
+// center→cursor). Text-readability normalization: any input angle
+// is folded into (-π/2, π/2] via 180° flip so text always reads
+// left-to-right (no upside-down readouts). When `angleRad` is unset
+// or null, label stays horizontal (existing behavior).
 
 import type { SemanticTokens } from '@portplanner/design-system';
 import type { Point2D } from '@portplanner/domain';
 
 import { type Viewport, metricToScreen } from '../view-transform';
 
-const FONT_PX_CSS = 12;
+const FONT_PX_CSS = 11;
 const CORNER_RADIUS_CSS = 4;
 
 export interface TransientLabelAnchor {
@@ -35,10 +46,24 @@ export interface TransientLabelAnchor {
   screenOffset?: { dx: number; dy: number };
 }
 
+export interface PaintTransientLabelOptions {
+  /**
+   * Optional rotation around the anchor in radians. When set, the label
+   * (pill + text) rotates to match the element direction (e.g. line
+   * preview's p1→cursor angle). Text readability is preserved by
+   * folding the input angle into (-π/2, π/2] via a 180° flip — text
+   * always reads left-to-right, never upside-down.
+   *
+   * Unset / null → existing horizontal rendering (back-compat).
+   */
+  angleRad?: number;
+}
+
 /**
  * Paint a transient label. Renders text at metricToScreen(anchor.metric,
- * viewport) plus the optional screen-offset, with a translucent
- * rounded-pill background for legibility.
+ * viewport) plus the optional screen-offset, with a colored rounded-pill
+ * background for legibility. Optional rotation per `options.angleRad`
+ * (M1.3d-Remediation-2 R6).
  */
 export function paintTransientLabel(
   ctx: CanvasRenderingContext2D,
@@ -46,6 +71,7 @@ export function paintTransientLabel(
   text: string,
   viewport: Viewport,
   tokens: SemanticTokens,
+  options?: PaintTransientLabelOptions,
 ): void {
   if (text.length === 0) return;
 
@@ -58,9 +84,15 @@ export function paintTransientLabel(
   const fontPx = FONT_PX_CSS * dpr;
   const padding = parsePadding(tokens.canvas.transient.label_padding) * dpr;
   const radius = CORNER_RADIUS_CSS * dpr;
+  const angle = options?.angleRad !== undefined ? normalizeReadable(options.angleRad) : null;
 
   ctx.save();
+  // Reset transform → translate to anchor → optional rotate. This way
+  // the pill + text are drawn at the origin and rotated together.
   ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.translate(px, py);
+  if (angle !== null) ctx.rotate(angle);
+
   ctx.font = `${fontPx}px system-ui, -apple-system, sans-serif`;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
@@ -69,8 +101,10 @@ export function paintTransientLabel(
   const textWidth = metrics.width;
   const textHeight = fontPx;
 
-  const bgX = px;
-  const bgY = py - textHeight / 2 - padding;
+  // Pill is now drawn at the rotated origin; bgX/bgY are local to the
+  // post-translate-rotate frame.
+  const bgX = 0;
+  const bgY = -textHeight / 2 - padding;
   const bgW = textWidth + padding * 2;
   const bgH = textHeight + padding * 2;
 
@@ -79,9 +113,25 @@ export function paintTransientLabel(
   ctx.fill();
 
   ctx.fillStyle = tokens.canvas.transient.label_text;
-  ctx.fillText(text, bgX + padding, py);
+  ctx.fillText(text, bgX + padding, 0);
 
   ctx.restore();
+}
+
+/**
+ * Fold an arbitrary angle into (-π/2, π/2] so text reads left-to-right.
+ * Angles in (π/2, 3π/2) get a 180° flip; angles outside [-π, π] are
+ * normalized first via modulo.
+ */
+function normalizeReadable(angleRad: number): number {
+  // Normalize to (-π, π] first.
+  let a = angleRad;
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a <= -Math.PI) a += 2 * Math.PI;
+  // Flip if in lower half (text would be upside-down).
+  if (a > Math.PI / 2) a -= Math.PI;
+  else if (a <= -Math.PI / 2) a += Math.PI;
+  return a;
 }
 
 function parsePadding(token: string): number {

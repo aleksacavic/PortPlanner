@@ -89,7 +89,7 @@ describe('paintTransientLabel — screen-space + transient.* tokens (I-DTP-8)', 
     expect(ftCalls).toHaveLength(0);
   });
 
-  it('honors screenOffset by translating the anchor in screen px', () => {
+  it('honors screenOffset by translating to the anchor in screen px', () => {
     const { ctx, calls } = makeCtxRecorder();
     paintTransientLabel(
       ctx,
@@ -100,10 +100,56 @@ describe('paintTransientLabel — screen-space + transient.* tokens (I-DTP-8)', 
     );
     const ftCalls = calls.filter((c) => c.method === 'fillText');
     expect(ftCalls).toHaveLength(1);
-    // Anchor metric (5, 0) → screen (450, 300). With offset (8, -8) →
-    // (458, 292). dpr=1. label_padding parses to 4. Text starts at
-    // bgX + padding = 458 + 4 = 462. Text Y baseline-middle = 292.
-    expect(ftCalls[0]?.args[1]).toBe(462);
-    expect(ftCalls[0]?.args[2]).toBe(292);
+    // R6 — paint flow now translates to the anchor first, then renders
+    // the pill + text at the local origin. The fillText call is at
+    // local x = padding (3 px in the new token), local y = 0. The
+    // translate call carries the screen-space offset.
+    expect(ftCalls[0]?.args[1]).toBe(3); // bgX (0) + padding (3)
+    expect(ftCalls[0]?.args[2]).toBe(0);
+    const translate = calls.find((c) => c.method === 'translate');
+    expect(translate?.args[0]).toBe(458); // screen.x (450) + dx (8)
+    expect(translate?.args[1]).toBe(292); // screen.y (300) + dy (-8)
+  });
+
+  // M1.3d-Remediation-2 R6 — angleRad rotation tests.
+
+  it('R6: rotates the label by angleRad around its anchor (translate then rotate)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintTransientLabel(
+      ctx,
+      { metric: { x: 0, y: 0 } },
+      'L',
+      viewport,
+      dark,
+      { angleRad: Math.PI / 4 }, // 45° — in (-π/2, π/2], no flip
+    );
+    const translate = calls.find((c) => c.method === 'translate');
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(translate).toBeDefined();
+    expect(rotate).toBeDefined();
+    expect(rotate?.args[0]).toBeCloseTo(Math.PI / 4, 9);
+  });
+
+  it('R6: flips upside-down angles 180° to keep text left-to-right (angle in lower half)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintTransientLabel(
+      ctx,
+      { metric: { x: 0, y: 0 } },
+      'L',
+      viewport,
+      dark,
+      { angleRad: (3 * Math.PI) / 4 }, // 135° — would be upside-down
+    );
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeDefined();
+    // Folded into (-π/2, π/2]: 135° - 180° = -45° → -π/4.
+    expect(rotate?.args[0]).toBeCloseTo(-Math.PI / 4, 9);
+  });
+
+  it('R6: skips rotation when angleRad is unset (back-compat)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintTransientLabel(ctx, { metric: { x: 0, y: 0 } }, 'L', viewport, dark);
+    const rotate = calls.find((c) => c.method === 'rotate');
+    expect(rotate).toBeUndefined();
   });
 });

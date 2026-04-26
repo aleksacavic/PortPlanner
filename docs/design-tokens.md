@@ -342,9 +342,9 @@ const dark: SemanticTokens = {
       preview_stroke:  '#7d8fa3',
       preview_fill:    'rgba(125, 143, 163, 0.05)',
       preview_dash:    '6 4',
-      label_text:      '#c8d4e3',
-      label_bg:        'rgba(13, 20, 32, 0.85)',
-      label_padding:   '4',
+      label_text:      '#ffffff',
+      label_bg:        'rgba(42, 127, 255, 0.9)',
+      label_padding:   '3',
       crosshair:       'rgba(180, 200, 255, 0.35)',
       crosshair_dash:  'solid',
       dimension_line:  '#7d8fa3',
@@ -709,6 +709,7 @@ component library work begins.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.3.1 | 2026-04-27 | M1.3d-Remediation-2 R6 — value-only updates in `canvas.transient` block: `label_bg` `'rgba(13, 20, 32, 0.85)'` → `'rgba(42, 127, 255, 0.9)'` (blue, matches selection_window.stroke / accent.primary); `label_text` `'#c8d4e3'` → `'#ffffff'` (white on blue for contrast); `label_padding` `'4'` → `'3'` (compactness). Token interface unchanged. |
 | 1.3.0 | 2026-04-26 | Added `canvas.transient.*` sub-namespace for in-flight UI styling (live preview, snap glyph, selection rectangle, hover highlight, grip handles, cursor crosshair, transient labels). Documented as a hard SSOT boundary outside the ByLayer ladder, enforced by Gate DTP-T1. Numeric values (dash patterns, padding) stored as strings to preserve leaf-is-string contract. M1.3d Phase 1. |
 | 1.2.0 | 2026-04-18 | Replaced illustrative `styled.div` examples with CSS-module examples to align with ADR-012 decision #12 (CSS Modules + CSS custom properties). No change to semantic or theme-switching behaviour. Token values unchanged. |
 | 1.1.0 | 2026-04-16 | Added Icon Library section (Lucide). Added Theme Switching section. See ADR-011. |
