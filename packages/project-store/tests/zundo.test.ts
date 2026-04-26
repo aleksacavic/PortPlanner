@@ -1,24 +1,32 @@
-import { newProjectId } from '@portplanner/domain';
+import { LayerId, defaultLayer, newProjectId } from '@portplanner/domain';
 import type { Project } from '@portplanner/domain';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { createNewProject, hydrateProject } from '../src/actions';
 import { projectStore } from '../src/store';
+import { resetProjectStoreForTests } from '../src/test-utils';
 
 function makeProject(name: string): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     name,
-    createdAt: '2026-04-22T10:00:00.000Z',
-    updatedAt: '2026-04-22T10:00:00.000Z',
+    createdAt: '2026-04-25T10:00:00.000Z',
+    updatedAt: '2026-04-25T10:00:00.000Z',
     coordinateSystem: null,
     objects: {},
+    primitives: {},
+    layers: { [LayerId.DEFAULT]: defaultLayer() },
+    grids: {},
     scenarioId: null,
   };
 }
 
 describe('zundo temporal middleware', () => {
+  afterEach(() => {
+    resetProjectStoreForTests();
+  });
+
   it('temporal slice exposes ONLY the `project` field (not dirty / lastSavedAt)', () => {
     createNewProject(makeProject('A'));
     const snapshot = projectStore.temporal.getState().pastStates.at(-1);
@@ -28,7 +36,6 @@ describe('zundo temporal middleware', () => {
       // pastStates may be empty if clear() was called post-action;
       // verify the partialize by checking the current state shape
       // would-be captured if a mutation occurred.
-      // This branch simply asserts the infrastructure is wired.
       expect(projectStore.temporal.getState()).toBeDefined();
     }
   });
@@ -44,7 +51,7 @@ describe('zundo temporal middleware', () => {
     expect(projectStore.temporal.getState().pastStates).toEqual([]);
 
     // Same for hydrateProject
-    hydrateProject(makeProject('C'), '2026-04-22T11:00:00.000Z');
+    hydrateProject(makeProject('C'), '2026-04-25T11:00:00.000Z');
     expect(projectStore.temporal.getState().pastStates).toEqual([]);
   });
 

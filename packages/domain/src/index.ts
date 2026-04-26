@@ -3,31 +3,63 @@
 // generators, and per-object-type refinements land in later milestones.
 
 export type {
+  ArcPrimitive,
+  CirclePrimitive,
+  ColorValue,
   CoordinateSystem,
+  DisplayOverrides,
+  Grid,
+  GridSnapshot,
+  Layer,
+  LayerSnapshot,
+  LinePrimitive,
+  LineTypeId,
   ObjectSnapshot,
   Operation,
   OperationType,
+  TargetKind,
+  TargetSnapshot,
+  Point2D,
+  PointPrimitive,
+  PolylinePrimitive,
+  Primitive,
+  PrimitiveBase,
+  PrimitiveKind,
+  PrimitiveSnapshot,
   Project,
   ProjectObject,
+  RectanglePrimitive,
+  XlinePrimitive,
 } from './types';
-export { OwnershipState } from './types';
+export { defaultLayer, OwnershipState } from './types';
 
 export {
   LOCAL_USER_ID,
+  type GridId,
   type ObjectId,
   type OperationId,
+  type PrimitiveId,
   type ProjectId,
   type UserId,
+  LayerId,
   isUUIDv7,
+  newGridId,
+  newLayerId,
   newObjectId,
   newOperationId,
+  newPrimitiveId,
   newProjectId,
 } from './ids';
 
 export {
   CoordinateSystemSchema,
+  DisplayOverridesSchema,
+  GridSchema,
+  LayerSchema,
+  LineTypeSchema,
   OperationSchema,
   OwnershipStateSchema,
+  PrimitiveSchema,
   ProjectObjectSchema,
   ProjectSchema,
 } from './schemas';

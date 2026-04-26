@@ -1,6 +1,7 @@
 # ADR-022 — Tool State Machine and Command Bar
 
-**Status:** ACCEPTED
+**Status:** SUPERSEDED
+**Superseded by:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
 **Date:** 2026-04-23
 **Supersedes:** none (new concept)
 

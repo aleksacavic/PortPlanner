@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 
 import { ThemeProvider } from '@portplanner/design-system';
 import type { Project } from '@portplanner/domain';
-import { deserialize, newProjectId } from '@portplanner/domain';
+import { LayerId, defaultLayer, deserialize, newProjectId } from '@portplanner/domain';
 import {
   createNewProject,
   projectStore,
@@ -17,12 +17,15 @@ import { SaveButton } from '../src/toolbar/SaveButton';
 function makeProject(name = 'Test Port'): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     name,
     createdAt: '2026-04-22T10:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',
     coordinateSystem: null,
     objects: {},
+    primitives: {},
+    layers: { [LayerId.DEFAULT]: defaultLayer() },
+    grids: {},
     scenarioId: null,
   };
 }

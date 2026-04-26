@@ -1,0 +1,46 @@
+.commandBar {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--surface-overlay, #111);
+  color: var(--text-primary, #eee);
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
+  border-top: 1px solid var(--surface-border, #333);
+  padding: 4px 8px;
+  height: 160px;
+}
+
+.history {
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.historyItem {
+  white-space: pre-wrap;
+}
+
+.promptLine {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  border-top: 1px solid var(--surface-border, #333);
+  padding-top: 4px;
+}
+
+.promptText {
+  white-space: nowrap;
+}
+
+.subOption {
+  cursor: pointer;
+  text-decoration: underline dashed;
+}
+
+.input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: inherit;
+  font: inherit;
+}

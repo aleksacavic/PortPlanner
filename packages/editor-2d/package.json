@@ -1,0 +1,37 @@
+{
+  "name": "@portplanner/editor-2d",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "dependencies": {
+    "@portplanner/design-system": "workspace:*",
+    "@portplanner/domain": "workspace:*",
+    "@portplanner/project-store": "workspace:*",
+    "@portplanner/project-store-react": "workspace:*",
+    "@flatten-js/core": "^1.5.0",
+    "rbush": "^4.0.1",
+    "immer": "^10.1.1",
+    "lucide-react": "^0.468.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.1.0",
+    "@types/rbush": "^4.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
+    "vitest": "^2.1.9"
+  }
+}

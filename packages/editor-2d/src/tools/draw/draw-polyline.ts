@@ -1,0 +1,77 @@
+// Draw polyline. M1.3a polyline emits zero bulges only (I-48); non-zero
+// bulges enter via post-creation Fillet (M1.3b) or property edit (M1.3c).
+//
+// Sub-options:
+//   - Close — close the polyline at the current vertex (>=3 vertices).
+//   - Undo — drop the last vertex.
+// Termination:
+//   - { kind: 'commit' } — exit the loop and commit-open if vertices>=2.
+//     Sources: empty Enter in command bar, Enter on canvas focus,
+//     right-click on canvas. Sub-option shortcut letters (`c`, `u`)
+//     route through the keyboard router's sub-option fast-path.
+//   - { kind: 'escape' } — runner sets aborted; tool returns
+//     { committed: false, reason: 'aborted' }. Vertices are discarded.
+
+import { LayerId, type Point2D, newPrimitiveId } from '@portplanner/domain';
+import { addPrimitive } from '@portplanner/project-store';
+
+import { editorUiStore } from '../../ui-state/store';
+import type { ToolGenerator } from '../types';
+
+export async function* drawPolylineTool(): ToolGenerator {
+  const start = yield { text: 'Specify start point', acceptedInputKinds: ['point'] };
+  if (start.kind !== 'point') return { committed: false, reason: 'aborted' };
+  const vertices: Point2D[] = [start.point];
+  let closed = false;
+
+  while (true) {
+    const next = yield {
+      text: 'Specify next point or [Close/Undo]',
+      subOptions: [
+        { label: 'Close', shortcut: 'c' },
+        { label: 'Undo', shortcut: 'u' },
+      ],
+      acceptedInputKinds: ['point', 'subOption'],
+    };
+    if (next.kind === 'subOption' && next.optionLabel === 'Close') {
+      if (vertices.length < 3) {
+        return { committed: false, reason: 'aborted' };
+      }
+      closed = true;
+      break;
+    }
+    if (next.kind === 'subOption' && next.optionLabel === 'Undo') {
+      if (vertices.length > 1) vertices.pop();
+      continue;
+    }
+    if (next.kind === 'point') {
+      vertices.push(next.point);
+      continue;
+    }
+    if (next.kind === 'commit') {
+      // Right-click / Enter on canvas focus / empty Enter in command bar
+      // all route here. End the loop and commit-open if the polyline has
+      // enough vertices.
+      break;
+    }
+    // Any other (unexpected) input kind: treat as commit-open intent —
+    // safer than silently dropping the input.
+    break;
+  }
+
+  if (vertices.length < 2) return { committed: false, reason: 'aborted' };
+
+  const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;
+  // I-48: M1.3a draws straight segments; bulges all zero.
+  const bulges = new Array<number>(closed ? vertices.length : vertices.length - 1).fill(0);
+  addPrimitive({
+    id: newPrimitiveId(),
+    kind: 'polyline',
+    layerId,
+    displayOverrides: {},
+    vertices,
+    bulges,
+    closed,
+  });
+  return { committed: true, description: `polyline (${vertices.length} vertices)` };
+}

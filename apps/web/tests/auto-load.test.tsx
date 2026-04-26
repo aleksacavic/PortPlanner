@@ -2,7 +2,7 @@ import 'fake-indexeddb/auto';
 
 import { ThemeProvider } from '@portplanner/design-system';
 import type { Project } from '@portplanner/domain';
-import { newProjectId, serialize } from '@portplanner/domain';
+import { LayerId, defaultLayer, newProjectId, serialize } from '@portplanner/domain';
 import { projectStore, resetProjectStoreForTests } from '@portplanner/project-store';
 import { render, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -13,12 +13,15 @@ import { DB_NAME, PROJECTS_STORE, type StoredProjectRecord } from '../src/persis
 function makeProject(name = 'Seeded Port'): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.0.0',
+    schemaVersion: '1.1.0',
     name,
     createdAt: '2026-04-22T10:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',
     coordinateSystem: null,
     objects: {},
+    primitives: {},
+    layers: { [LayerId.DEFAULT]: defaultLayer() },
+    grids: {},
     scenarioId: null,
   };
 }
@@ -89,15 +92,20 @@ describe('useAutoLoadMostRecent (via <App />)', () => {
     expect(state.lastSavedAt).toBe(lastSavedAt);
   });
 
-  it('leaves the store untouched when the db is empty', async () => {
+  it('bootstraps a default empty project when the db is empty (M1.3a Phase 22 follow-up)', async () => {
     render(
       <ThemeProvider mode="dark">
         <App />
       </ThemeProvider>,
     );
-    // Give the effect a tick.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(projectStore.getState().project).toBeNull();
+    // Wait for the auto-load effect to settle and the bootstrap to fire.
+    await waitFor(() => {
+      expect(projectStore.getState().project).not.toBeNull();
+    });
+    const project = projectStore.getState().project!;
+    expect(project.name).toBe('Untitled');
+    expect(project.primitives).toEqual({});
+    expect(project.layers[LayerId.DEFAULT]).toBeDefined();
   });
 
   it('contains malformed record failure — no crash, no unhandled rejection, store stays null', async () => {

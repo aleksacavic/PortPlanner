@@ -21,5 +21,6 @@ The superseded file stays in the repository for historical traceability but is *
 | [ADR-002 Object Model Contract](002-object-model-superseded.md) | [ADR-019 Object Model v2](../019-object-model.md) | 2026-04-23 |
 | [ADR-010 Project Sync and Offline](010-project-sync-superseded.md) | [ADR-020 Project Sync v2](../020-project-sync.md) | 2026-04-23 |
 | [ADR-013 2D Rendering Pipeline](013-2d-rendering-pipeline-superseded.md) | [ADR-021 2D Rendering Pipeline v2](../021-2d-rendering-pipeline.md) | 2026-04-23 |
+| [ADR-022 Tool State Machine and Command Bar](022-tool-state-machine-and-command-bar-superseded.md) | [ADR-023 Tool State Machine and Command Bar (v2)](../023-tool-state-machine-and-command-bar.md) | 2026-04-25 |
 
 See also `docs/adr/README.md` §Superseded ADRs for the canonical supersession map.

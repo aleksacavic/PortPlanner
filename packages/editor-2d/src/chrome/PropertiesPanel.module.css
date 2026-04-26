@@ -1,0 +1,26 @@
+.panel {
+  background: var(--surface-raised, #181818);
+  color: var(--text-primary, #eee);
+  padding: 8px;
+  font-size: 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  gap: 4px;
+  padding: 2px 0;
+}
+
+.label {
+  color: var(--text-secondary, #aaa);
+}
+
+.value {
+  font-family: ui-monospace, monospace;
+}
+
+.placeholder {
+  color: var(--text-tertiary, #666);
+  padding: 8px;
+}
