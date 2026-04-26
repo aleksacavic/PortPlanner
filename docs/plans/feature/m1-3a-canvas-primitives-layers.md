@@ -3043,6 +3043,40 @@ event-loop turn so React flushes the new option before the
 that depend on async tool-runner advancement (between rapid
 `mouseDown` pairs that drive a tool's two-prompt sequence).
 
+### §13.7 First-run UX bootstrap (post-handoff follow-up)
+
+**Trigger.** After Phase 22 landed and `pnpm dev` came up at
+`localhost:5173`, opening the running app and pressing `L` to draw a
+line threw `emitOperation: cannot emit 'CREATE primitive' without an
+active project`. The smoke E2E suite covers this implicitly because
+it seeds `createNewProject(makeProject())` in each scenario, but the
+running app on first run has no project in IndexedDB and the
+existing `useAutoLoadMostRecent` hook left the store empty when the
+DB was empty. The user had to click the "New" toolbar button before
+any draft action could land.
+
+**Decision.** Extend `useAutoLoadMostRecent` (in
+`apps/web/src/hooks/useAutoLoadMostRecent.ts`) so that when
+`loadMostRecent()` returns `null` (no IndexedDB record), the hook
+calls `createNewProject(buildDefaultProject())` with a default
+"Untitled" project — single default layer, empty primitives / grids
+/ objects. The "New" toolbar button keeps its existing flow (open
+NewProjectDialog, name + create) for users who want explicit naming.
+The malformed-record path is unchanged: a `LoadFailure` thrown by
+`loadMostRecent()` is caught, logged, and the hook returns early
+before the bootstrap branch — store stays null so the user can
+manually recover via the New toolbar button.
+
+**Effect on tests.** `apps/web/tests/auto-load.test.tsx`'s "leaves
+the store untouched when the db is empty" test renamed to
+"bootstraps a default empty project when the db is empty (M1.3a
+Phase 22 follow-up)" with assertions updated to reflect the new
+contract (project non-null, name `'Untitled'`, primitives `{}`,
+default layer present). The malformed-record test is unchanged.
+
+Also added a placeholder SVG favicon to `apps/web/index.html` to
+silence the `:5173/favicon.ico` 404 in the browser console.
+
 ### §13.6 Procedural compliance
 
 Both refinements were:

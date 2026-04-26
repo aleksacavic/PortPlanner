@@ -92,15 +92,20 @@ describe('useAutoLoadMostRecent (via <App />)', () => {
     expect(state.lastSavedAt).toBe(lastSavedAt);
   });
 
-  it('leaves the store untouched when the db is empty', async () => {
+  it('bootstraps a default empty project when the db is empty (M1.3a Phase 22 follow-up)', async () => {
     render(
       <ThemeProvider mode="dark">
         <App />
       </ThemeProvider>,
     );
-    // Give the effect a tick.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(projectStore.getState().project).toBeNull();
+    // Wait for the auto-load effect to settle and the bootstrap to fire.
+    await waitFor(() => {
+      expect(projectStore.getState().project).not.toBeNull();
+    });
+    const project = projectStore.getState().project!;
+    expect(project.name).toBe('Untitled');
+    expect(project.primitives).toEqual({});
+    expect(project.layers[LayerId.DEFAULT]).toBeDefined();
   });
 
   it('contains malformed record failure — no crash, no unhandled rejection, store stays null', async () => {
