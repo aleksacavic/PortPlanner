@@ -7,9 +7,16 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-27
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-1 — Codex Round-1 fixes applied (1 Blocker + 2 High-risk + 1 Quality)
 
 ---
+
+## Revision history
+
+| Rev | Date | Driver | Changes |
+|-----|------|--------|---------|
+| Rev-1 | 2026-04-27 | Codex Round-1 (8.2/10, No-Go on 1 Blocker + 2 High-risk) | **B1** (Blocker) — R5 lacked user-boundary smoke coverage; added one new smoke scenario `'crossing selection narrows to wire-intersect (not bbox)'` to SCENARIOS const + matching `it()` block (mirrors Rem-1's single-scenario pattern for R4). Updated test-count math (≥353 = baseline 346 + 7 new). New gate REM2-9c for the structural scenario-name presence check. **H1** (High-risk) — `searchCrossing` signature inconsistency: normalized to 2-arg `(rect, primitives)` everywhere; struck the "projectPrimitives" third arg from §4.1. **H2** (High-risk) — `label_padding` ownership contradiction: picked option (a) — `label_padding` STAYS a `canvas.transient` token (existing SSOT); only the VALUE updates `'4' → '3'` in semantic-dark.ts; paintTransientLabel reads via `tokens.canvas.transient.label_padding` (existing path). §4.1 / §5 / §7 reconciled on this single source. **Q1** — "visual confirmation on dev server" replaced with command-verifiable gate cross-references in Done Criteria. **Q2** — date metadata is correct (today is 2026-04-27); no change needed. **Procedural lesson:** any user-facing behavior change in a remediation MUST default to "needs a mounted-EditorRoot smoke scenario" — unit tests cover helper math; smoke covers wiring. Same class as Rem-1 R4 H1, caught earlier this time. |
+| Rev-0 | 2026-04-27 | Initial draft | All three findings (R5 / R6 / R7) scoped + §1.3 three-round audit + F4 deferral to M1.3c. |
 
 ## 1. Request summary
 
@@ -100,13 +107,13 @@ User-confirmed in chat 2026-04-27:
 
 | Path | Change |
 |---|---|
-| `packages/editor-2d/src/canvas/spatial-index.ts` | (R5) Add `searchCrossing(rect, primitives, projectPrimitives): PrimitiveId[]` — broad-phase via rbush `tree.search(rect)`, then narrow-phase via `wireIntersectsRect(primitive, rect)` per kind. xlines included via the existing infinite-extent path (any infinite line crosses any finite rect). |
+| `packages/editor-2d/src/canvas/spatial-index.ts` | (R5) Add `searchCrossing(rect, primitives): PrimitiveId[]` (Rev-1 H1 fix — 2-arg signature, normalized across plan) — broad-phase via rbush `tree.search(rect)`, then narrow-phase via `wireIntersectsRect(primitive, rect)` per kind. The `primitives` argument is `Project['primitives']` so the narrow-phase can look up full primitive shapes from the broad-phase candidate ids. xlines included via the existing infinite-extent path (any infinite line crosses any finite rect). |
 | `packages/editor-2d/src/canvas/wire-intersect.ts` (NEW) | (R5) Per-primitive narrow-phase `wireIntersectsRect(primitive, rect): boolean`. Uses `@flatten-js/core` for segment-segment / segment-circle / segment-arc helpers. Per-kind branches: point (point-in-rect), line (segment-vs-rect), polyline (any segment intersects rect OR any vertex inside), rectangle (any side intersects OR any corner inside OR rect-inside-entity), circle (any rect side intersects circle outline OR rect-inside-circle OR circle-bbox-inside-rect), arc (segment-vs-arc per side OR endpoints inside rect), xline (segment-vs-line via Liang-Barsky). |
 | `packages/editor-2d/src/tools/select-rect.ts` | (R5) Replace `idx.searchFrustum(rect)` for crossing branch with `idx.searchCrossing(rect, project.primitives)`. Window branch unchanged (`searchEnclosed` is bbox-fully-inside, which IS equivalent to wire-fully-inside for our convex/connected primitives — verified in §9 audit). |
-| `packages/design-system/src/tokens/semantic-dark.ts` | (R6) Update `canvas.transient.label_bg` → `'rgba(42, 127, 255, 0.9)'` (blue, matches selection_window.stroke); `canvas.transient.label_text` → `'#ffffff'` (white on blue). Padding token reduced via paintTransientLabel constant change (not a token — see §6). |
+| `packages/design-system/src/tokens/semantic-dark.ts` | (R6) Update three values in the `canvas.transient` block: `label_bg` → `'rgba(42, 127, 255, 0.9)'` (blue, matches selection_window.stroke); `label_text` → `'#ffffff'` (white on blue); `label_padding` → `'3'` (Rev-1 H2 fix — padding STAYS a token; only the value changes). paintTransientLabel reads `label_padding` via `tokens.canvas.transient.label_padding` (existing path); the existing `parsePadding` helper in paintTransientLabel converts the string to a number unchanged. |
 | `packages/design-system/src/tokens/themes.ts` | (R6) No interface change; existing `label_bg` / `label_text` fields still typed as `Color`. Doc comment updated to note the blue convention. |
 | `docs/design-tokens.md` | (R6) Bump 1.3.0 → 1.3.1; changelog row for the blue pill color. Token table updated. |
-| `packages/editor-2d/src/canvas/painters/paintTransientLabel.ts` | (R6) (a) Add optional `options.angleRad?: number` parameter. When set, rotate label around its anchor; flip 180° if angle in lower half so text reads left-to-right. (b) Reduce constants: `FONT_PX_CSS = 12 → 11`; padding constant computed from token now `4 → 3` (token value updated to `'3'`). |
+| `packages/editor-2d/src/canvas/painters/paintTransientLabel.ts` | (R6) (a) Add optional `options.angleRad?: number` parameter. When set, rotate label around its anchor; flip 180° if angle in lower half so text reads left-to-right. (b) Reduce font constant: `FONT_PX_CSS = 12 → 11`. Padding is unchanged in code — the `parsePadding(token)` helper converts the new `'3'` token value automatically (Rev-1 H2 fix — token-side change only; no painter constant change for padding). |
 | `packages/editor-2d/src/canvas/painters/paintPreview.ts` | (R6) For each preview arm, compute the appropriate `angleRad` per A4 and pass to `paintTransientLabel({...}, options: { angleRad })`. |
 | `packages/editor-2d/src/ui-state/store.ts` | (R7) Add `overlay.hoveredGrip: { entityId: PrimitiveId; gripKind: string } | null` to OverlayState; default null in `createInitialEditorUiState`; new action `setHoveredGrip(grip | null)`. |
 | `packages/editor-2d/src/EditorRoot.tsx` | (R7) New effect: on `overlay.cursor` change AND `overlay.grips !== null`, call `gripHitTest(cursor.screen, grips, viewport)` and `setHoveredGrip(hit ?? null)`. Effect dep is `overlay.cursor` (same as the snap-on-cursor effect). |
@@ -119,7 +126,7 @@ User-confirmed in chat 2026-04-27:
 | `packages/editor-2d/tests/paintPreview.test.ts` | (R6) Verify each arm's call to paintTransientLabel passes the expected angleRad (line / polyline / circle / rectangle / arc-2pt / arc-3pt). |
 | `packages/editor-2d/tests/ui-state.test.ts` | (R7) Test `overlay.hoveredGrip` default null; setHoveredGrip stores + clears via null. |
 | `packages/editor-2d/tests/paintSelection.test.ts` | (R7) Test hovered grip paints amber + 9×9 (different from non-hovered grips' blue + 7×7). |
-| `packages/editor-2d/tests/smoke-e2e.test.tsx` | (R7 SOLE integration validation) Add ONE new smoke scenario `'hovered grip highlights on cursor proximity'` to `SCENARIOS` const + matching `it()` block. Mounts `<EditorRoot />`, seeds + selects a line, fires mousemove near a grip, asserts `editorUiStore.overlay.hoveredGrip` resolves to that grip via the EditorRoot effect. |
+| `packages/editor-2d/tests/smoke-e2e.test.tsx` | (R5 + R7 SOLE integration validation surfaces — Rev-1 B1 fix adds the R5 scenario.) Add TWO new smoke scenarios to `SCENARIOS` const + matching `it()` blocks: (a) `'crossing selection narrows to wire-intersect (not bbox)'` — mounts `<EditorRoot />`, seeds two primitives (one whose wire crosses the rect, one whose bbox crosses but wire does NOT — the diagonal-line regression), fires R→L drag, asserts the selection set CONTAINS the wire-crossing entity and EXCLUDES the bbox-only-overlap entity. SOLE integration validation surface for R5 — wire-intersect.test.ts unit cases cover the per-kind helper math; smoke verifies the EditorRoot → select-rect → searchCrossing wiring. (b) `'hovered grip highlights on cursor proximity'` — mounts `<EditorRoot />`, seeds + selects a line, fires mousemove near a grip, asserts `editorUiStore.overlay.hoveredGrip` resolves to that grip via the EditorRoot effect. |
 
 ### 4.2 In scope — files created
 
@@ -157,7 +164,7 @@ User-confirmed in chat 2026-04-27:
 
 | Doc | Change |
 |---|---|
-| `docs/design-tokens.md` | Bump 1.3.0 → 1.3.1; changelog row for `canvas.transient.label_bg` / `label_text` value change (now blue / white); padding token value 4 → 3 if exposed via the doc table. |
+| `docs/design-tokens.md` | Bump 1.3.0 → 1.3.1; changelog row covers all three `canvas.transient` value changes: `label_bg` → blue rgba, `label_text` → white, `label_padding` → `'3'` (Rev-1 H2 fix — padding stays a token; only value changes). The token table row for `label_padding` updates from `'4'` to `'3'`. |
 | All other binding spec docs | No change. |
 | `docs/glossary.md` | No new term required (hovered grip is a UX behavior; existing "Grip" definition covers it). |
 
@@ -194,17 +201,24 @@ Procedure-03 phases would be overhead. One phase covers all three.
 3. **R5 — `select-rect.ts` swap.** Replace `idx.searchFrustum(rect)` in
    the crossing branch with `idx.searchCrossing(rect, project.primitives)`.
    Window branch unchanged.
-4. **R6 — Token value update.** In `semantic-dark.ts`'s `canvas.transient`
-   block: `label_bg` → `'rgba(42, 127, 255, 0.9)'`; `label_text` →
-   `'#ffffff'`; `label_padding` → `'3'`. In `themes.ts`'s
-   `TransientTokens` interface, doc comments updated to note the blue
-   convention. `docs/design-tokens.md` bumped + changelog row.
-5. **R6 — `paintTransientLabel` rotation + size.** Add `options?:
+4. **R6 — Token value update (Rev-1 H2 fix: padding stays a token).**
+   In `semantic-dark.ts`'s `canvas.transient` block, three values
+   change: `label_bg` → `'rgba(42, 127, 255, 0.9)'`; `label_text` →
+   `'#ffffff'`; `label_padding` → `'3'` (was `'4'`). The
+   `TransientTokens` interface in `themes.ts` is unchanged structurally
+   (all three remain typed as `Color`); doc comments updated to note
+   the blue convention + smaller padding. `docs/design-tokens.md`
+   bumped 1.3.0 → 1.3.1 with a changelog row covering all three value
+   changes. paintTransientLabel does NOT need a code change for
+   padding — its existing `parsePadding(token)` helper picks up the
+   new `'3'` automatically.
+5. **R6 — `paintTransientLabel` rotation + font size.** Add `options?:
    { angleRad?: number }` parameter. New `FONT_PX_CSS = 11` (was 12).
-   When `angleRad` is set: `ctx.translate(anchor screen)`, normalize
-   angle to `(-π/2, π/2]` (flip 180° if outside), `ctx.rotate(angle)`,
-   render text + pill at origin. When `angleRad` is unset / null,
-   existing horizontal rendering unchanged.
+   Padding is NOT changed in code — it's read from the token (Rev-1
+   H2 fix; see step 4). When `angleRad` is set: `ctx.translate(anchor
+   screen)`, normalize angle to `(-π/2, π/2]` (flip 180° if outside),
+   `ctx.rotate(angle)`, render text + pill at origin. When `angleRad`
+   is unset / null, existing horizontal rendering unchanged.
 6. **R6 — `paintPreview` arm-by-arm angle computation.** Each arm
    computes its `angleRad` per A4 and passes to `paintTransientLabel`.
    line / polyline / circle / arc-2pt get rotated; rectangle / arc-3pt
@@ -265,20 +279,35 @@ Gate REM2-8: design-tokens.md bumped to 1.3.1
   Command: rg -n "1\\.3\\.1" docs/design-tokens.md
   Expected: ≥1 match (changelog row)
 
-Gate REM2-9: Test additions present + R7 smoke scenario in SCENARIOS
+Gate REM2-9: Test additions present + R5 + R7 smoke scenarios pass
+  (Revision-1 — Codex Round-1 B1 fix: scoped to actual planned test
+   surfaces; smoke covers BOTH new scenarios.)
   Command: pnpm --filter @portplanner/editor-2d test -- tests/wire-intersect tests/paintTransientLabel tests/paintSelection tests/smoke-e2e
-  Expected: passes; new wire-intersect cases + new paintTransientLabel rotation tests + new paintSelection hovered-grip test + new smoke scenario all green
+  Expected: passes. Vitest runs every it() block in each file; failure
+            of any new test (wire-intersect kind cases / paintTransientLabel
+            rotation / paintSelection hovered-grip / smoke R5 + R7
+            scenarios) fails the gate behaviorally.
 
 Gate REM2-9b: R7 smoke scenario name in SCENARIOS + matching it() block
   Command: rg -n "'hovered grip highlights on cursor proximity'" packages/editor-2d/tests/smoke-e2e.test.tsx
   Expected: ≥2 matches (SCENARIOS const + it() title)
 
+Gate REM2-9c: R5 smoke scenario name in SCENARIOS + matching it() block
+  (Revision-1 — Codex Round-1 B1 fix: structural presence check for the
+   new R5 smoke scenario; complements REM2-9's behavioral check.)
+  Command: rg -n "'crossing selection narrows to wire-intersect (not bbox)'" packages/editor-2d/tests/smoke-e2e.test.tsx
+  Expected: ≥2 matches (SCENARIOS const + it() title)
+
 Gate REM2-10: Workspace test suite passes
+  (Revision-1 — Codex Round-1 B1 fix: count threshold updated for the
+   added R5 smoke scenario.)
   Command: pnpm test
-  Expected: all 6 packages pass; total ≥ 346 (post-Round-1 baseline) + ≥6 new
-            (wire-intersect ≈3 + paintTransientLabel rotation ≈1 + paintSelection
-             hovered ≈1 + smoke scenario 1 + ui-state ≈1) = ≥ 352. Behavioral
-            correctness is enforced by vitest's non-zero exit on any failure.
+  Expected: all 6 packages pass; total ≥ 353 (post-Round-1 baseline 346
+            + 7 new = wire-intersect ≈3 + paintTransientLabel rotation ≈1
+            + paintSelection hovered ≈1 + smoke R5 scenario 1 + smoke R7
+            scenario 1 + ui-state ≈1; netting smoke scenarios as 2 net-new).
+            Behavioral correctness enforced by vitest's non-zero exit on
+            any failure.
 
 Gate REM2-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7)
   Same commands as M1.3d §9. Expected: 0 offenders each.
@@ -292,19 +321,33 @@ Gate REM2-12: Typecheck + Biome + build
 
 - [ ] **R5** — Crossing selection (R→L drag) selects only entities whose
   actual wire intersects the drag rect. Bbox-only-overlap NOT selected.
-  Verified by Gate REM2-2 + REM2-3 + REM2-9 + the regression test for the
-  diagonal-line case.
+  Verified by Gate REM2-2 (wire-intersect.ts exports), REM2-3
+  (select-rect uses searchCrossing), REM2-9 (wire-intersect unit tests
+  + smoke R5 scenario behavioral run), REM2-9c (R5 smoke scenario name
+  present in SCENARIOS). Rev-1 B1 fix added the smoke scenario as the
+  SOLE integration validation surface.
 - [ ] **R6** — Length / radius / W×H labels render as small blue rounded
   pills, rotated to align with the element direction (line / polyline /
-  circle / arc-2pt). Verified by Gate REM2-4 + REM2-8 + REM2-9 +
-  visual confirmation on dev server.
+  circle / arc-2pt; rectangle / arc-3pt stay horizontal per A4).
+  Verified by (Rev-1 Q1 fix replacing "visual confirmation"): Gate
+  REM2-4 (paintTransientLabel angleRad signature), REM2-8
+  (design-tokens.md bumped 1.3.0 → 1.3.1 with all three value changes),
+  REM2-9 (paintTransientLabel rotation tests + paintPreview per-arm
+  angle assertions), REM2-12 (Biome / typecheck / build clean).
 - [ ] **R7** — Cursor near a grip on a selected entity highlights that
   grip (amber fill + 9×9 px) while other grips remain blue + 7×7.
-  Verified by Gate REM2-5 + REM2-6 + REM2-7 + REM2-9 + REM2-9b
-  (smoke scenario).
-- [ ] All Phase REM2-1..REM2-12 gates pass.
+  Verified by Gate REM2-5 (overlay.hoveredGrip slice field), REM2-6
+  (EditorRoot effect computes hoveredGrip via gripHitTest), REM2-7
+  (paintSelection differential rendering), REM2-9 (paintSelection
+  hovered-grip unit test + smoke R7 scenario behavioral run), REM2-9b
+  (R7 smoke scenario name present).
+- [ ] All Phase REM2-1..REM2-12 gates pass (REM2-1, REM2-2, REM2-3,
+  REM2-4, REM2-5, REM2-6, REM2-7, REM2-8, REM2-9, REM2-9b, REM2-9c,
+  REM2-10, REM2-11, REM2-12).
 - [ ] Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 pass.
-- [ ] Workspace test count ≥ 352 (post-Round-1 baseline 346 + 6 new).
+- [ ] **Workspace test count** ≥ 353 (post-Round-1 baseline 346 + 7 new
+  per Gate REM2-10's enumeration). Rev-1 B1 fix added the R5 smoke
+  scenario to bring net-new from 6 → 7.
 - [ ] `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build` all pass.
 
 ## 9. Risks and Mitigations
@@ -447,24 +490,30 @@ across 6 packages.
   differential rendering (amber + 9×9 vs blue + 7×7).
 - `tests/ui-state.test.ts` (R7): 1 new test for `overlay.hoveredGrip`
   default + setHoveredGrip set/clear.
-- `tests/smoke-e2e.test.tsx` (R7 SOLE integration validation): 1 new
-  scenario `'hovered grip highlights on cursor proximity'`.
+- `tests/smoke-e2e.test.tsx` (R5 + R7 SOLE integration validation
+  surfaces — Rev-1 B1 fix added the R5 scenario): 2 new scenarios:
+  - `'crossing selection narrows to wire-intersect (not bbox)'` — R5
+    SSOT integration test. Mounts `<EditorRoot />`, seeds a wire-
+    crossing entity + a bbox-only-overlap entity (the diagonal-line
+    regression from §1), drives R→L drag, asserts the resolved
+    selection set EXCLUDES the bbox-only-overlap entity. Per Rem-1's
+    R4 single-scenario pattern (Codex-approved precedent).
+  - `'hovered grip highlights on cursor proximity'` — R7 SSOT
+    integration test as previously specified.
 
-**Net new test additions: ≥ 6** (at least: 3 wire-intersect + 1
-paintTransientLabel + 1 paintSelection + 1 smoke = 6; spatial-index +
+**Net new test additions: ≥ 7** (at least: 3 wire-intersect + 1
+paintTransientLabel + 1 paintSelection + 2 smoke = 7; spatial-index +
 select-rect + ui-state + paintPreview extensions are EXTENDED tests
-within existing files, not net-new). Workspace count: 346 + 6 = ≥ 352.
+within existing files, not net-new). Workspace count: 346 + 7 = ≥ 353.
 
 **Tests intentionally not added (deferred):**
 
 - F4 (snap-distance sensitivity UI) tests — deferred to M1.3c.
 - Visual-regression for the rotated label — out of scope for M1.3d
   (no image-diff infrastructure).
-- A select-rect crossing scenario in smoke-e2e — the M1.3d existing
-  smoke scenario "window vs crossing selection" stays as-is. Its
-  drag endpoints are in empty space, so the wire-intersect change
-  doesn't affect its outcome. R5 unit tests provide the wire-vs-bbox
-  delta coverage.
+- (Rev-0's "no select-rect crossing scenario" deferral was REVERSED in
+  Rev-1 per Codex Round-1 B1 finding. The R5 SSOT integration test is
+  now in scope per §3.1's smoke-e2e row.)
 
 ## 12. Why this is one phase, not many
 
