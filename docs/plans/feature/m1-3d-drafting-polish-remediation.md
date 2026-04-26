@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-26
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan Revision-4 — Codex Round-4 quality-gap cleanups landed during execution (QG-1 + QG-2)
+**Status:** Plan Revision-5 — Codex post-commit Round-1 Review Miss closed (footer placeholder replaced with actual commit hash)
 
 ---
 
@@ -14,6 +14,7 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
+| Rev-5 | 2026-04-27 | Codex post-commit Round-1 (9.5/10, Go) | Review Miss: Rev-4 footer was committed with a literal angle-bracket "fill-this-in-later" token instead of the Rev-4 commit hash. Replaced with `606e266` and refreshed the footer's status / branch-state summary to reflect the post-commit position. **Procedural lesson refined a fourth time:** a placeholder in committed text IS itself a metadata-staleness bug — exactly the class QG-2 was meant to close. Pattern: never commit angle-bracket placeholder tokens whose value is "the hash of this commit" or similar. Two compliant options: (a) omit the self-referential field entirely (point to the revision-history table, which is the SSOT for hash chain); (b) commit with the value missing, then a docs-only follow-up commit fills it (amend is forbidden per CLAUDE.md). This Rev-5 footer uses option (a) — the Rev-5 row's commit hash is intentionally not self-cited; readers find it via `git log`. |
 | Rev-4 | 2026-04-26 | Codex Round-4 (9.4/10, Go) | Two non-blocking quality-gap cleanups landed during execution per user direction. QG-1: §8 and §11 had diverged into two risk tables with different row sets — merged into a single canonical §8; §11 retired with stub note. QG-2: Plan Review Handoff footer refreshed from stale "Plan authored — awaiting Codex review" to reflect Rev-4 execution-time state with the full revision history chain. Implementation commit (R1/R2a/R2b/R4 + tests) ships the same commit. **Procedural lesson refined a third time:** the consistency pass must scan the FOOTER too — every section that reflects status / handoff context goes stale across revisions if not refreshed. Pattern: revision history table is the SSOT for status; the footer should re-link to it rather than restate. |
 | Rev-3 | 2026-04-26 | Codex Round-3 (9.1/10, No-Go on 1 high-risk) | H1' carryover-of-class from Rev-2 lesson: REM-6's expected output still cited the parent baseline `≥343` while Done Criteria specified `≥346`. False-closure risk (gate text could be read as still permitting only the baseline). Fixed: REM-6 expected output bumped to `≥346 (post-remediation, parent baseline + 3 new)`. Q1 (quality, non-blocking): select-rect smoke scenario absent. Acknowledged as documented design choice — symmetry with grip-stretch via shared EditorRoot.handleCanvasMouseUp wiring (already in §10 "Tests intentionally not added"). No change. **Procedural lesson refined:** the §1.16 step 12 consistency pass must scan for ALL data points across normative sections — not just narrative keywords, but also test counts, file lists, threshold values, version numbers. Rev-2's grep for "new test" / "snap mouseup tests" caught keyword references but missed the count number — same class of bug as Rev-1 → Rev-2 carryover. Pattern now explicit. |
 | Rev-2 | 2026-04-26 | Codex Round-2 (8.6/10, No-Go on 1 blocker) | B1 carryover from Round-1 H1: REM-5 + Done Criteria still encoded the OLD multi-surface test plan — false-closure risk. Fixed: REM-5 now scopes to `tests/paintCrosshair tests/smoke-e2e` with reworded expectation; new Gate REM-5b adds structural scenario-name grep; Done Criteria test-count delta enumerates the actual 3 new additions (1 pickbox + 1 segment-clear + 1 smoke scenario, total ≥346). **Procedural lesson:** §1.16 step 12 section-consistency pass MUST scan EVERY normative section (gates, Done Criteria, risks, test strategy), not just narrative — Rev-1's `grep "new test"` only caught narrative references, missing the gate block. |
@@ -450,8 +451,8 @@ stale once Rounds 1-4 produced revisions in §0 history.)
 
 **Plan:** `docs/plans/feature/m1-3d-drafting-polish-remediation.md`
 **Branch:** `feature/m1-3d-drafting-polish`
-**Revision history:** Rev-0 `8de102b` → Rev-1 `9274f08` → Rev-2 `6999983` → Rev-3 `ea57c21` → Rev-4 (this commit, `<filled-in-at-commit-time>`)
-**Status:** Codex Round-4 returned Go (9.4/10) on Rev-3. Rev-4 lands the two non-blocking quality-gap cleanups (QG-1: §8/§11 Risks merged; QG-2: this footer refresh) as part of the Procedure-03 execution commit, per user direction "fix during execution."
+**Revision history:** Rev-0 `8de102b` → Rev-1 `9274f08` → Rev-2 `6999983` → Rev-3 `ea57c21` → Rev-4 `606e266` (execution + QG-1/QG-2 doc cleanups) → Rev-5 (this docs commit; hash via `git log`, omitted here per the Rev-5 lesson — a self-referential placeholder is itself the staleness bug it was supposed to fix).
+**Status:** Codex post-commit Round-1 (9.5/10, Go). One Review Miss closed in Rev-5: the Rev-4 footer's literal fill-in token is replaced with the actual `606e266` hash; the Rev-5 row's own hash is intentionally NOT self-cited (readers use `git log`). Branch state at Rev-5 push: M1.3d shipped (`2bbb628`) + direction-rule remediation (`f3e1a1a`) + plan-revision chain (`8de102b`/`9274f08`/`6999983`/`ea57c21`) + remediation execution (`606e266`) + this docs-only footer/history fix.
 
 ### Paste to Codex for post-commit review (after execution)
 > Review the execution commit on `feature/m1-3d-drafting-polish` using
