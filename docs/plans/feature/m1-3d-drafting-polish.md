@@ -247,22 +247,27 @@ User-confirmed in pre-response acknowledgment dated 2026-04-26:
 - `packages/editor-2d/src/keyboard/shortcuts.ts` — register F7 in the
   M1.3a single-letter table (or as a bypass key). Add `'select-rect'`
   and `'grip-stretch'` to `ToolId`.
-- `packages/editor-2d/src/tools/types.ts` — extend `Prompt` with
-  optional `preview?: PreviewShape | undefined`. New `PreviewShape`
-  discriminated union ({ kind: 'line', p1, cursor } | { kind:
-  'polyline', vertices, cursor } | { kind: 'rectangle', corner1,
-  cursor } | { kind: 'circle', center, cursor } | { kind: 'arc',
-  state } | { kind: 'xline', pivot, cursor }).
+- `packages/editor-2d/src/tools/types.ts` — extend `Prompt` with an
+  optional `previewBuilder?: (cursor: Point2D) => PreviewShape` field
+  (NOT a static `preview` value — the runner re-invokes on cursor
+  change per Phase 4 step 5). The `PreviewShape` discriminated union
+  is defined canonically in **Phase 4 step 2 (the SSOT)** with eight
+  arms: `'line'` / `'polyline'` / `'rectangle'` / `'circle'` /
+  `'arc-2pt'` / `'arc-3pt'` / `'xline'` / `'selection-rect'`. This
+  bullet is a pointer to the SSOT — to avoid duplicate-definition
+  drift, every other reference to `PreviewShape` in this plan defers
+  to Phase 4 step 2 (Codex Round 1 H2 fix; previous Revision-2 had
+  an inconsistent shorthand here).
 - `packages/editor-2d/src/tools/runner.ts` — when a `Prompt` carries
-  `preview`, write it to `editorUiStore.overlay.previewShape` (and
-  also subscribe to cursor changes so the preview shape updates as
-  the cursor moves between feedInputs — the runner re-renders the
-  current `Prompt`'s preview by re-evaluating the cursor-aware
-  generator hook). Implementation choice: tools yield a *snapshot*
-  preview tied to last-known cursor and the runner periodically
-  re-renders by invoking a per-prompt `previewBuilder?: (cursor:
-  Point2D) => PreviewShape` field on `Prompt` instead of a static
-  `preview`. This is the cleanest pattern — see Phase 4.
+  `previewBuilder`, the runner subscribes once-per-tool-start to
+  `editorUiStore`, re-invokes `previewBuilder(cursor.metric)` on
+  cursor change, and writes the result to
+  `editorUiStore.overlay.previewShape`. Subscription lifecycle and
+  closure-capture pattern are defined canonically in **Phase 4 step
+  5**. Tools that don't need a preview omit the field. (Codex Round
+  1 H2 fix: the previous Revision-2 phrasing here mentioned a static
+  `preview` field which doesn't exist — the canonical contract is
+  `previewBuilder`. Phase 4 step 5 is the SSOT.)
 - `packages/editor-2d/src/tools/draw/draw-line.ts` — yield
   `previewBuilder` on the second prompt.
 - `packages/editor-2d/src/tools/draw/draw-polyline.ts` — yield
@@ -678,8 +683,14 @@ Gate DTP-1.4: docs/design-tokens.md updated
   Expected: ≥1 match
 
 Gate DTP-1.5: Overlay slice extended
-  Command: rg -n "previewShape|hoverEntity|selectionRect|transientLabels|grips" packages/editor-2d/src/ui-state/store.ts
+  Command: rg -n "previewShape|hoverEntity|transientLabels|\\bgrips\\b|suppressEntityPaint" packages/editor-2d/src/ui-state/store.ts
   Expected: ≥5 matches
+  Rationale (Codex Round 1 B1 fix): the original grep included
+  `selectionRect` but Revision-2 removed that field — selection-rect
+  state rides the PreviewShape union's `'selection-rect'` arm
+  instead, so there's no `overlay.selectionRect` field to grep for.
+  Removed-concept denylist principle: a gate must never require
+  evidence of a concept the plan has removed.
 
 Gate DTP-1.6: ui-state tests cover new fields
   Command: pnpm --filter @portplanner/editor-2d test -- tests/ui-state
@@ -1666,14 +1677,20 @@ Gate DTP-T6: paintPreview never imports projectStore
   Command: rg -n "from '@portplanner/project-store'" packages/editor-2d/src/canvas/painters/paintPreview.ts
   Expected: 0 matches
 
-Gate DTP-T7: canvas-host.tsx never imports editorUiStore (preserves I-68)
-  Command: rg -n "from ['\"].*ui-state/store['\"]|editorUiStore" packages/editor-2d/src/canvas/canvas-host.tsx
+Gate DTP-T7: canvas-host.tsx never subscribes to editor-ui state (preserves I-68)
+  Command: rg -n "editorUiStore|\\buseEditorUi\\(|from ['\"]\\.\\./chrome/use-editor-ui-store['\"]" packages/editor-2d/src/canvas/canvas-host.tsx
   Expected: 0 matches
-  Rationale (C2): canvas-host already subscribes to projectStore; a
-  second subscription to editorUiStore would make canvas-host a
-  dual-store subscriber, violating I-68 / Gate 22.7. canvas-host
-  accesses overlay state exclusively via the getOverlay prop callback
-  passed by EditorRoot. See Phase 1 step 8 for the data flow contract.
+  Rationale (Codex Round 1 H1 fix + C2): canvas-host already
+  subscribes to projectStore; ANY editor-ui subscription path —
+  whether via `editorUiStore.subscribe(`, `editorUiStore.getState()`
+  reads in subscribers, OR the React-hook form `useEditorUi(` —
+  would make canvas-host a dual-store subscriber, violating I-68 /
+  Gate 22.7. The grep mirrors the I-68 subscription-signal regex
+  pair from M1.3a Gate 22.7 (`useEditorUi(` OR `editorUiStore.
+  subscribe(`), plus the import path of `useEditorUi`'s defining
+  module so an aliased import is caught too. canvas-host accesses
+  overlay state exclusively via the getOverlay prop callback passed
+  by EditorRoot. See Phase 1 step 8 for the data flow contract.
 ```
 
 ## 10. Test strategy
