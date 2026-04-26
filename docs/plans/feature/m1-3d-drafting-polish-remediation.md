@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-26
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan Revision-2 — Codex Round-2 blocker fix applied
+**Status:** Plan Revision-3 — Codex Round-3 high-risk fix applied (single-line REM-6 count alignment)
 
 ---
 
@@ -14,6 +14,7 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
+| Rev-3 | 2026-04-26 | Codex Round-3 (9.1/10, No-Go on 1 high-risk) | H1' carryover-of-class from Rev-2 lesson: REM-6's expected output still cited the parent baseline `≥343` while Done Criteria specified `≥346`. False-closure risk (gate text could be read as still permitting only the baseline). Fixed: REM-6 expected output bumped to `≥346 (post-remediation, parent baseline + 3 new)`. Q1 (quality, non-blocking): select-rect smoke scenario absent. Acknowledged as documented design choice — symmetry with grip-stretch via shared EditorRoot.handleCanvasMouseUp wiring (already in §10 "Tests intentionally not added"). No change. **Procedural lesson refined:** the §1.16 step 12 consistency pass must scan for ALL data points across normative sections — not just narrative keywords, but also test counts, file lists, threshold values, version numbers. Rev-2's grep for "new test" / "snap mouseup tests" caught keyword references but missed the count number — same class of bug as Rev-1 → Rev-2 carryover. Pattern now explicit. |
 | Rev-2 | 2026-04-26 | Codex Round-2 (8.6/10, No-Go on 1 blocker) | B1 carryover from Round-1 H1: REM-5 + Done Criteria still encoded the OLD multi-surface test plan — false-closure risk. Fixed: REM-5 now scopes to `tests/paintCrosshair tests/smoke-e2e` with reworded expectation; new Gate REM-5b adds structural scenario-name grep; Done Criteria test-count delta enumerates the actual 3 new additions (1 pickbox + 1 segment-clear + 1 smoke scenario, total ≥346). **Procedural lesson:** §1.16 step 12 section-consistency pass MUST scan EVERY normative section (gates, Done Criteria, risks, test strategy), not just narrative — Rev-1's `grep "new test"` only caught narrative references, missing the gate block. |
 | Rev-1 | 2026-04-26 | Codex Round-1 (8.9/10) | H1: R4 test SSOT — smoke-e2e is the only validation surface; tool-level snap tests dropped from grip-stretch.test.ts and select-rect.test.ts. Q1: Gate REM-4 hardened to targeted multiline grep within handleCanvasMouseUp's body. (Revision-1 partial — gate/checklist update missed; see Rev-2.) |
 | Rev-0 | 2026-04-26 | Initial draft | All four findings (R1/R2a/R2b/R4) scoped + §1.3 three-round audit. |
@@ -223,8 +224,14 @@ Gate REM-5b: R4 smoke scenario name appears in SCENARIOS + matching it() block
             block title — the discipline meta-test requires this pairing).
 
 Gate REM-6: Workspace test suite passes
+            (Revision-3 — Codex Round-3 H1' fix: count threshold aligned
+             with Done Criteria's enumerated +3 delta)
   Command: pnpm test
-  Expected: all 6 packages pass; total ≥ 343 (current baseline)
+  Expected: all 6 packages pass; total ≥ 346 (parent baseline 343 + 3 new
+            additions per Done Criteria §7: 1 pickbox + 1 segment-clear
+            + 1 smoke scenario). Behavioral correctness is enforced by
+            vitest's non-zero exit on any failure; the count threshold is
+            a human-review consistency check matching Done Criteria.
 
 Gate REM-7: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7)
   Same commands as M1.3d §9. Expected: 0 offenders each.
