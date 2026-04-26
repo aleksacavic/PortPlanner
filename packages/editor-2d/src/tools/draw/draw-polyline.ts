@@ -1,7 +1,16 @@
 // Draw polyline. M1.3a polyline emits zero bulges only (I-48); non-zero
 // bulges enter via post-creation Fillet (M1.3b) or property edit (M1.3c).
-// Sub-options: Close (close the polyline at current vertex), Undo (drop
-// last vertex). End by Escape (commits open if >=2 vertices).
+//
+// Sub-options:
+//   - Close — close the polyline at the current vertex (>=3 vertices).
+//   - Undo — drop the last vertex.
+// Termination:
+//   - { kind: 'commit' } — exit the loop and commit-open if vertices>=2.
+//     Sources: empty Enter in command bar, Enter on canvas focus,
+//     right-click on canvas. Sub-option shortcut letters (`c`, `u`)
+//     route through the keyboard router's sub-option fast-path.
+//   - { kind: 'escape' } — runner sets aborted; tool returns
+//     { committed: false, reason: 'aborted' }. Vertices are discarded.
 
 import { LayerId, type Point2D, newPrimitiveId } from '@portplanner/domain';
 import { addPrimitive } from '@portplanner/project-store';
