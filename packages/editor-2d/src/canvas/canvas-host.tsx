@@ -84,7 +84,17 @@ export function CanvasHost(props: CanvasHostProps): ReactElement {
     schedulePaint();
     return () => {
       unsubscribe();
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        // Reset the ref so the next mount's schedulePaint() doesn't see a
+        // stale (cancelled) frame id and short-circuit on the
+        // `rafRef.current !== null` guard. React 19 StrictMode mounts
+        // effects twice (mount → cleanup → re-mount); without this reset
+        // the paint loop is permanently starved after the StrictMode
+        // re-mount because the rAF callback never ran (it was cancelled),
+        // so it never had a chance to clear the ref itself.
+        rafRef.current = null;
+      }
     };
   }, [props.viewport]);
 

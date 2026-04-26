@@ -3111,6 +3111,66 @@ No invariant changes; the `Viewport` shape and the
 `metricToScreen` / `screenToMetric` round-trip identity (I-22) are
 unchanged.
 
+### §13.9 Paint-loop StrictMode rafRef-stale fix (post-handoff bug fix)
+
+**Trigger.** User reported on the running `pnpm dev` app: pressed
+`L`, got the "Specify start point" command-bar prompt, clicked
+twice on the canvas — and saw nothing on screen even though the
+projectStore correctly committed the line primitive.
+
+**Diagnosis (via Claude-in-Chrome runtime instrumentation against
+the running browser).** The smoke E2E suite passes because it
+bypasses the rAF paint loop (jsdom's `getContext` is stubbed to a
+no-op). In the running browser:
+
+- React 19 + StrictMode double-mounts effects in dev: setup →
+  cleanup → setup-again.
+- canvas-host's paint-effect setup calls `schedulePaint()` which
+  schedules a rAF and stores its id in `rafRef.current`.
+- The first cleanup cancels that rAF via
+  `cancelAnimationFrame(id)` but did **not** reset
+  `rafRef.current = null`. The cancelled rAF callback never fires,
+  so it never has a chance to clear the ref itself.
+- Re-mount's `schedulePaint()` then sees `rafRef.current !== null`
+  (stale cancelled id) and short-circuits via the
+  `if (rafRef.current !== null) return;` guard.
+- **Every subsequent** `projectStore` mutation triggers
+  `schedulePaint`, which still short-circuits. Paint is permanently
+  starved after the StrictMode re-mount; the canvas backing buffer
+  never receives a draw call.
+- The store mutation itself is correct (the line primitive lands in
+  `state.project.primitives`); only the rAF-driven paint never
+  fires.
+
+**Fix.** `packages/editor-2d/src/canvas/canvas-host.tsx` paint-
+effect cleanup now resets `rafRef.current = null` immediately after
+`cancelAnimationFrame`:
+
+```ts
+return () => {
+  unsubscribe();
+  if (rafRef.current !== null) {
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+  }
+};
+```
+
+This pairs with I-65's idempotent keyboard-router pattern — both
+target React 19 StrictMode + per-test re-mount semantics.
+
+**Verification.** Browser-side reproduction with the fix in place:
+the user sees primitives appear on the canvas after each click
+pair. Workspace test suite remains green (210 / 210); typecheck +
+Biome lint clean.
+
+**Lesson learned.** Smoke E2E coverage gap: jsdom's no-op
+`getContext` stub means the paint-loop wiring is exercised at the
+"subscriber-fires-on-store-change" level but not at the
+"frame-callback-actually-runs-and-draws-pixels" level. A
+Playwright-style real-browser smoke gate would have caught this.
+Deferred to post-M1.
+
 Both refinements were:
 1. Discovered during Phase 22 execution (canvas-host imports
    inspection + smoke-e2e rerun against the Phase-8 placeholder).
