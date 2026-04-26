@@ -43,7 +43,12 @@ export function selectRectTool(start: Point2D, startScreen: ScreenPoint): () => 
         kind: 'selection-rect',
         start,
         end: cursor,
-        direction: cursor.x >= start.x ? 'window' : 'crossing',
+        // Plan canonical rule (I-DTP-15): `start.x < end.x` → window;
+        // otherwise crossing. The strict-less-than treats the equality
+        // boundary (vertical-only drag with cursor.x === start.x) as
+        // crossing — matches AutoCAD behaviour where a strictly-vertical
+        // drag biases toward crossing-selection.
+        direction: start.x < cursor.x ? 'window' : 'crossing',
       }),
     };
     if (next.kind !== 'point') {
@@ -71,8 +76,11 @@ export function selectRectTool(start: Point2D, startScreen: ScreenPoint): () => 
       return { committed: true, description: hit ? 'select 1' : 'clear selection' };
     }
 
-    // Drag-resolved selection.
-    const direction: 'window' | 'crossing' = end.x >= start.x ? 'window' : 'crossing';
+    // Drag-resolved selection — plan canonical rule (I-DTP-15):
+    // `start.x < end.x` → window; otherwise crossing. MUST match the
+    // previewBuilder's direction logic above so the visible color and
+    // the resolved selection semantics agree on the boundary.
+    const direction: 'window' | 'crossing' = start.x < end.x ? 'window' : 'crossing';
     const rect = {
       minX: Math.min(start.x, end.x),
       maxX: Math.max(start.x, end.x),

@@ -140,8 +140,8 @@ describe('select-rect — click-without-drag (start ≈ end) → single-entity h
   });
 });
 
-describe('select-rect — selection-rect previewBuilder dispatches by direction', () => {
-  it('emits direction = window when cursor.x >= start.x', async () => {
+describe('select-rect — selection-rect previewBuilder direction (I-DTP-15: start.x < end.x → window)', () => {
+  it('emits direction = window when start.x < cursor.x (L→R drag)', async () => {
     const start = { x: 0, y: 0 };
     const startScreen = metricToScreen(start, viewport);
     const tool = startTool('select-rect', selectRectTool(start, startScreen));
@@ -168,5 +168,50 @@ describe('select-rect — selection-rect previewBuilder dispatches by direction'
     }
     tool.abort();
     await tool.done();
+  });
+
+  it('emits direction = crossing on the equality boundary (start.x === cursor.x, vertical-only drag)', async () => {
+    // Codex Round-1 quality-gap remediation: the plan rule (I-DTP-15)
+    // is strictly `<` so equality goes to crossing. A vertical-only
+    // drag (cursor.x === start.x with non-zero dy) MUST resolve as
+    // crossing-selection to match the plan + AutoCAD bias.
+    const start = { x: 5, y: 0 };
+    const startScreen = metricToScreen(start, viewport);
+    const tool = startTool('select-rect', selectRectTool(start, startScreen));
+    await tick();
+    editorUiActions.setCursor({
+      metric: { x: 5, y: 10 }, // exactly equal X, dy = 10
+      screen: { x: 0, y: 0 },
+    });
+    await tick();
+    const ps = editorUiStore.getState().overlay.previewShape;
+    expect(ps?.kind).toBe('selection-rect');
+    if (ps?.kind === 'selection-rect') {
+      expect(ps.direction).toBe('crossing');
+    }
+    tool.abort();
+    await tool.done();
+  });
+});
+
+describe('select-rect — drag-resolved direction matches previewBuilder rule on the equality boundary', () => {
+  it('vertical-only drag (start.x === end.x) → crossing selection', async () => {
+    // Same boundary case from the commit-side: the resolved selection
+    // type MUST match what the user saw mid-drag (preview color).
+    // A line that touches the vertical drag rect should be selected
+    // under crossing (any-touch); under window it would only count if
+    // FULLY enclosed — but with a zero-width rect nothing is enclosed.
+    const touching = lineP({ x: 0, y: 5 }, { x: 10, y: 5 });
+    hydrateProject(makeProjectWith([touching]), '2026-04-26T00:00:00.000Z');
+    const start = { x: 5, y: 0 };
+    const startScreen = metricToScreen(start, viewport);
+    const tool = startTool('select-rect', selectRectTool(start, startScreen));
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 5, y: 10 } }); // same x as start
+    await tool.done();
+    const sel = editorUiStore.getState().selection;
+    // Crossing rule + zero-width rect at x=5 still hits the line that
+    // crosses x=5 between y=0 and y=10.
+    expect(sel).toContain(touching.id);
   });
 });

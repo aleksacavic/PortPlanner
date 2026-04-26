@@ -1823,6 +1823,55 @@ during execution. Each entry is dated and tagged with the originating
 phase. The plan body above is the authoritative spec; entries here record
 where the body was insufficient and how execution adapted.
 
+### 13.5 — Post-commit remediation: select-rect direction equality boundary (2026-04-26)
+
+**Trigger:** Codex Round-1 post-commit audit on `6bcb9df..2bbb628` flagged a
+quality-gap finding: spec/code drift on the I-DTP-15 direction-rule equality
+boundary.
+
+**What was found (Quality gap).** Plan §2 A3 + §8 Phase 7 step 3 + I-DTP-15
+specify the canonical rule as `start.x < end.x ? 'window' : 'crossing'` —
+strictly less than, so the equality boundary (vertical-only drag where
+`cursor.x === start.x`) resolves to crossing. The Phase 7 implementation in
+`packages/editor-2d/src/tools/select-rect.ts` used `>=` instead of `<` (both in
+the previewBuilder direction expression and the drag-resolve direction
+expression), and the corresponding test in
+`packages/editor-2d/tests/select-rect.test.ts` encoded the same `>=` rule in
+its title and assertions. The mismatch is a no-op for non-degenerate drags
+(the only case it affects is `cursor.x === start.x`, which is a vertical-only
+drag with non-zero `dy`), but it is a real spec/code mismatch worth reconciling
+for invariants hygiene.
+
+**What was changed.**
+- `packages/editor-2d/src/tools/select-rect.ts` — both direction expressions
+  swapped from `cursor.x >= start.x ? 'window' : 'crossing'` to
+  `start.x < cursor.x ? 'window' : 'crossing'` (and the drag-resolve site
+  similarly). Comments added explaining the strict-less-than semantics +
+  AutoCAD vertical-drag bias.
+- `packages/editor-2d/tests/select-rect.test.ts` — the `direction` describe
+  block renamed to `(I-DTP-15: start.x < end.x → window)`, the existing test
+  title updated to `start.x < cursor.x`, and TWO new tests added that exercise
+  the equality boundary explicitly:
+  1. previewBuilder boundary: `start.x === cursor.x` with non-zero `dy` →
+     `direction === 'crossing'`.
+  2. drag-resolve boundary: vertical-only drag selects a touching line
+     (crossing's any-touch semantics on a zero-width rect).
+- No code change to the plan body or to other affected files (paint.ts,
+  paintSelectionRect.ts, smoke-e2e). Smoke scenarios use non-degenerate drags
+  so they continue to pass with either rule.
+
+**How verified.**
+- `pnpm typecheck` — clean.
+- `pnpm --filter @portplanner/editor-2d test -- tests/select-rect tests/spatial-index tests/smoke-e2e` —
+  25/25 pass (was 23/23; +2 from boundary tests).
+- `pnpm test` — 343/343 across 6 packages (was 341/341 pre-remediation).
+- `pnpm check` — clean (Biome).
+- Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 — all 0 offenders.
+
+**Binding-spec impact.** None. The plan body's I-DTP-15 wording was already
+correct; only the implementation drifted. This entry records the reconciliation
+so future post-commit reviewers see why the code now matches the plan.
+
 ### 13.4 — Phase 4 (2026-04-26)
 
 **Gate DTP-T2 grep matches comments — same pattern as §13.2.** My
