@@ -20,6 +20,11 @@ export interface KeyboardRouterCallbacks {
   /** Enter on canvas focus — commit the in-flight tool (e.g. end an
    *  open polyline). Distinct from `onAbortCurrentTool` (Escape). */
   onCommitCurrentTool: () => void;
+  /** Letter typed on canvas focus that matches a sub-option shortcut of
+   *  the currently running tool (e.g. `c` for [Close] in polyline).
+   *  Beats tool-activation accumulator so the in-flight tool keeps
+   *  control. Routed by EditorRoot to a `subOption` Input. */
+  onSubOption: (label: string) => void;
 }
 
 const ACCUMULATOR_TIMEOUT_MS = 750;
@@ -122,6 +127,21 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
 
     // Per-focus letter routing.
     if (focus === 'canvas' && /^[A-Za-z]$/.test(key)) {
+      // CAD convention: while a tool is running and showing bracketed
+      // sub-options like [Close/Undo], typing the shortcut letter (c, u)
+      // triggers the sub-option directly. This beats the tool-activation
+      // accumulator — otherwise typing `c` mid-polyline would activate
+      // Copy and abort the polyline. See draw-polyline.ts sub-options.
+      const uiState = editorUiStore.getState();
+      if (uiState.activeToolId !== null && uiState.commandBar.subOptions.length > 0) {
+        const lower = key.toLowerCase();
+        const match = uiState.commandBar.subOptions.find((o) => o.shortcut.toLowerCase() === lower);
+        if (match) {
+          e.preventDefault();
+          callbacks.onSubOption(match.label);
+          return;
+        }
+      }
       pumpAccumulator(key);
       return;
     }

@@ -97,6 +97,11 @@ export function EditorRoot(): ReactElement {
         // gracefully because their next yield expects a 'point'.
         runningToolRef.current?.feedInput({ kind: 'commit' });
       },
+      onSubOption: (label: string) => {
+        // Sub-option shortcut letter (c/u) while a tool is running —
+        // routes the same way the [Close]/[Undo] bracket clicks do.
+        runningToolRef.current?.feedInput({ kind: 'subOption', optionLabel: label });
+      },
     });
   }, []);
 

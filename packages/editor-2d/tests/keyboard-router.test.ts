@@ -10,6 +10,7 @@ interface RouterMocks {
   onRedo: ReturnType<typeof vi.fn>;
   onAbortCurrentTool: ReturnType<typeof vi.fn>;
   onCommitCurrentTool: ReturnType<typeof vi.fn>;
+  onSubOption: ReturnType<typeof vi.fn>;
 }
 
 let mocks: RouterMocks;
@@ -27,6 +28,7 @@ beforeEach(() => {
     onRedo: vi.fn(),
     onAbortCurrentTool: vi.fn(),
     onCommitCurrentTool: vi.fn(),
+    onSubOption: vi.fn(),
   };
   registerKeyboardRouter(mocks);
 });
@@ -112,6 +114,45 @@ describe('keyboard router', () => {
     editorUiActions.setFocusHolder('bar');
     pressKey('Enter');
     expect(mocks.onCommitCurrentTool).not.toHaveBeenCalled();
+  });
+
+  it('sub-option shortcut letter routes to onSubOption (not tool activation) while a tool is running', async () => {
+    editorUiActions.setFocusHolder('canvas');
+    // Simulate a polyline tool being active with [Close/Undo] sub-options.
+    editorUiActions.setActiveToolId('draw-polyline');
+    editorUiActions.setPrompt('Specify next point or [Close/Undo]', [
+      { label: 'Close', shortcut: 'c' },
+      { label: 'Undo', shortcut: 'u' },
+    ]);
+    pressKey('c');
+    expect(mocks.onSubOption).toHaveBeenCalledWith('Close');
+    // Critical: typing 'c' must NOT activate the Copy tool while polyline
+    // is running with [Close/Undo] exposed. Wait past the accumulator
+    // timeout to be sure no deferred activation fires.
+    await new Promise((r) => setTimeout(r, 800));
+    expect(mocks.onActivateTool).not.toHaveBeenCalledWith('copy');
+  });
+
+  it('sub-option keyboard works case-insensitively', () => {
+    editorUiActions.setFocusHolder('canvas');
+    editorUiActions.setActiveToolId('draw-polyline');
+    editorUiActions.setPrompt('Specify next point or [Close/Undo]', [
+      { label: 'Close', shortcut: 'c' },
+      { label: 'Undo', shortcut: 'u' },
+    ]);
+    pressKey('U');
+    expect(mocks.onSubOption).toHaveBeenCalledWith('Undo');
+  });
+
+  it('letter keys still activate tools when no sub-options are exposed', async () => {
+    editorUiActions.setFocusHolder('canvas');
+    // No active tool, no sub-options → 'C' should activate the Copy tool
+    // via the single-letter shortcut accumulator. Regression guard for
+    // the sub-option fast-path.
+    pressKey('C');
+    await new Promise((r) => setTimeout(r, 800));
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('copy');
+    expect(mocks.onSubOption).not.toHaveBeenCalled();
   });
 });
 
