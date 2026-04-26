@@ -319,6 +319,12 @@ function CanvasHostInner(props: CanvasHostProps, ref: Ref<CanvasHostHandle>): Re
     <canvas
       ref={canvasRef}
       data-component="canvas-host"
+      // M1.3d-Remediation R2a — hide the OS cursor over the canvas so
+      // the painted crosshair + pickbox is the sole cursor visual
+      // (AutoCAD parity). Cursor returns to default when the pointer
+      // leaves the canvas (browser default), so other chrome regions
+      // (panels, command bar) keep the native arrow.
+      style={{ cursor: 'none' }}
       onMouseDown={onMouseDown}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}

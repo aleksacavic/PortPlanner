@@ -59,6 +59,10 @@ const SCENARIOS = [
   'window vs crossing selection',
   'grip stretch updates primitive',
   'cursor coords update on mousemove',
+  // M1.3d-Remediation R4 — snap consumption on mouseup-driven 'point'
+  // inputs. SOLE validation surface for R4 (handleCanvasMouseUp's
+  // commitSnappedVertex wiring lives in EditorRoot, not in tools).
+  'snap honored on grip-stretch mouseup',
 ] as const;
 
 const ACCUMULATOR_FLUSH_MS = 800;
@@ -523,6 +527,67 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     readout = container.querySelector('[data-component="coord-readout"]');
     expect(readout?.textContent).toMatch(/X: 5\.000/);
     expect(readout?.textContent).toMatch(/Y: 0\.000/);
+  });
+
+  it('snap honored on grip-stretch mouseup', async () => {
+    // M1.3d-Remediation R4 — SOLE validation surface for snap-on-mouseup.
+    // The wiring under test lives in EditorRoot.handleCanvasMouseUp:
+    // when overlay.snapTarget is set at mouseup time, the runner receives
+    // the snap-resolved metric (commitSnappedVertex bit-copy), NOT the
+    // raw cursor metric. Tool-level tests (grip-stretch.test.ts /
+    // select-rect.test.ts) cannot validate this — they call
+    // tool.feedInput directly and bypass EditorRoot entirely.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+
+    // Two primitives:
+    //   targetLine — supplies the snap target (endpoint at metric (5, 0)
+    //                → screen (450, 300) at zoom=10).
+    //   draggedLine — has its p1 grip at metric (0, -5) → screen (400, 350).
+    const targetId = newPrimitiveId();
+    addPrimitive({
+      id: targetId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 5, y: 0 },
+      p2: { x: 15, y: 0 },
+    });
+    const draggedId = newPrimitiveId();
+    addPrimitive({
+      id: draggedId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: -5 },
+      p2: { x: 0, y: -10 },
+    });
+    // Select the dragged line so its grips populate (Phase 5 effect).
+    editorUiActions.setSelection([draggedId]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+    // Grab the dragged line's p1 grip at screen (400, 350).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 350 });
+    await wait(20);
+    // Move cursor near the targetLine's p1 endpoint (screen 450, 300) so
+    // the snap-on-cursor effect resolves overlay.snapTarget to the
+    // endpoint at metric (5, 0). Land 2 px off so the raw mouseup metric
+    // would NOT equal the snap-resolved metric — proving the gate.
+    fireEvent.mouseMove(canvas, { clientX: 452, clientY: 301 });
+    await wait(80); // rAF flush + snap resolution + paint requestPaint
+
+    // Mouseup at the slightly-off position; commit MUST use the snap-
+    // resolved metric (5, 0), not the raw mouseup metric (5.2, -0.1).
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 452, clientY: 301 });
+    await wait(50);
+
+    const after = projectStore.getState().project!.primitives[draggedId]!;
+    const p1 = (after as { p1: { x: number; y: number } }).p1;
+    // commitSnappedVertex bit-copies the snap point — assert exact equality
+    // (toBeCloseTo with 9-decimal tolerance handles any float artefact).
+    expect(p1.x).toBeCloseTo(5, 9);
+    expect(p1.y).toBeCloseTo(0, 9);
   });
 });
 

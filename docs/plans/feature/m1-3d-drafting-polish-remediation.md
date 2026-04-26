@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-26
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan Revision-3 — Codex Round-3 high-risk fix applied (single-line REM-6 count alignment)
+**Status:** Plan Revision-4 — Codex Round-4 quality-gap cleanups landed during execution (QG-1 + QG-2)
 
 ---
 
@@ -14,6 +14,7 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
+| Rev-4 | 2026-04-26 | Codex Round-4 (9.4/10, Go) | Two non-blocking quality-gap cleanups landed during execution per user direction. QG-1: §8 and §11 had diverged into two risk tables with different row sets — merged into a single canonical §8; §11 retired with stub note. QG-2: Plan Review Handoff footer refreshed from stale "Plan authored — awaiting Codex review" to reflect Rev-4 execution-time state with the full revision history chain. Implementation commit (R1/R2a/R2b/R4 + tests) ships the same commit. **Procedural lesson refined a third time:** the consistency pass must scan the FOOTER too — every section that reflects status / handoff context goes stale across revisions if not refreshed. Pattern: revision history table is the SSOT for status; the footer should re-link to it rather than restate. |
 | Rev-3 | 2026-04-26 | Codex Round-3 (9.1/10, No-Go on 1 high-risk) | H1' carryover-of-class from Rev-2 lesson: REM-6's expected output still cited the parent baseline `≥343` while Done Criteria specified `≥346`. False-closure risk (gate text could be read as still permitting only the baseline). Fixed: REM-6 expected output bumped to `≥346 (post-remediation, parent baseline + 3 new)`. Q1 (quality, non-blocking): select-rect smoke scenario absent. Acknowledged as documented design choice — symmetry with grip-stretch via shared EditorRoot.handleCanvasMouseUp wiring (already in §10 "Tests intentionally not added"). No change. **Procedural lesson refined:** the §1.16 step 12 consistency pass must scan for ALL data points across normative sections — not just narrative keywords, but also test counts, file lists, threshold values, version numbers. Rev-2's grep for "new test" / "snap mouseup tests" caught keyword references but missed the count number — same class of bug as Rev-1 → Rev-2 carryover. Pattern now explicit. |
 | Rev-2 | 2026-04-26 | Codex Round-2 (8.6/10, No-Go on 1 blocker) | B1 carryover from Round-1 H1: REM-5 + Done Criteria still encoded the OLD multi-surface test plan — false-closure risk. Fixed: REM-5 now scopes to `tests/paintCrosshair tests/smoke-e2e` with reworded expectation; new Gate REM-5b adds structural scenario-name grep; Done Criteria test-count delta enumerates the actual 3 new additions (1 pickbox + 1 segment-clear + 1 smoke scenario, total ≥346). **Procedural lesson:** §1.16 step 12 section-consistency pass MUST scan EVERY normative section (gates, Done Criteria, risks, test strategy), not just narrative — Rev-1's `grep "new test"` only caught narrative references, missing the gate block. |
 | Rev-1 | 2026-04-26 | Codex Round-1 (8.9/10) | H1: R4 test SSOT — smoke-e2e is the only validation surface; tool-level snap tests dropped from grip-stretch.test.ts and select-rect.test.ts. Q1: Gate REM-4 hardened to targeted multiline grep within handleCanvasMouseUp's body. (Revision-1 partial — gate/checklist update missed; see Rev-2.) |
@@ -268,13 +269,18 @@ Gate REM-8: Typecheck + Biome + build
 
 ## 8. Risks and Mitigations
 
+(Revision-4 — Codex Round-4 QG-1 fix: §8 and §11 had diverged into two
+risk tables with different row sets. This is now the single canonical
+risk register; §11 is retired below.)
+
 | Risk | Mitigation |
 |------|-----------|
-| `cursor: none` over canvas means the user has NO cursor visual when `crosshairSizePct === 0`. | M1.3d ships only F7 toggle (100 ↔ 5); 0 is unreachable today. The post-M1 settings slider needs a guard (probably "force pickbox if sizePct < 1") — captured in the slider's plan. |
-| Center-gap math could put the gap outside the line at `sizePct < ~2` (where `halfH = halfV < pbHalf`). | The pickbox-preset case (sizePct=5) gives halfH=15, well clear of pbHalf=5. F7 only reaches 5 or 100, both safe. Defensive `if (halfH > pbHalf)` before drawing the arms keeps very-small sizePct values from emitting backwards segments. |
+| `cursor: none` over canvas means the user has NO cursor visual when `crosshairSizePct === 0`. Could also confuse a user who alt-tabs back expecting the OS arrow. | M1.3d ships only F7 toggle (100 ↔ 5); 0 is unreachable today. Cursor returns to default when the pointer leaves the canvas, so other chrome regions keep the OS arrow. The post-M1 settings slider needs a guard (probably "force pickbox if sizePct < 1") — captured in the slider's plan. AutoCAD parity makes the learning curve familiar to CAD users. |
+| Center-gap math could put the gap outside the line at `sizePct < ~2` (where `halfH = halfV < pbHalf`). | The pickbox-preset case (sizePct=5) gives halfH=15, well clear of pbHalf=5. F7 only reaches 5 or 100, both safe. Defensive `if (halfH > pbHalf)` / `if (halfV > pbHalf)` before drawing the arms keeps very-small sizePct values from emitting backwards segments. New `paintCrosshair` test specifically asserts no segment crosses the pickbox region. |
 | Snap on select-rect mouseup grows the rect toward a far-away snap target. | A3 acceptance: matches AutoCAD; mousedown for select-rect already snaps via `handleCanvasClick`, so symmetry is the simpler invariant. If user testing surfaces complaints, refine to grip-stretch only — one-line revert. |
 | Pickbox z-order vs snap glyph: pickbox sits at cursor exactly where snap glyph would render, potentially occluding it. | Snap glyph is 8×8 CSS px (endpoint square), pickbox is 10×10 — slight overlap. Glyph is painted AFTER pickbox in the overlay pass (paintCrosshair is FIRST, paintSnapGlyph is later) so the glyph wins z-order. Verified by paint.ts §3 overlay-pass order. |
 | `PICKBOX_HALF_CSS = 5` is a magic number not in design tokens. | Acceptable for M1.3d-Remediation. The post-M1 settings dialog will surface a `pickboxSize` token alongside the crosshair-size slider — both pickbox + crosshair UI share the same future settings module. |
+| `var(--border-default)` (R1) token not resolving in some test fixture that mounts EditorRoot WITHOUT ThemeProvider. | None today. EditorRoot is always rendered inside ThemeProvider per `apps/web/src/App.tsx`. If a test breaks, wrap the test mount in `<ThemeProvider mode="dark">` (existing pattern from `apps/web/tests`). |
 
 ## 9. §1.3 Three-round self-audit
 
@@ -414,14 +420,13 @@ scenario buys redundant coverage of the same wiring.
 - Per-tool select-rect snap-on-mouseup smoke scenario — symmetric to grip-
   stretch's wiring; representative grip-stretch coverage suffices.
 
-## 11. Risks and Mitigations
+## 11. Risks and Mitigations — RETIRED
 
-| Risk | Mitigation |
-|------|-----------|
-| `paintCrosshair` test refactor could miss an edge case (e.g., sizePct=5 with very small pickbox interaction). | Defensive `if (halfH > pbHalf)` before drawing arms; new test specifically asserts no segment crosses the pickbox region. |
-| Hidden OS cursor confuses users who alt-tab back to the app expecting the arrow. | Acceptable — matches AutoCAD; users learn the pickbox is the cursor. Cursor returns to default when pointer leaves the canvas. |
-| Snap on select-rect mouseup surprises the user (rect grows). | A3 acceptance; one-line revert if testing surfaces it. |
-| `var(--border-default)` token not resolving in some test fixture that mounts EditorRoot WITHOUT ThemeProvider. | None today. If a test breaks, wrap the test mount in `<ThemeProvider mode="dark">` (existing pattern from `apps/web/tests`). |
+(Revision-4 — Codex Round-4 QG-1 fix.) This section was a duplicate
+risk table with diverging rows from §8. Its content has been merged
+into §8 (the canonical risk register). This stub remains so that
+existing references to "§11" don't dangle; future revisions should
+treat §8 as the sole risk SSOT.
 
 ## 12. Why this is one phase, not many
 
@@ -438,22 +443,19 @@ scenario buys redundant coverage of the same wiring.
 
 ## Plan Review Handoff
 
+(Revision-4 — Codex Round-4 QG-2 fix: footer metadata refreshed to
+reflect the actual revision state at execution time. Earlier revisions
+left the footer at "Plan authored — awaiting Codex review" which was
+stale once Rounds 1-4 produced revisions in §0 history.)
+
 **Plan:** `docs/plans/feature/m1-3d-drafting-polish-remediation.md`
-**Branch:** `feature/m1-3d-drafting-polish` (atop `f3e1a1a`)
-**Status:** Plan authored — awaiting Codex review
+**Branch:** `feature/m1-3d-drafting-polish`
+**Revision history:** Rev-0 `8de102b` → Rev-1 `9274f08` → Rev-2 `6999983` → Rev-3 `ea57c21` → Rev-4 (this commit, `<filled-in-at-commit-time>`)
+**Status:** Codex Round-4 returned Go (9.4/10) on Rev-3. Rev-4 lands the two non-blocking quality-gap cleanups (QG-1: §8/§11 Risks merged; QG-2: this footer refresh) as part of the Procedure-03 execution commit, per user direction "fix during execution."
 
-### Paste to Codex for plan review
-> Review this plan using the protocol at
-> `docs/procedures/Codex/02-plan-review.md` (Procedure 02).
-> Apply strict evidence mode. Start from Round 1.
->
-> Context: this is a small follow-up plan on `feature/m1-3d-drafting-polish`
-> addressing four UX-testing findings on the M1.3d shipped surface. The parent
-> plan (`m1-3d-drafting-polish.md`) and its post-execution notes §13.1–§13.5
-> are the authoritative context for invariants, gates, and the existing
-> implementation surface.
-
-### Paste to user for approval
-> Please review the plan at
-> `docs/plans/feature/m1-3d-drafting-polish-remediation.md`. After approval,
-> invoke Procedure 03 to execute the single phase.
+### Paste to Codex for post-commit review (after execution)
+> Review the execution commit on `feature/m1-3d-drafting-polish` using
+> `docs/procedures/Codex/04-post-commit-review.md` (Procedure 04). The
+> remediation lands R1 / R2a / R2b / R4 + the QG-1 / QG-2 doc cleanups
+> in one commit. Cross-cutting hard gates DTP-T1/T2/T6/T7 should still be
+> 0 offenders; workspace test count should be ≥346 per Done Criteria §7.

@@ -421,10 +421,18 @@ export function EditorRoot(): ReactElement {
   // that expects an mouseup-driven commit. Other tools (line, circle,
   // arc, etc.) take their points from mousedown via onCanvasClick;
   // forwarding a mouseup point would cause an unwanted "extra point".
+  //
+  // M1.3d-Remediation R4 — symmetry with handleCanvasClick: when a snap
+  // target is resolved this frame, feed the snap-resolved metric (bit-
+  // copied via commitSnappedVertex per I-39) instead of the raw cursor
+  // metric. Without this, the visible snap glyph mid-drag was misleading:
+  // glyph rendered, click committed at the raw cursor — Phase 7 oversight.
   const handleCanvasMouseUp = (metric: Point2D, _screen: ScreenPoint): void => {
     const id = editorUiStore.getState().activeToolId;
     if (id !== 'select-rect' && id !== 'grip-stretch') return;
-    runningToolRef.current?.feedInput({ kind: 'point', point: metric });
+    const snap = editorUiStore.getState().overlay.snapTarget;
+    const point = snap ? commitSnappedVertex(snap.point) : metric;
+    runningToolRef.current?.feedInput({ kind: 'point', point });
   };
 
   return (
@@ -458,7 +466,19 @@ export function EditorRoot(): ReactElement {
           onCanvasMouseUp={handleCanvasMouseUp}
         />
       </div>
-      <div data-component="properties-area" style={{ gridColumn: 2, gridRow: 1, overflow: 'auto' }}>
+      <div
+        data-component="properties-area"
+        style={{
+          gridColumn: 2,
+          gridRow: 1,
+          overflow: 'auto',
+          // M1.3d-Remediation R1 — visible seam between canvas and the
+          // right-hand properties panel. Token from docs/design-tokens.md
+          // (chrome border story). No CSS module needed — matches the
+          // existing inline-style pattern of this layout grid.
+          borderLeft: '1px solid var(--border-default)',
+        }}
+      >
         <PropertiesPanel />
       </div>
       <div data-component="command-bar-area" style={{ gridColumn: '1 / -1', gridRow: 2 }}>
