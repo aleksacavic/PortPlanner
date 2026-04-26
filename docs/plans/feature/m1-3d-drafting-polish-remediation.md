@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-26
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan Revision-1 — Codex Round-1 fixes applied (1 high-risk + 1 quality gap)
+**Status:** Plan Revision-2 — Codex Round-2 blocker fix applied
 
 ---
 
@@ -14,7 +14,8 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
-| Rev-1 | 2026-04-26 | Codex Round-1 (8.9/10) | H1: R4 test SSOT — smoke-e2e is the only validation surface; tool-level snap tests dropped from grip-stretch.test.ts and select-rect.test.ts. Q1: Gate REM-4 hardened to targeted multiline grep within handleCanvasMouseUp's body. |
+| Rev-2 | 2026-04-26 | Codex Round-2 (8.6/10, No-Go on 1 blocker) | B1 carryover from Round-1 H1: REM-5 + Done Criteria still encoded the OLD multi-surface test plan — false-closure risk. Fixed: REM-5 now scopes to `tests/paintCrosshair tests/smoke-e2e` with reworded expectation; new Gate REM-5b adds structural scenario-name grep; Done Criteria test-count delta enumerates the actual 3 new additions (1 pickbox + 1 segment-clear + 1 smoke scenario, total ≥346). **Procedural lesson:** §1.16 step 12 section-consistency pass MUST scan EVERY normative section (gates, Done Criteria, risks, test strategy), not just narrative — Rev-1's `grep "new test"` only caught narrative references, missing the gate block. |
+| Rev-1 | 2026-04-26 | Codex Round-1 (8.9/10) | H1: R4 test SSOT — smoke-e2e is the only validation surface; tool-level snap tests dropped from grip-stretch.test.ts and select-rect.test.ts. Q1: Gate REM-4 hardened to targeted multiline grep within handleCanvasMouseUp's body. (Revision-1 partial — gate/checklist update missed; see Rev-2.) |
 | Rev-0 | 2026-04-26 | Initial draft | All four findings (R1/R2a/R2b/R4) scoped + §1.3 three-round audit. |
 
 ## 1. Request summary
@@ -203,9 +204,23 @@ Gate REM-4: handleCanvasMouseUp body contains commitSnappedVertex
             via Gate REM-5 / REM-6 (smoke scenario asserts snap-resolved
             metric is used at commit time).
 
-Gate REM-5: Test additions present
-  Command: pnpm --filter @portplanner/editor-2d test -- tests/paintCrosshair tests/grip-stretch tests/select-rect
-  Expected: passes; new pickbox + snap-on-mouseup tests present
+Gate REM-5: paintCrosshair pickbox tests + R4 smoke scenario pass
+            (Revision-2 — Codex Round-2 B1 fix: scoped to actual planned
+             additions; drops stale tool-level test file refs)
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/paintCrosshair tests/smoke-e2e
+  Expected: passes. Vitest runs every it() block in both files; failure
+            of any new test (paintCrosshair pickbox/segment-clear or
+            smoke-e2e 'snap honored on grip-stretch mouseup') fails the
+            file → fails the gate. The discipline meta-test inside
+            smoke-e2e iterates SCENARIOS and asserts the new scenario's
+            block mounts <EditorRoot /> and uses fireEvent (Gate 21.2.disc).
+
+Gate REM-5b: R4 smoke scenario name appears in SCENARIOS + matching it() block
+             (Revision-2 — Codex Round-2 B1 fix: structural scenario-name
+              presence check, complements REM-5's behavioral check)
+  Command: rg -n "'snap honored on grip-stretch mouseup'" packages/editor-2d/tests/smoke-e2e.test.tsx
+  Expected: ≥2 matches (one in SCENARIOS const, one in the matching it()
+            block title — the discipline meta-test requires this pairing).
 
 Gate REM-6: Workspace test suite passes
   Command: pnpm test
@@ -231,10 +246,17 @@ Gate REM-8: Typecheck + Biome + build
 - [ ] **R4** — When a snap target is set during a grip-stretch or select-rect
   drag, the mouseup commit uses the snap-resolved metric (Gate REM-4 +
   REM-5 tests).
-- [ ] All Phase REM-1..REM-8 gates pass.
+- [ ] All Phase REM-1..REM-8 gates pass (REM-1, REM-2, REM-3, REM-4, REM-5,
+  REM-5b, REM-6, REM-7, REM-8).
 - [ ] Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 pass (parent plan §9).
-- [ ] Workspace test count ≥ 343 (parent baseline) + ≥3 new (pickbox + 2 snap
-  mouseup tests).
+- [ ] **Workspace test count** ≥ 343 (parent baseline) **+ 3 new = ≥ 346**.
+  The 3 new additions, enumerated explicitly to match planned scope (Codex
+  Round-2 B1 fix):
+  1. `tests/paintCrosshair.test.ts` — `'draws a pickbox square at the cursor'`
+  2. `tests/paintCrosshair.test.ts` — `'line segments do not cross the pickbox region'`
+  3. `tests/smoke-e2e.test.tsx` — `'snap honored on grip-stretch mouseup'`
+  (No new tests in `grip-stretch.test.ts` / `select-rect.test.ts` — see
+  §10 + Rev-1 SSOT for why.)
 - [ ] `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build` all pass.
 
 ## 8. Risks and Mitigations
