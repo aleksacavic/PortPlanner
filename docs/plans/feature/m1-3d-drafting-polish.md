@@ -1,0 +1,1598 @@
+# Plan — M1.3d Drafting UX Polish
+
+**Branch:** `feature/m1-3d-drafting-polish`
+**Author:** Claude (Opus 4.7, 1M context)
+**Date:** 2026-04-26
+**Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after approval
+**Status:** Plan authored — awaiting review
+
+---
+
+## 1. Request summary
+
+Implement Milestone 1.3d per `docs/execution-plan.md` v2.0.0: turn the
+M1.3a drafting surface from "functional but bland" into a CAD-feeling
+editor. Eight polish items — live drafting preview with shared length /
+radius / angle labels, snap-target glyphs, selection highlight with
+click-select grips, grip-drag stretch (the modeless one — the
+dedicated STRETCH command lives in M1.3b), hover entity highlight,
+default grid in the bootstrap project, status-bar live coordinate
+readout, customisable cursor crosshair, and selection rectangle with
+W/C direction convention plus selection auto-fire on canvas click
+without an active tool. Plus the shared infrastructure that unlocks
+all of them: mousemove routing through canvas-host, a new
+`canvas.transient.*` token namespace explicitly outside the ByLayer
+ladder, a shared `paintTransientLabel` painter, and an overlay paint
+pass added to the canvas paint loop after the entity pass.
+
+No new typed objects. No new modify operators. No promotion. No
+dimensions (the dimension-entity work is M1.3c). M1.3d's only role
+is to make M1.3a feel like CAD before the engine widens.
+
+> **AutoCAD reference parity.** Each polish item targets the AutoCAD
+> behavioural contract verbatim: rubber-band live preview during a
+> draw, OSNAPMARKER glyphs at snap targets, dashed selection outline
+> + blue grip squares on click-select with hover-highlight (no
+> grips), L→R window-selection (blue, fully-enclosed) vs R→L
+> crossing-selection (green, any-touch), continuous CURSORSIZE %
+> for crosshair, COORDS readout in the status bar. Where AutoCAD's
+> behaviour and the project's existing conventions disagree, the
+> existing project conventions win and the divergence is documented
+> in the relevant phase.
+
+## 2. Assumptions and scope clarifications
+
+User-confirmed in pre-response acknowledgment dated 2026-04-26:
+
+- **A1 — Path β confirmed.** Typed objects are out of M1 entirely;
+  M1.3d is the last sub-milestone of M1. ADR-016 is unchanged. The
+  `sourceKind: 'direct' | 'promoted'` split records user-intent over
+  the unified Path A pipeline. M2 ships the first typed-object via
+  the direct-draw flow.
+- **A2 — All eight polish items in scope** (live preview, snap glyph,
+  selection + grips, grip-stretch, hover highlight, default grid,
+  coord readout, cursor crosshair, selection-rect auto-fire). Plus
+  the shared infrastructure that unlocks them.
+- **A3 — Selection convention matches AutoCAD verbatim.** L→R drag =
+  window selection (blue, fully-enclosed only). R→L drag = crossing
+  selection (green, any-touch). Selection auto-fires on canvas click
+  without active tool: click on entity = add-to-selection; click on
+  empty + drag = selection rectangle; click + immediate release on
+  empty = clear selection.
+- **A4 — Grips appear on click-select, not on hover.** Hover gives a
+  faint outline highlight (`canvas.node_hover` token); grips appear
+  after click-select and persist until deselection. Reasoning: grip
+  squares are 8×8 CSS px; if grips appeared on hover, moving the
+  cursor toward a grip would leave the entity-bounds region and the
+  grip would disappear — a known UX failure. AutoCAD shows grips on
+  select for exactly this reason.
+- **A5 — Grip-drag stretch lives in M1.3d; the dedicated STRETCH
+  command lives in M1.3b.** Grip-drag is selection-driven (no command
+  invocation, no command-bar prompt) and is the natural outcome of
+  grips being interactive. Both surfaces ride on the same
+  `updatePrimitive(id, patch)` machinery; the user-facing surface
+  splits cleanly. M1.3d ships grip-drag for the existing seven primitive
+  kinds; the M1.3b STRETCH command adds mode sub-options for
+  crossing-window stretch on multiple entities and operator-driven
+  endpoint extension.
+- **A6 — Transient styling lives in a new `canvas.transient.*` token
+  sub-namespace** of the existing canvas semantic tokens
+  (`packages/design-system/src/tokens/semantic-dark.ts`). Transient
+  painters NEVER read layer color tokens; they read only
+  `canvas.transient.*`. This is a hard SSOT boundary enforced by grep
+  (Gate DTP-T1).
+- **A7 — Shared `paintTransientLabel(ctx, anchor, text, viewport,
+  options?)` painter is the SOLE source of in-flight text on canvas.**
+  Used by every draw tool's preview (line length, polyline current-
+  segment length, circle radius, rectangle dimensions, arc radius +
+  angle, xline angle), and by future M1.3b modify operators (move
+  delta, rotate angle). Renders in screen-space (transform reset to
+  identity, then translated to anchor screen-px) with a translucent
+  rounded-pill background for legibility.
+- **A8 — Live preview is yielded by tools alongside the prompt.**
+  `Prompt` type gains an optional `preview?: PreviewShape | undefined`
+  field. Tools that have an in-flight visualisation (line draws a
+  rubber-band line from p1 to cursor; polyline draws the segment chain
+  + rubber-band; circle draws expanding circle + radius line + radius
+  label; rectangle draws expanding rectangle + dim labels; arc 3-point
+  shows progressive state; xline draws the infinite line through pivot
+  and cursor) yield one. Tool runner extracts the preview from each
+  yield and writes it to `editorUiStore.overlay.previewShape`. Paint
+  loop draws it during the overlay pass. **Preview is UI-only state;
+  it MUST NEVER be written to `projectStore`** (Gate DTP-T6).
+- **A9 — Mousemove routing is rAF-coalesced.** canvas-host tracks the
+  latest cursor position in a ref on every `mousemove`; a single
+  `requestAnimationFrame` per frame reads the ref and writes the
+  cursor to `editorUiStore.overlay.cursor`. This caps the cursor-
+  driven update rate at the display refresh rate (typically 60 fps),
+  not the mousemove event rate (which can be 200+ fps on high-poll
+  gaming mice). The same rAF callback re-runs the snap engine if the
+  active tool needs snap candidates.
+- **A10 — Default grid in bootstrap.** `useAutoLoadMostRecent.
+  buildDefaultProject` ships one grid: 5 m × 5 m, origin at `(0,0)`,
+  angle 0, on `LayerId.DEFAULT`, `visible: true`,
+  `activeForSnap: true`. User can disable via Layer Manager or grid
+  properties (when grid-properties UI lands). This makes GSNAP
+  meaningful out of the box.
+- **A11 — Cursor crosshair has continuous CURSORSIZE % + F-key preset
+  toggle.** `editorUiStore.viewport.crosshairSizePct` (number 0–100,
+  default 100 = full canvas, AutoCAD default) drives the crosshair
+  painter. F7 (free per `docs/operator-shortcuts.md`) toggles between
+  100 (full canvas) and 5 (pickbox-sized). A future settings dialog
+  exposes the slider; M1.3d ships only the F-key toggle and the
+  default value, no slider UI.
+- **A12 — Coordinate readout in status bar.** `apps/web/src/shell/
+  StatusBar.tsx` mounts a new `<StatusBarCoordReadout />` component
+  (chrome subtree of editor-2d). The component reads
+  `editorUiStore.overlay.cursor.metric` via `useEditorUi` and renders
+  `X: 12.345  Y: -5.678` (3-decimal precision in metric units, no unit
+  suffix in M1.3d — units / formatting come with M1.3c when dimensions
+  introduce a unit system). When `cursor === null`, the readout shows
+  `X: —  Y: —`.
+- **A13 — Selection rect direction-convention hit-test.** Window selection
+  (L→R, fully enclosed) requires a per-entity bbox-fully-inside-rect
+  check; crossing selection (R→L, any touch) reuses the existing
+  rbush `searchFrustum` (intersects). New helper `searchEnclosed`
+  wrapping rbush + per-entity bbox containment lands in
+  `packages/editor-2d/src/canvas/spatial-index.ts`.
+- **A14 — Grip hit-test is screen-space pixel-distance,** not metric
+  distance. Standard grip target is an 8×8 CSS-px square; cursor within
+  half the side (4 px) hits. Hit-test runs in screen-space because the
+  grip's visual size is constant across zoom — at zoom 100, a 4-px
+  metric tolerance would be a 0.04 m tolerance, useless.
+- **A15 — Snap engine on cursor.** When the active tool's prompt
+  expects a `'point'` Input, the snap engine runs on every rAF tick
+  using current toggles (OSNAP / GSNAP / Ortho). The resolved snap
+  target (or null) is written to `editorUiStore.overlay.snapTarget`.
+  paintSnapGlyph reads it during overlay pass. Tools receive the
+  snap-resolved metric on mousedown via the snap output (not the raw
+  cursor metric) — this is the I-39 bit-copy pattern existing in M1.3a.
+  This means snap is invisible-but-on at draw time today; M1.3d makes
+  it visible.
+- **A16 — Smoke E2E coverage via DOM-level scenarios.** Phase 21-style
+  `render(<EditorRoot />)` + `fireEvent.*` per A18 / Procedure 02 §2.4
+  amendment. Five new scenarios covering the polish surface (preview
+  visible, snap glyph appears, window vs crossing selection, grip-drag
+  stretches, coord readout updates).
+
+## 3. Scope and Blast Radius
+
+### 3.1 In scope — files created
+
+**Design system (`packages/design-system/src`):**
+
+- (no new files — extend existing `tokens/semantic-dark.ts` and
+  `tokens/themes.ts` and `tokens/css-vars.ts`)
+
+**Editor-2d (`packages/editor-2d/src`):**
+
+- `canvas/painters/paintTransientLabel.ts` — shared label painter
+  (length, radius, angle, etc.) in screen-space.
+- `canvas/painters/paintPreview.ts` — kind-discriminated dispatch for
+  preview shapes (line / polyline / rectangle / circle / arc / xline).
+- `canvas/painters/paintSnapGlyph.ts` — 5 glyph shapes (square /
+  triangle / × / ● / +) per snap kind.
+- `canvas/painters/paintSelection.ts` — outline + grip squares on
+  selected entities.
+- `canvas/painters/paintHoverHighlight.ts` — faint outline on
+  `overlay.hoverEntity`.
+- `canvas/painters/paintSelectionRect.ts` — window/crossing rectangle
+  with dashed stroke + light fill.
+- `canvas/painters/paintCrosshair.ts` — full-canvas + pickbox-sized
+  crosshair painter.
+- `canvas/grip-positions.ts` — per-kind `gripsOf(primitive): Grip[]`
+  helper. A `Grip` is `{ entityId, gripKind, position: Point2D }`.
+- `canvas/grip-hit-test.ts` — screen-space hit-test against grips.
+- `tools/select-rect.ts` — modeless selection-rectangle tool started
+  by canvas-host when no other tool is active.
+- `tools/grip-stretch.ts` — modeless grip-drag stretch tool started by
+  canvas-host when a grip is mousedown'd.
+- `chrome/StatusBarCoordReadout.tsx` (+ `.module.css`) — live cursor
+  metric coords component, mounted by apps/web's StatusBar.
+- `tests/paintTransientLabel.test.ts`
+- `tests/paintPreview.test.ts`
+- `tests/paintSnapGlyph.test.ts`
+- `tests/paintSelection.test.ts`
+- `tests/paintSelectionRect.test.ts`
+- `tests/paintCrosshair.test.ts`
+- `tests/grip-positions.test.ts`
+- `tests/grip-hit-test.test.ts`
+- `tests/grip-stretch.test.ts`
+- `tests/select-rect.test.ts`
+- `tests/StatusBarCoordReadout.test.tsx`
+
+**Documentation:**
+
+- `docs/glossary.md` — append terms (Transient overlay, Snap glyph,
+  Grip, Window selection, Crossing selection, Pickbox, Crosshair,
+  CURSORSIZE).
+
+### 3.2 In scope — files modified
+
+**Design system:**
+
+- `packages/design-system/src/tokens/semantic-dark.ts` — append
+  `canvas.transient` sub-namespace.
+- `packages/design-system/src/tokens/themes.ts` — same sub-namespace
+  on light / dark theme variants.
+- `packages/design-system/src/tokens/css-vars.ts` — emit
+  `--canvas-transient-*` CSS custom properties.
+- `docs/design-tokens.md` — append `canvas.transient.*` rows + the
+  rationale that transient overlays bypass the ByLayer ladder.
+
+**Editor-2d:**
+
+- `packages/editor-2d/src/canvas/canvas-host.tsx` — add `onMouseMove`
+  cursor tracking (rAF-coalesced via internal latest-cursor ref) +
+  `onCanvasHover` prop + extend `onCanvasClick` for the no-active-tool
+  selection-auto-fire branch + canvas-cursor CSS-style toggle for the
+  crosshair / pickbox modes.
+- `packages/editor-2d/src/canvas/paint.ts` — add an overlay pass after
+  the entity pass: paintGrid → paintPrimitive (existing) → paintCrosshair
+  → paintHoverHighlight → paintSelection → paintPreview → paintSnapGlyph
+  → paintSelectionRect → paintTransientLabel. Last in z-order so labels
+  are always legible. Order matters; this is the canonical pass.
+- `packages/editor-2d/src/canvas/spatial-index.ts` — add
+  `searchEnclosed(rect: BBox): PrimitiveId[]` for window-selection.
+- `packages/editor-2d/src/canvas/view-transform.ts` — add `metricToScreen`
+  is already there; no change.
+- `packages/editor-2d/src/snap/priority.ts` — no change; existing
+  resolver consumed by Phase 3 snap-on-cursor.
+- `packages/editor-2d/src/EditorRoot.tsx` — wire onCanvasHover →
+  setCursor, onCanvasClick (no-tool branch) → SelectRect tool, onGripDown
+  → GripStretch tool. Listen for F7 (crosshair toggle) via the keyboard
+  router callback set.
+- `packages/editor-2d/src/keyboard/router.ts` — add F7 to the bypass
+  keys; new `onToggleCrosshair` callback.
+- `packages/editor-2d/src/keyboard/shortcuts.ts` — register F7 in the
+  M1.3a single-letter table (or as a bypass key). Add `'select-rect'`
+  and `'grip-stretch'` to `ToolId`.
+- `packages/editor-2d/src/tools/types.ts` — extend `Prompt` with
+  optional `preview?: PreviewShape | undefined`. New `PreviewShape`
+  discriminated union ({ kind: 'line', p1, cursor } | { kind:
+  'polyline', vertices, cursor } | { kind: 'rectangle', corner1,
+  cursor } | { kind: 'circle', center, cursor } | { kind: 'arc',
+  state } | { kind: 'xline', pivot, cursor }).
+- `packages/editor-2d/src/tools/runner.ts` — when a `Prompt` carries
+  `preview`, write it to `editorUiStore.overlay.previewShape` (and
+  also subscribe to cursor changes so the preview shape updates as
+  the cursor moves between feedInputs — the runner re-renders the
+  current `Prompt`'s preview by re-evaluating the cursor-aware
+  generator hook). Implementation choice: tools yield a *snapshot*
+  preview tied to last-known cursor and the runner periodically
+  re-renders by invoking a per-prompt `previewBuilder?: (cursor:
+  Point2D) => PreviewShape` field on `Prompt` instead of a static
+  `preview`. This is the cleanest pattern — see Phase 4.
+- `packages/editor-2d/src/tools/draw/draw-line.ts` — yield
+  `previewBuilder` on the second prompt.
+- `packages/editor-2d/src/tools/draw/draw-polyline.ts` — yield
+  `previewBuilder` from the second prompt onward; build the chain
+  + rubber-band segment.
+- `packages/editor-2d/src/tools/draw/draw-rectangle.ts` — yield
+  `previewBuilder` on the second prompt.
+- `packages/editor-2d/src/tools/draw/draw-circle.ts` — yield
+  `previewBuilder` on the second prompt; preview = circle outline +
+  dashed radius line + radius label.
+- `packages/editor-2d/src/tools/draw/draw-arc.ts` — yield
+  `previewBuilder` on the second + third prompts.
+- `packages/editor-2d/src/tools/draw/draw-xline.ts` — yield
+  `previewBuilder` on the second prompt.
+- `packages/editor-2d/src/tools/draw/draw-point.ts` — no preview (point
+  is a single-click commit).
+- `packages/editor-2d/src/tools/index.ts` — register `select-rect` and
+  `grip-stretch` in `ESSENTIAL_REGISTRY`.
+- `packages/editor-2d/src/ui-state/store.ts` — extend
+  `EditorUiState.viewport` with `crosshairSizePct: number`. Extend
+  `EditorUiState.overlay` with `cursor: { metric: Point2D, screen:
+  ScreenPoint } | null`, `previewShape: PreviewShape | null`,
+  `snapTarget: SnapTarget | null` (already declared, keep), `hoverEntity:
+  PrimitiveId | null`, `selectionRect: { start: Point2D, end: Point2D,
+  direction: 'window' | 'crossing' } | null`, `transientLabels:
+  TransientLabel[]`, `grips: Grip[] | null`. New actions: `setCursor`,
+  `setPreviewShape`, `setSnapTarget`, `setHoverEntity`,
+  `setSelectionRect`, `setTransientLabels`, `setGrips`,
+  `setCrosshairSizePct`.
+- `packages/editor-2d/src/canvas/style.ts` — no change (transient
+  styles bypass ByLayer).
+- `packages/editor-2d/src/index.ts` — re-export
+  `StatusBarCoordReadout`.
+- `packages/editor-2d/tests/smoke-e2e.test.tsx` — extend with five
+  polish scenarios (see Phase 9).
+- `packages/editor-2d/tests/setup.ts` — no change.
+- `packages/editor-2d/package.json` — no new dependencies (we already
+  have everything).
+
+**apps/web:**
+
+- `apps/web/src/hooks/useAutoLoadMostRecent.ts` — bootstrap default
+  project gains a default 5×5 grid on `LayerId.DEFAULT`,
+  `activeForSnap: true`.
+- `apps/web/src/shell/StatusBar.tsx` — mount
+  `<StatusBarCoordReadout />`.
+- `apps/web/tests/auto-load.test.tsx` — assert default grid present
+  in the bootstrapped project.
+
+**docs/operator-shortcuts.md:**
+
+- Append `F7` for crosshair toggle in the M1.3a section. Bump version
+  to 1.0.1; changelog row: "Add F7 → toggle-crosshair (full-canvas /
+  pickbox preset). M1.3d Phase 8."
+
+### 3.3 Out of scope (deferred)
+
+- **Modify operators** (Rotate, Mirror, Scale, Offset, Fillet, Chamfer,
+  Trim, Extend, Join, Explode, Break, Array, Match) — M1.3b.
+- **Dedicated STRETCH command** with Mode sub-options for
+  crossing-window stretch — M1.3b. (Grip-drag stretch lands here per
+  A5; the command-driven STRETCH does not.)
+- **Dimensions** (linear / angular / radius / etc.) — M1.3c.
+- **POLAR (F10), OTRACK (F11), remaining OSNAP modes** — M1.3c.
+- **Typed objects** (RTG_BLOCK, ROAD, BUILDING, PAVEMENT_AREA),
+  classification, extraction, validation, capacity panel — M2.
+- **Promotion** (`sourceKind: 'promoted'` flow) — M4.
+- **Crosshair size slider in a settings dialog** — M1.3d ships only
+  the F7 toggle and the default value. Settings UI is post-M1.
+- **Customisable grip squares** (size, color override) — post-M1.
+- **Theme switcher** — pick dark, ship dark per execution-plan.
+- **Library system, scenarios, generator** — M5.
+
+### 3.4 Blast radius
+
+- **Packages affected:** `editor-2d` (most of the work), `design-system`
+  (token namespace), `apps/web` (default grid + StatusBar mount).
+  `domain` and `project-store` and `project-store-react` unchanged.
+  `services/api` does not exist; not touched.
+- **Other object types affected via cross-object extractors:** none
+  (no extraction in M1.3d).
+- **Scenarios affected (ADR-006):** none. `scenarioId` field
+  unchanged.
+- **Stored data affected:** **NO schema bump.** The default-grid
+  bootstrap creates a grid via the existing M1.3a grid CRUD path; no
+  schema migration. UI state (overlay, viewport.crosshairSizePct) is
+  not persisted (per A3 isolation rule from M1.3a).
+- **UI surfaces affected:** Canvas paint loop gains an overlay pass.
+  Status bar gets a coord readout component. apps/web bootstrap
+  changes. Other shell areas (Navbar, Sidebar) untouched.
+- **Cross-references in non-superseded ADRs:** ADR-021 (2D rendering
+  pipeline v2) gains a documented overlay pass extension — no decision
+  change. All other ADRs unchanged.
+
+### 3.5 Glossary terms appended in `docs/glossary.md`
+
+- **Transient overlay** — Canvas paint pass that runs after the entity
+  pass and renders in-flight UI elements (live preview, snap glyph,
+  selection outline, grip handles, hover highlight, selection
+  rectangle, crosshair, transient labels). Read from
+  `editorUiStore.overlay`. NOT persisted, NOT routed through ByLayer
+  styling, ALWAYS painted last for z-order. ADR-021 extension.
+- **Snap glyph** — Visual marker rendered at a snap-resolved point to
+  show the user "this point will snap." Five shapes per OSNAP /
+  GSNAP kind: `□` endpoint, `△` midpoint, `×` intersection, `●` node,
+  `+` grid node. Color from `canvas.snap_indicator` token. ADR-016
+  / ADR-021.
+- **Grip** — Small interactive square (8×8 CSS px) painted at a key
+  point of a selected entity. User clicks-and-drags a grip to stretch
+  the entity (move the underlying vertex / control point). Distinct
+  from "vertex marker" (always-on dot, AutoCAD has none, we don't
+  ship one). Grips appear on **click-select** (not hover) per A4.
+  ADR-019 / I-DTP-4.
+- **Window selection** — Selection-rectangle drag in the L→R direction
+  (start.x < end.x). Selects only entities **fully enclosed** in the
+  rectangle. AutoCAD-blue stroke + light-blue fill. ADR-016 §
+  Selection conventions.
+- **Crossing selection** — Selection-rectangle drag in the R→L
+  direction (start.x > end.x). Selects entities that **any part
+  intersects** the rectangle. AutoCAD-green stroke + light-green
+  fill. ADR-016 § Selection conventions.
+- **Pickbox** — Small square cursor representation (CSS-styled or
+  painted) shown when no tool is active and the user is selecting
+  entities. Distinct from the full-canvas crosshair shown when a tool
+  is active. AutoCAD's `PICKBOX` system variable. M1.3d Phase 8.
+- **Crosshair** — Two perpendicular guide lines (full-canvas X+Y or
+  pickbox-sized cross at cursor) painted as a transient overlay to
+  give cursor-tracking feedback. Continuous CURSORSIZE % 0–100
+  (default 100). F7 toggles between full-canvas (100) and pickbox
+  (5). AutoCAD's `CURSORSIZE` system variable.
+- **CURSORSIZE** — A scalar 0–100 controlling crosshair length as a
+  percentage of canvas height. Stored in
+  `editorUiStore.viewport.crosshairSizePct`. Default 100.
+  AutoCAD-derived terminology.
+
+### 3.6 Binding specifications touched
+
+| Spec | Change type |
+|------|-------------|
+| ADR-001 Coordinate System | No change — all geometry math in project-local metric Float64; transient labels render in screen-space (transform reset). |
+| ADR-003 Ownership States | No change — primitives have no ownership state; ADR-003 still applies to typed objects (uninstantiated until M2). |
+| ADR-004 Parameter Extraction | No change — extraction deferred to M2. |
+| ADR-005 Library Model | No change. |
+| ADR-007 Validation Engine | No change — deferred to M2. |
+| ADR-008 3D Derivation Cache | No change — 2D only. |
+| ADR-011 UI Stack | No change — Lucide icons + ThemeProvider + `useActiveThemeTokens` consumed unchanged. |
+| ADR-012 Technology Stack | No change — no new dependencies. |
+| ADR-014 Persistence Architecture | No change. |
+| ADR-015 Project Store and State Management | No change — UI state in `editorUiStore` (vanilla zustand + immer; no zundo); overlay slice extended within existing pattern per A3. |
+| ADR-016 Drawing Model | No change. Polyline preview uses bulge-aware rendering (existing). |
+| ADR-017 Layer Model | No change. **`canvas.transient.*` tokens explicitly bypass the ByLayer ladder** — transient painters never read layer color tokens. Documented in plan + enforced by Gate DTP-T1. |
+| ADR-018 Dimension Model | No change. Transient labels are NOT dimension primitives (they're UI overlay text); the dimension entity ships in M1.3c. |
+| ADR-019 Object Model v2 | No change. |
+| ADR-020 Project Sync v2 | No change. Grip-drag stretch emits one UPDATE Operation per primitive per release (existing emitOperation path). |
+| ADR-021 2D Rendering Pipeline v2 | **Documented extension** — paint loop gains an overlay pass after the entity pass. Pass order: `paintGrid → paintPrimitive → paintCrosshair → paintHoverHighlight → paintSelection → paintPreview → paintSnapGlyph → paintSelectionRect → paintTransientLabel`. Last-in-z-order = labels. ADR-021 itself is unchanged; this is the documented implementation of its "drawOverlays" step that was always anticipated. |
+| ADR-023 Tool State Machine + Command Bar (v2) | No change. `Prompt` gains optional `previewBuilder?: (cursor) => PreviewShape` — additive type extension; existing tools work unchanged. |
+| `docs/operator-shortcuts.md` | Version bump 1.0.0 → 1.0.1. Add F7 → toggle-crosshair. |
+| `docs/glossary.md` | Append 8 terms per §3.5. |
+| `docs/coordinate-system.md` | No change. |
+| `docs/design-tokens.md` | Append `canvas.transient.*` token namespace + rationale that transient overlays bypass ByLayer. Version bump per the doc's existing changelog discipline. |
+| `docs/execution-plan.md` | Already revised to v2.0.0 in main commit `4e86e08` (path-β re-slice). M1.3d's place in the new structure documented. |
+| `docs/extraction-registry/*` | No change. |
+| Claude + Codex architecture contracts | No change — ADR table unaffected. |
+| `docs/overview.md` | No change. |
+
+## 4. Architecture Doc Impact
+
+| Doc | Path | Change type | Reason |
+|-----|------|-------------|--------|
+| Design tokens | `docs/design-tokens.md` | Append `canvas.transient.*` namespace + rationale | Transient overlay styling SSOT |
+| Operator shortcuts | `docs/operator-shortcuts.md` | Version 1.0.0 → 1.0.1; add F7 row | Crosshair toggle |
+| Glossary | `docs/glossary.md` | Append 8 terms | New domain vocabulary |
+| ADR-021 (informative reference, not the ADR file) | the plan + Phase 4 docstring | Documented overlay-pass extension within the ADR's `drawOverlays` step | No ADR file edit; the extension is an implementation of the existing ADR-021 step |
+| All other ADRs | (paths) | No change | M1.3d doesn't touch their decisions |
+
+## 5. Deviations from binding specifications (§0.7)
+
+**None.** All polish items extend existing systems within their declared
+extension points:
+
+- ADR-021 reserves a `drawOverlays` step at the end of the paint loop;
+  M1.3d implements it. Not a deviation.
+- `editorUiStore.overlay` slice was declared in M1.3a Phase 11 with
+  fields anticipating polish (snapTarget, guides, selectionHandles).
+  M1.3d expands it. Not a deviation.
+- ADR-019's `sourceKind: 'direct' | 'promoted'` is unchanged; the
+  path-β interpretation is established at the execution-plan level
+  (v2.0.0, commit `4e86e08`), not in any ADR. Not a deviation.
+
+## 6. Object Model and Extraction Integration
+
+**Not applicable.** No new typed object types are introduced in M1.3d.
+The polish surface operates on existing primitives + grids + layers.
+ProjectObject, extraction, validation, classification all stay
+deferred to M2/M3.
+
+## 7. Hydration, Serialization, Undo/Redo, Sync
+
+### 7.1 Hydration (document load path)
+
+- **Default grid in bootstrap.** The
+  `useAutoLoadMostRecent.buildDefaultProject` gains one grid entry
+  with `id: newGridId()`, origin `(0,0)`, angle 0, spacings 5×5,
+  `layerId: LayerId.DEFAULT`, `visible: true`, `activeForSnap: true`.
+  This is a CREATION-time default, not a HYDRATION default — projects
+  loaded from IndexedDB carry their own grids (or none). No schema
+  migration.
+- **Loading projects from M1.3a (no grid).** Hydration is unchanged.
+  Loaded projects without grids stay without grids; users add grids
+  via Layer Manager → Grid (a future UI; M1.3d does not ship a
+  grid-creation UI beyond the bootstrap default).
+
+### 7.2 Serialization (document save path)
+
+- No change. The new `editorUiStore.viewport.crosshairSizePct` is UI
+  state, not persisted (per A3 isolation rule).
+  `editorUiStore.overlay.cursor` and friends are UI-only and do not
+  persist.
+
+### 7.3 Undo / Redo
+
+- **Grip-drag stretch emits one UPDATE Operation per release.** The
+  underlying `updatePrimitive(id, patch)` already goes through
+  `emitOperation` per Phase 6 of M1.3a, so undo / redo work uniformly
+  via zundo. The grip-stretch tool does NOT pre-write incremental
+  partial-state during the drag — only the commit (mouseup) writes.
+  This avoids generating N UPDATE Operations during a drag.
+- **Selection auto-fire and selection rectangle do NOT emit
+  Operations.** Selection is UI-only state; selecting entities does
+  not modify the project store. Per ADR-015, UI state is not
+  undoable.
+- **Crosshair toggle does NOT emit Operations.** Same reason.
+
+### 7.4 Sync (ADR-020)
+
+- No change. M1.3d's only project-store writes are
+  `updatePrimitive` (grip-drag commit, existing pathway) and
+  `addGrid` (bootstrap, existing pathway). Both pre-existing
+  Operation flows.
+
+## 8. Implementation phases
+
+Eight phases (excluding final audits + handoff). Each phase has its
+file list, steps, invariants, gates, and tests.
+
+> **Phase ordering note.** Phases 1–3 establish the **infrastructure**
+> (tokens, ui-state slice, mousemove + cursor tracking + snap
+> visualization). Phases 4–6 implement the **per-tool features** (live
+> preview, selection display, grip-stretch). Phase 7 is **selection-
+> rectangle + auto-fire** (depends on Phase 5's infrastructure). Phase
+> 8 is **status bar + cursor crosshair**. Phase 9 is **smoke E2E
+> rewrite** (per A18 / Procedure 02 §2.4 — DOM-level scenarios that
+> exercise each polish item). Phase 10 is closure.
+
+### Phase 1 — Design tokens + UI state extension
+
+**Goal:** Establish the `canvas.transient.*` token namespace and the
+overlay slice extensions that the rest of M1.3d will consume.
+
+**Files affected:**
+- `packages/design-system/src/tokens/semantic-dark.ts` (modified — add
+  `canvas.transient` sub-namespace)
+- `packages/design-system/src/tokens/themes.ts` (modified)
+- `packages/design-system/src/tokens/css-vars.ts` (modified — emit
+  `--canvas-transient-*`)
+- `docs/design-tokens.md` (modified — append `canvas.transient.*` rows
+  + rationale section "Transient overlays bypass ByLayer")
+- `packages/editor-2d/src/ui-state/store.ts` (modified — extend
+  `EditorUiState.viewport` and `EditorUiState.overlay`)
+- `packages/editor-2d/tests/ui-state.test.ts` (modified — assertions
+  for new slice fields and actions)
+
+**Steps:**
+
+1. In `tokens/semantic-dark.ts`, add `canvas.transient` block:
+   ```ts
+   canvas: {
+     ... existing tokens unchanged ...,
+     transient: {
+       preview_stroke: '#7d8fa3',
+       preview_fill:   'rgba(125,143,163,0.05)',
+       preview_dash:   [6, 4],   // dash pattern for ctx.setLineDash
+       label_text:     '#c8d4e3',
+       label_bg:       'rgba(13,20,32,0.85)',
+       label_padding:  4,
+       crosshair:      'rgba(180,200,255,0.35)',
+       crosshair_dash: [],
+       dimension_line: '#7d8fa3',
+       selection_window:   { stroke: 'rgba(42,127,255,0.9)',  fill: 'rgba(42,127,255,0.07)',  dash: [6,4] },
+       selection_crossing: { stroke: 'rgba(0,255,128,0.9)',   fill: 'rgba(0,255,128,0.07)',   dash: [6,4] },
+       hover_highlight:    { stroke: 'rgba(180,200,255,0.5)', dash: [4,2] },
+     },
+   },
+   ```
+2. Mirror in `tokens/themes.ts` for any light-theme equivalent (though
+   M1 ships dark only — keep the structure for future).
+3. Update `tokens/css-vars.ts` to emit `--canvas-transient-preview-
+   stroke`, `--canvas-transient-preview-fill`, etc. Existing emit
+   helper handles flat keys; nested object needs a recursive walker
+   (or flatten + dot-to-dash convention).
+4. Append section to `docs/design-tokens.md` titled "Transient overlay
+   tokens (`canvas.transient.*`)" listing each token + rationale +
+   the SSOT rule "Transient painters MUST NOT read layer color
+   tokens; this is enforced by Gate DTP-T1." Bump doc changelog.
+5. Extend `EditorUiState.viewport` with `crosshairSizePct: number`
+   (default 100). Add `setCrosshairSizePct(n: number)` action.
+6. Extend `EditorUiState.overlay`. New shape:
+   ```ts
+   interface OverlayState {
+     cursor: { metric: Point2D; screen: ScreenPoint } | null;
+     snapTarget: SnapTarget | null;        // existing
+     guides:     Array<{ from: Point2D; to: Point2D }>;   // existing
+     selectionHandles: Array<Point2D>;      // existing — kept; possibly deprecated by grips
+     previewShape: PreviewShape | null;
+     hoverEntity: PrimitiveId | null;
+     selectionRect: { startMetric: Point2D; endMetric: Point2D; direction: 'window' | 'crossing' } | null;
+     transientLabels: TransientLabel[];
+     grips: Grip[] | null;
+   }
+   ```
+   Add the corresponding actions on `editorUiActions`.
+7. Update `tests/ui-state.test.ts` to cover the new fields and
+   actions (default values, idempotent setters, isolation across
+   slices).
+
+**Invariants introduced:**
+
+- I-DTP-1: `canvas.transient.*` tokens are the SOLE source of
+  transient overlay styling. Transient painters MUST NOT import or
+  read layer-color tokens (ByLayer is for entities, not overlays).
+  Enforced by Gate DTP-T1 (grep on transient painter files).
+- I-DTP-2: `EditorUiState.overlay.cursor === null` when no mousemove
+  has yet occurred OR the cursor has left the canvas; non-null
+  otherwise. Tests cover both transitions.
+- I-DTP-3: `EditorUiState.viewport.crosshairSizePct` is clamped to
+  [0, 100] at the action level. Tests cover boundary values.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-1.1: Type-check passes
+  Command: pnpm tsc --noEmit
+  Expected: zero errors
+
+Gate DTP-1.2: Token namespace present in semantic-dark.ts
+  Command: rg -n "transient:" packages/design-system/src/tokens/semantic-dark.ts
+  Expected: ≥1 match
+
+Gate DTP-1.3: CSS vars emit transient tokens
+  Command: rg -n "--canvas-transient" packages/design-system/src/tokens/css-vars.ts
+  Expected: ≥1 match (the emitter recognises the nested namespace)
+
+Gate DTP-1.4: docs/design-tokens.md updated
+  Command: rg -n "canvas\.transient" docs/design-tokens.md
+  Expected: ≥1 match
+
+Gate DTP-1.5: Overlay slice extended
+  Command: rg -n "previewShape|hoverEntity|selectionRect|transientLabels|grips" packages/editor-2d/src/ui-state/store.ts
+  Expected: ≥5 matches
+
+Gate DTP-1.6: ui-state tests cover new fields
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/ui-state
+  Expected: passes; new tests for cursor/previewShape/etc. present
+```
+
+### Phase 2 — Mousemove routing through canvas-host
+
+**Goal:** Track cursor on every mousemove with rAF coalescing; expose
+via `onCanvasHover(metric, screen)` prop. Wire EditorRoot to write
+to `overlay.cursor`. This is the foundation that unlocks Phases 3,
+4, 6, 7, 8.
+
+**Files affected:**
+- `packages/editor-2d/src/canvas/canvas-host.tsx` (modified)
+- `packages/editor-2d/src/EditorRoot.tsx` (modified — wire
+  onCanvasHover to setCursor)
+- `packages/editor-2d/tests/canvas-host.test.tsx` (modified or new —
+  rAF-coalesced cursor tracking assertions)
+
+**Steps:**
+
+1. Add `onCanvasHover?: (metric: Point2D, screen: ScreenPoint) => void`
+   to `CanvasHostProps`.
+2. canvas-host's `onMouseMove` is currently only used for middle-
+   mouse-drag pan. Refactor:
+   - If `panStateRef.current` is set → existing pan handling.
+   - **Always** (whether or not panning) update a new `cursorRef`
+     with the latest `(metric, screen)` derived from
+     `e.clientX/Y - rect.left/top` + `screenToMetric`.
+   - rAF-schedule one cursor flush per frame: at the next animation
+     frame, if `cursorRef` is non-null and differs from the last
+     flushed value, call `onCanvasHover(metric, screen)`.
+3. Add a single rAF coalescing pattern via a `cursorRafRef` (mirror
+   of the existing `rafRef` for paint). On unmount, cancel.
+4. EditorRoot's new `handleCanvasHover` prop calls
+   `editorUiActions.setCursor({ metric, screen })`.
+5. Tests: assert that synchronous `mousemove` events produce at
+   most ONE cursor update per RAF tick. Use a fake-timers RAF
+   shim if available, or just rely on the coalescing pattern
+   being verifiable via internal call counts.
+
+**Invariants introduced:**
+
+- I-DTP-4: canvas-host's mousemove handler is rAF-coalesced — no
+  more than one `onCanvasHover` call per animation frame, even at
+  ≥200 mousemove events / second. Tests assert this.
+- I-DTP-5: `onCanvasHover` is called with `metric` derived from
+  `screenToMetric(screen, viewport)` — the same view-transform
+  function used at click time (per ADR-001 / I-22 round-trip).
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-2.1: onCanvasHover prop on CanvasHostProps
+  Command: rg -n "onCanvasHover" packages/editor-2d/src/canvas/canvas-host.tsx
+  Expected: ≥1 match
+
+Gate DTP-2.2: rAF-coalesced cursor flush
+  Command: rg -n "cursorRafRef|cursorRef|requestAnimationFrame" packages/editor-2d/src/canvas/canvas-host.tsx
+  Expected: ≥3 matches (the new ref + the new rAF call site + the existing paint rAF unaffected)
+
+Gate DTP-2.3: EditorRoot writes overlay.cursor
+  Command: rg -n "setCursor|onCanvasHover" packages/editor-2d/src/EditorRoot.tsx
+  Expected: ≥2 matches
+
+Gate DTP-2.4: canvas-host tests cover the new behaviour
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/canvas-host
+  Expected: passes (coalescing test present)
+
+Gate DTP-2.5: Type-check passes
+  Command: pnpm tsc --noEmit
+  Expected: zero errors
+```
+
+### Phase 3 — Snap engine on cursor + snap glyph painter
+
+**Goal:** Run the snap engine on the cursor metric and write the
+resolved target to `overlay.snapTarget`. Paint snap glyph (per-mode
+shape) at the resolved target during the overlay pass.
+
+**Files affected:**
+- `packages/editor-2d/src/canvas/painters/paintSnapGlyph.ts` (new)
+- `packages/editor-2d/src/canvas/paint.ts` (modified — overlay pass)
+- `packages/editor-2d/src/EditorRoot.tsx` (modified — when cursor
+  changes AND a tool is active expecting `'point'` Input AND OSNAP /
+  GSNAP toggle is on, run the snap resolver and `setSnapTarget`)
+- `packages/editor-2d/src/snap/index.ts` (re-exports if needed)
+- `packages/editor-2d/tests/paintSnapGlyph.test.ts` (new)
+
+**Steps:**
+
+1. Author `paintSnapGlyph.ts`. Five shapes per `SnapTarget.kind`:
+   - `endpoint` → filled square (8 px CSS).
+   - `midpoint` → filled triangle (8 px CSS).
+   - `intersection` → `×` (two diagonal lines, 10 px each).
+   - `node` → filled circle (5 px radius).
+   - `grid_node` → `+` (two perpendicular lines, 8 px).
+   - `grid_line_fallback` → small tick perpendicular to the grid
+     line at the foot of perpendicular drop.
+   Color from `canvas.snap_indicator` token (existing). Stroke
+   width 1.5 CSS px.
+2. Render in screen-space: at paint time, reset transform to identity
+   then translate to `metricToScreen(snapTarget.target, viewport)`,
+   then draw the shape. This makes the glyph size constant across
+   zoom — the user-felt visual size should not change.
+3. Update `paint.ts` to call paintSnapGlyph as part of the new
+   overlay pass (after entities, before paintTransientLabel).
+4. EditorRoot effect: when `overlay.cursor` changes and a tool
+   awaits a `'point'` Input (check `commandBar.activePrompt !== null`
+   AND prompt's accepted kinds include `'point'`) AND `toggles.osnap`
+   OR `toggles.gsnap` is on, run the snap resolver from
+   `src/snap/priority.ts` on the cursor and call
+   `editorUiActions.setSnapTarget(...)`. Otherwise null it.
+5. Tests: paintSnapGlyph called with each kind produces the right
+   path commands (verify via captured ctx call list).
+
+**Invariants introduced:**
+
+- I-DTP-6: paintSnapGlyph runs in screen-space (transform reset to
+  identity); glyph visual size is invariant across zoom. Verified
+  by the painter test capturing the post-`setTransform(1,0,0,1,...)`
+  call sequence.
+- I-DTP-7: `overlay.snapTarget` is populated only when a tool is
+  awaiting `'point'` Input AND at least one of OSNAP/GSNAP is on;
+  null otherwise. Tested via integration test.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-3.1: paintSnapGlyph file present, exports paintSnapGlyph
+  Command: rg -n "export function paintSnapGlyph" packages/editor-2d/src/canvas/painters/paintSnapGlyph.ts
+  Expected: ≥1 match
+
+Gate DTP-3.2: All five glyph kinds handled
+  Command: rg -n "endpoint|midpoint|intersection|'node'|grid_node" packages/editor-2d/src/canvas/painters/paintSnapGlyph.ts
+  Expected: ≥5 matches
+
+Gate DTP-3.3: paint.ts overlay pass calls paintSnapGlyph
+  Command: rg -n "paintSnapGlyph" packages/editor-2d/src/canvas/paint.ts
+  Expected: ≥1 match
+
+Gate DTP-3.4: paintSnapGlyph tests pass
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/paintSnapGlyph
+  Expected: passes
+```
+
+### Phase 4 — Live preview + shared transient label
+
+**Goal:** Tools yield `previewBuilder` along with their prompts; the
+runner re-builds the preview shape on every cursor tick;
+paintPreview painter draws it; paintTransientLabel renders the
+length / radius / angle / dimension labels.
+
+**Files affected:**
+- `packages/editor-2d/src/canvas/painters/paintTransientLabel.ts` (new)
+- `packages/editor-2d/src/canvas/painters/paintPreview.ts` (new)
+- `packages/editor-2d/src/tools/types.ts` (modified — extend `Prompt`
+  with `previewBuilder?: (cursor: Point2D) => PreviewShape`)
+- `packages/editor-2d/src/tools/runner.ts` (modified — re-evaluate
+  `previewBuilder` on cursor change)
+- `packages/editor-2d/src/tools/draw/draw-line.ts` (modified — yield
+  `previewBuilder`)
+- `packages/editor-2d/src/tools/draw/draw-polyline.ts` (modified)
+- `packages/editor-2d/src/tools/draw/draw-rectangle.ts` (modified)
+- `packages/editor-2d/src/tools/draw/draw-circle.ts` (modified)
+- `packages/editor-2d/src/tools/draw/draw-arc.ts` (modified)
+- `packages/editor-2d/src/tools/draw/draw-xline.ts` (modified)
+- `packages/editor-2d/src/canvas/paint.ts` (modified — overlay pass
+  calls paintPreview + paintTransientLabel)
+- `packages/editor-2d/tests/paintPreview.test.ts` (new)
+- `packages/editor-2d/tests/paintTransientLabel.test.ts` (new)
+- `packages/editor-2d/tests/draw-tools.test.ts` (modified — assert
+  previewBuilder yields)
+
+**Steps:**
+
+1. **Author `paintTransientLabel.ts`.** Signature:
+   ```ts
+   paintTransientLabel(
+     ctx: CanvasRenderingContext2D,
+     anchor: { metric: Point2D, screenOffset?: { dx: number; dy: number } },
+     text: string,
+     viewport: Viewport,
+   ): void;
+   ```
+   Renders text at `metricToScreen(anchor.metric, viewport)` (+ optional
+   screen-px offset). Translucent rounded-pill background for legibility.
+   Tokens: `canvas.transient.label_text`, `label_bg`, `label_padding`.
+   Reset transform to identity at the start, restore at the end. Font:
+   `'12px system-ui, -apple-system, sans-serif'` (matches design-system).
+2. **Define `PreviewShape` discriminated union** in `tools/types.ts`:
+   ```ts
+   export type PreviewShape =
+     | { kind: 'line'; p1: Point2D; cursor: Point2D }
+     | { kind: 'polyline'; vertices: Point2D[]; cursor: Point2D; closed: boolean }
+     | { kind: 'rectangle'; corner1: Point2D; cursor: Point2D }
+     | { kind: 'circle'; center: Point2D; cursor: Point2D }
+     | { kind: 'arc-2pt'; p1: Point2D; cursor: Point2D }    // first leg, no arc shape yet
+     | { kind: 'arc-3pt'; p1: Point2D; p2: Point2D; cursor: Point2D }  // arc through 3 points
+     | { kind: 'xline'; pivot: Point2D; cursor: Point2D };
+   ```
+3. **Author `paintPreview.ts`** dispatching on `PreviewShape.kind`:
+   - line: dashed line p1→cursor + label "{length} m" at midpoint.
+   - polyline: chain segments + dashed rubber-band last→cursor +
+     label on rubber-band segment.
+   - rectangle: dashed rect from corner1 to cursor + "WxH m" label
+     near the second corner.
+   - circle: dashed circle outline + dashed radius line center→cursor
+     + "R xx.xx m" label on radius line midpoint.
+   - arc-2pt: dashed line p1→cursor (no arc yet, only the first leg
+     drawn for guidance).
+   - arc-3pt: dashed arc through (p1, p2, cursor) computed via
+     circumscribed-circle math + "R xx.xx m" label near the arc.
+   - xline: dashed infinite line through pivot at angle defined by
+     pivot→cursor direction (clipped to viewport via the existing
+     `paintXline` clipping math).
+   Stroke style: `canvas.transient.preview_stroke` + `setLineDash`
+   from `canvas.transient.preview_dash`.
+4. **Extend `Prompt` type** in `tools/types.ts`:
+   ```ts
+   export interface Prompt {
+     text: string;
+     subOptions?: SubOption[];
+     defaultValue?: string;
+     acceptedInputKinds: AcceptedInputKind[];
+     /**
+      * Optional: build a preview shape from the current cursor metric.
+      * Tool runner re-invokes this on every cursor change and writes
+      * the result to `overlay.previewShape`. Tools that don't need
+      * a preview omit it.
+      */
+     previewBuilder?: (cursor: Point2D) => PreviewShape;
+   }
+   ```
+5. **Update tool runner** to subscribe to `editorUiStore.overlay.cursor`
+   in addition to its own input queue. When the active prompt has a
+   `previewBuilder` and cursor changes, re-build the preview and
+   `setPreviewShape(builder(cursor.metric))`. When the prompt resolves,
+   `setPreviewShape(null)` + setTransientLabels([]).
+6. **Update each draw tool** to yield `previewBuilder` on the
+   appropriate prompts (per the `PreviewShape.kind` table):
+   - draw-line: second prompt yields `previewBuilder: (c) => ({ kind:
+     'line', p1: start, cursor: c })`.
+   - draw-polyline: every loop iteration yields `previewBuilder: (c)
+     => ({ kind: 'polyline', vertices: [...], cursor: c, closed:
+     false })`.
+   - draw-rectangle: second prompt yields `previewBuilder: (c) =>
+     ({ kind: 'rectangle', corner1: c1, cursor: c })`.
+   - draw-circle: second prompt yields `previewBuilder: (c) =>
+     ({ kind: 'circle', center: ctr, cursor: c })`.
+   - draw-arc: second prompt yields `arc-2pt`, third yields `arc-3pt`.
+   - draw-xline: second prompt yields `previewBuilder: (c) =>
+     ({ kind: 'xline', pivot: pv, cursor: c })`.
+   - draw-point: no preview (single click).
+7. **Update `paint.ts`** overlay pass to call paintPreview after
+   paintHoverHighlight + paintSelection but before paintSnapGlyph.
+8. Tests: per-painter capture tests; tool tests assert previewBuilder
+   yielded in the right phase.
+
+**Invariants introduced:**
+
+- I-DTP-8: `paintTransientLabel` is the SOLE source of transient
+  overlay text on the canvas. Other painters never call
+  `ctx.fillText` / `ctx.strokeText`. Enforced by Gate DTP-T2.
+- I-DTP-9: Live preview is UI-only state; `paintPreview` reads
+  `editorUiStore.overlay.previewShape`, NEVER `projectStore`.
+  Enforced by Gate DTP-T6.
+- I-DTP-10: `previewBuilder` is invoked on cursor change, not on
+  click. Tested in tool-runner integration test.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-4.1: paintTransientLabel exports
+  Command: rg -n "export function paintTransientLabel" packages/editor-2d/src/canvas/painters/paintTransientLabel.ts
+  Expected: ≥1 match
+
+Gate DTP-4.2: paintPreview handles all 7 PreviewShape kinds
+  Command: rg -n "'line'|'polyline'|'rectangle'|'circle'|'arc-2pt'|'arc-3pt'|'xline'" packages/editor-2d/src/canvas/painters/paintPreview.ts
+  Expected: ≥7 matches
+
+Gate DTP-4.3: All draw tools yield previewBuilder where applicable
+  Command: rg -n "previewBuilder" packages/editor-2d/src/tools/draw/draw-line.ts packages/editor-2d/src/tools/draw/draw-polyline.ts packages/editor-2d/src/tools/draw/draw-rectangle.ts packages/editor-2d/src/tools/draw/draw-circle.ts packages/editor-2d/src/tools/draw/draw-arc.ts packages/editor-2d/src/tools/draw/draw-xline.ts
+  Expected: ≥6 matches (one per tool)
+
+Gate DTP-4.4: Painter + tool tests pass
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/paintPreview tests/paintTransientLabel tests/draw-tools
+  Expected: passes
+```
+
+### Phase 5 — Selection display: hover highlight, selection outline, grips
+
+**Goal:** Hover entity → faint outline highlight (`canvas.transient.
+hover_highlight`). Click-select entity → outline + grip squares
+(`canvas.transient.selection_*` + `canvas.handle_move`). No grips on
+hover.
+
+**Files affected:**
+- `packages/editor-2d/src/canvas/painters/paintHoverHighlight.ts` (new)
+- `packages/editor-2d/src/canvas/painters/paintSelection.ts` (new)
+- `packages/editor-2d/src/canvas/grip-positions.ts` (new — `gripsOf(p):
+  Grip[]` per primitive kind)
+- `packages/editor-2d/src/EditorRoot.tsx` (modified — on cursor
+  change, run hit-test; update overlay.hoverEntity. On selection
+  change, update overlay.grips.)
+- `packages/editor-2d/src/canvas/paint.ts` (modified — overlay pass)
+- `packages/editor-2d/tests/grip-positions.test.ts` (new)
+- `packages/editor-2d/tests/paintHoverHighlight.test.ts` (new)
+- `packages/editor-2d/tests/paintSelection.test.ts` (new)
+
+**Steps:**
+
+1. Author `grip-positions.ts`. Returns the `Grip[]` for a given
+   primitive — per kind:
+   - point: 1 grip at position.
+   - line: 2 grips (p1, p2).
+   - polyline: N grips, one per vertex.
+   - rectangle: 5 grips — 4 corners + center (or just corners; AutoCAD
+     shows 4 corners + 4 mid-edges + center. M1.3d ships 4 corners
+     only; mid-edges + center deferred).
+   - circle: 4 grips — N/E/S/W on circumference + 1 center.
+   - arc: 3 grips — 2 endpoints + 1 midpoint of arc.
+   - xline: 1 grip at pivot + 1 indicator at pivot+10m along angle
+     (for visual orientation).
+   Each `Grip = { entityId, gripKind: string, position: Point2D }`.
+2. Author `paintHoverHighlight.ts`. When `overlay.hoverEntity` is
+   non-null, paint that entity with a faint dashed outline using
+   `canvas.transient.hover_highlight.stroke`. Stroke-only, no fill.
+   Reset transform pattern matching paintSnapGlyph.
+3. Author `paintSelection.ts`. For each entity in
+   `editorUiStore.selection`:
+   - Paint the entity outline using
+     `canvas.transient.selection_window.stroke` (slightly different
+     from hover; selection outline is 1.5 px solid blue, not dashed).
+   - Paint each grip from `gripsOf(entity)` as a 7×7 px filled blue
+     square + 1 px white outline using `canvas.handle_move`.
+4. EditorRoot effect: on cursor change, run hit-test (existing
+   `hitTest(...)` from `canvas/hit-test.ts`) on the cursor metric.
+   `setHoverEntity(hit ?? null)`.
+5. EditorRoot effect: on selection change OR primitives change, recompute
+   `overlay.grips` from selected entities + their gripsOf shapes.
+   `setGrips(grips)`.
+6. Update `paint.ts` overlay pass to call paintHoverHighlight first
+   (lower z), then paintSelection.
+7. Tests: gripsOf for each primitive kind produces expected shape.
+   Painter tests capture path commands.
+
+**Invariants introduced:**
+
+- I-DTP-11: Grips appear ONLY when an entity is selected; never on
+  hover. `paintSelection` is the sole grip painter and reads
+  `editorUiStore.selection`. Hover painter (paintHoverHighlight)
+  reads `overlay.hoverEntity` and never paints grips.
+- I-DTP-12: `overlay.hoverEntity` is updated only when no tool is
+  active (tools that await `'point'` should not show hover-of-other-
+  entity since that's confusing). When a tool is active, hover-
+  highlight is skipped. EditorRoot effect gates on
+  `editorUiStore.activeToolId === null`.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-5.1: gripsOf handles all 7 primitive kinds
+  Command: rg -n "'point'|'line'|'polyline'|'rectangle'|'circle'|'arc'|'xline'" packages/editor-2d/src/canvas/grip-positions.ts
+  Expected: ≥7 matches
+
+Gate DTP-5.2: paintSelection / paintHoverHighlight files present and exported
+  Command: rg -n "export function paintSelection|export function paintHoverHighlight" packages/editor-2d/src/canvas/painters/
+  Expected: ≥2 matches
+
+Gate DTP-5.3: paint.ts overlay pass orders correctly
+  Command: rg -n "paintHoverHighlight|paintSelection" packages/editor-2d/src/canvas/paint.ts
+  Expected: ≥2 matches; paintHoverHighlight call site precedes paintSelection in source order
+
+Gate DTP-5.4: Painter + grip-positions tests pass
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/grip-positions tests/paintHoverHighlight tests/paintSelection
+  Expected: passes
+```
+
+### Phase 6 — Grip hit-test + grip-stretch tool
+
+**Goal:** Click on a grip square → start grip-stretch tool → drag
+updates a transient preview → release commits the primitive update.
+Same `updatePrimitive` pathway used by Properties panel and Move /
+Copy tools.
+
+**Files affected:**
+- `packages/editor-2d/src/canvas/grip-hit-test.ts` (new — screen-space
+  grip hit-test)
+- `packages/editor-2d/src/tools/grip-stretch.ts` (new)
+- `packages/editor-2d/src/tools/index.ts` (modified — register)
+- `packages/editor-2d/src/keyboard/shortcuts.ts` (modified — add
+  `'grip-stretch'` to ToolId)
+- `packages/editor-2d/src/canvas/canvas-host.tsx` (modified — on
+  mousedown, before passing to onCanvasClick, hit-test against grips
+  via the active tool runner; if grip hit, fire onGripDown(grip))
+- `packages/editor-2d/src/EditorRoot.tsx` (modified — `onGripDown`
+  handler starts grip-stretch tool; mousemove during grip-stretch
+  yields preview)
+- `packages/editor-2d/tests/grip-hit-test.test.ts` (new)
+- `packages/editor-2d/tests/grip-stretch.test.ts` (new)
+
+**Steps:**
+
+1. Author `grip-hit-test.ts`. Screen-space hit-test:
+   ```ts
+   gripHitTest(
+     screen: ScreenPoint,
+     grips: Grip[],
+     viewport: Viewport,
+     toleranceCss?: number = 4,
+   ): Grip | null
+   ```
+   For each grip: convert grip.position to screen via
+   `metricToScreen`; check if screen is within tolerance (4 CSS px =
+   half the 8-px grip square). Returns the closest hit or null.
+2. Author `grip-stretch.ts` as a tool generator:
+   - Tool starts with the picked grip in context (passed as initial
+     state via the tool factory closure).
+   - Yields prompt: "Specify new position".
+   - Loop: receives `'point'` Inputs (canvas mousedown on a new
+     point). On commit, computes the patch for the entity based on
+     `gripKind` (e.g. line p1 grip: `{ p1: newPoint }`; polyline
+     vertex K grip: `{ vertices: [...] with vertices[K] replaced }`).
+     Calls `updatePrimitive(entityId, patch)`. Returns committed.
+   - Yields `previewBuilder` that produces the primitive's preview
+     shape (NOT the original primitive — a hypothetical with the
+     grip moved). Since the user is dragging, the preview is the
+     entity-being-modified following the cursor.
+   - On Escape, returns aborted.
+3. canvas-host's onMouseDown is currently:
+   - middle button → pan
+   - right button → onCanvasCommit
+   - left button → onCanvasClick(metric, screen)
+   Add to the left-button branch: BEFORE calling
+   `onCanvasClick`, if `props.onGripHitTest` is provided, call it
+   with `screen`. If it returns a grip, fire
+   `props.onGripDown(grip)` and STOP. Otherwise fall through to the
+   normal click handler.
+4. EditorRoot:
+   - `onGripHitTest = (screen) => gripHitTest(screen, overlay.grips
+     ?? [], viewport)`.
+   - `onGripDown = (grip) => { runningToolRef.current?.abort();
+     runningToolRef.current = startTool('grip-stretch',
+     gripStretchTool(grip)); ... }`.
+5. Mousemove during a grip-stretch tool: the tool's running prompt
+   has a `previewBuilder` that returns the entity's hypothetical
+   shape with the grip moved to cursor. Tool runner re-builds on
+   cursor change (Phase 4 mechanism).
+6. Tests:
+   - `gripHitTest` returns the closest grip within tolerance, null
+     beyond tolerance.
+   - `grip-stretch` for each primitive kind: feed grip + new point
+     → commit → primitive updated correctly.
+
+**Invariants introduced:**
+
+- I-DTP-13: grip-stretch tool commits exactly one UPDATE Operation
+  per release (not per intermediate cursor frame). Tested.
+- I-DTP-14: gripHitTest is screen-space (CSS-px), not metric-space.
+  Visual size is constant across zoom. Tested.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-6.1: grip-stretch tool registered
+  Command: rg -n "grip-stretch" packages/editor-2d/src/tools/index.ts
+  Expected: ≥1 match
+
+Gate DTP-6.2: gripHitTest exported, screen-space
+  Command: rg -n "export function gripHitTest" packages/editor-2d/src/canvas/grip-hit-test.ts
+  Expected: ≥1 match
+
+Gate DTP-6.3: canvas-host wires onGripHitTest + onGripDown
+  Command: rg -n "onGripHitTest|onGripDown" packages/editor-2d/src/canvas/canvas-host.tsx
+  Expected: ≥2 matches
+
+Gate DTP-6.4: grip tests pass
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/grip-hit-test tests/grip-stretch
+  Expected: passes
+```
+
+### Phase 7 — Selection auto-fire + window/crossing rectangle
+
+**Goal:** Click on canvas without an active tool fires the select-rect
+tool. Click on entity (hit-test hit) → add to selection. Click on
+empty + drag → window/crossing rectangle. Direction convention:
+L→R = window/blue/fully-enclosed. R→L = crossing/green/any-touch.
+
+**Files affected:**
+- `packages/editor-2d/src/tools/select-rect.ts` (new)
+- `packages/editor-2d/src/canvas/painters/paintSelectionRect.ts` (new)
+- `packages/editor-2d/src/canvas/spatial-index.ts` (modified — add
+  `searchEnclosed(rect): PrimitiveId[]`)
+- `packages/editor-2d/src/canvas/canvas-host.tsx` (modified — left-click
+  with no active tool starts selection-rect)
+- `packages/editor-2d/src/EditorRoot.tsx` (modified — wire selection-
+  rect lifecycle: mousedown → start, mousemove → update,
+  mouseup → resolve + commit)
+- `packages/editor-2d/src/tools/index.ts` (modified)
+- `packages/editor-2d/src/keyboard/shortcuts.ts` (modified)
+- `packages/editor-2d/tests/select-rect.test.ts` (new)
+- `packages/editor-2d/tests/paintSelectionRect.test.ts` (new)
+- `packages/editor-2d/tests/spatial-index.test.ts` (modified — assert
+  `searchEnclosed` correctness)
+
+**Steps:**
+
+1. Add `searchEnclosed(rect: BBox): PrimitiveId[]` to
+   `PrimitiveSpatialIndex`. For each entity returned by
+   `searchFrustum(rect)`, check that its bbox is fully inside `rect`
+   (`item.minX >= rect.minX && item.maxX <= rect.maxX && ...`).
+   Return only those.
+2. Author `paintSelectionRect.ts`. Reads
+   `overlay.selectionRect`. If non-null, paints a dashed rectangle:
+   stroke + light fill from
+   `canvas.transient.selection_window` (direction === 'window') OR
+   `canvas.transient.selection_crossing` (direction === 'crossing').
+3. Author `select-rect.ts`. Tool generator:
+   - Started by canvas-host on left-mousedown when no active tool.
+   - First Input: `'point'` = mousedown screen → metric. Stored as
+     `start`. Direction undecided yet.
+   - Subsequent: cursor mousemove updates `end`. Direction is
+     `start.x < end.x ? 'window' : 'crossing'`.
+   - Yields `previewBuilder` that returns selection-rect overlay
+     state (this is consumed by EditorRoot to set
+     `overlay.selectionRect` rather than the previewShape — slight
+     wrinkle, see step 4).
+   - Final Input: `'point'` again (mouseup). Resolve hits:
+     - window: `searchEnclosed(rect)` → ids fully inside.
+     - crossing: `searchFrustum(rect)` → ids intersecting.
+     - Plus per-entity precise check for non-bbox geometry (xlines:
+       skip; arcs / circles: bbox is tight enough).
+   - On commit: `editorUiActions.setSelection(ids)`.
+   - Special case: if `start === end` (no drag, just click): hit-test
+     on `start` → if hit, single-entity-select; else clear selection.
+4. EditorRoot needs to write `overlay.selectionRect` from the running
+   select-rect tool. Cleanest: select-rect's previewBuilder writes
+   to selectionRect instead of previewShape. Implementation:
+   `previewBuilder: (cursor) => ({ kind: 'selection-rect', start,
+   end: cursor, direction })` and EditorRoot routes
+   `previewShape.kind === 'selection-rect'` to setSelectionRect
+   instead of setPreviewShape. (Alternate cleaner: a separate field
+   on Prompt: `selectionRectBuilder?` — but more types. The
+   discriminated-union route is cleaner.)
+5. canvas-host's onMouseDown when no active tool + no grip hit:
+   start select-rect tool. On mousemove during select-rect:
+   feedInput `{ kind: 'point', point: cursorMetric }`. On mouseup:
+   feedInput same to commit. Implementation note: select-rect needs
+   a special "drag-style" Input pattern — three feedInputs: down,
+   move (zero or many), up. Cleanest is to keep the tool's
+   generator simple: it yields once awaiting "drag complete," and
+   the runner / canvas-host track mousemove and mouseup separately,
+   passing the final endpoint on mouseup.
+6. paint.ts overlay pass adds paintSelectionRect after paintPreview.
+7. Tests: searchEnclosed correctness; select-rect for both directions
+   commits the right selection; paintSelectionRect path commands
+   match per-direction.
+
+**Invariants introduced:**
+
+- I-DTP-15: Selection rectangle direction is determined by `start.x
+  vs end.x`: L→R = window, R→L = crossing. Tested with both
+  directions.
+- I-DTP-16: Window selection uses `searchEnclosed` (fully-enclosed);
+  crossing selection uses `searchFrustum` (intersects). Tested.
+- I-DTP-17: Click without drag (start === end within tolerance) →
+  single-entity hit-test, NOT empty-rect. Tested.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-7.1: searchEnclosed exported
+  Command: rg -n "searchEnclosed" packages/editor-2d/src/canvas/spatial-index.ts
+  Expected: ≥1 match
+
+Gate DTP-7.2: select-rect tool registered
+  Command: rg -n "select-rect" packages/editor-2d/src/tools/index.ts
+  Expected: ≥1 match
+
+Gate DTP-7.3: paintSelectionRect exists
+  Command: rg -n "export function paintSelectionRect" packages/editor-2d/src/canvas/painters/paintSelectionRect.ts
+  Expected: ≥1 match
+
+Gate DTP-7.4: Direction-convention test passes
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/select-rect tests/spatial-index
+  Expected: passes; both directions covered
+```
+
+### Phase 8 — Default grid + status-bar coords + cursor crosshair
+
+**Goal:** Three small finishing items.
+
+**Files affected:**
+- `apps/web/src/hooks/useAutoLoadMostRecent.ts` (modified — bootstrap
+  default grid)
+- `apps/web/tests/auto-load.test.tsx` (modified — assertion)
+- `packages/editor-2d/src/chrome/StatusBarCoordReadout.tsx` (new) +
+  `.module.css`
+- `packages/editor-2d/src/index.ts` (modified — re-export)
+- `apps/web/src/shell/StatusBar.tsx` (modified — mount the readout)
+- `packages/editor-2d/src/canvas/painters/paintCrosshair.ts` (new)
+- `packages/editor-2d/src/canvas/paint.ts` (modified — overlay pass)
+- `packages/editor-2d/src/keyboard/router.ts` (modified — F7 toggle)
+- `packages/editor-2d/src/EditorRoot.tsx` (modified — onToggleCrosshair
+  callback)
+- `docs/operator-shortcuts.md` (modified — add F7 row)
+- `packages/editor-2d/tests/StatusBarCoordReadout.test.tsx` (new)
+- `packages/editor-2d/tests/paintCrosshair.test.ts` (new)
+- `packages/editor-2d/tests/keyboard-router.test.ts` (modified —
+  F7 test)
+
+**Steps:**
+
+1. **Default grid in bootstrap.** `useAutoLoadMostRecent.
+   buildDefaultProject` returns a project that, in addition to
+   default layer, contains one grid:
+   ```ts
+   const gridId = newGridId();
+   return {
+     ...,
+     grids: { [gridId]: {
+       id: gridId,
+       origin: { x: 0, y: 0 },
+       angle: 0,
+       spacingX: 5,
+       spacingY: 5,
+       layerId: LayerId.DEFAULT,
+       visible: true,
+       activeForSnap: true,
+     } },
+   };
+   ```
+   Update `apps/web/tests/auto-load.test.tsx` to assert grid presence
+   in the bootstrap.
+2. **StatusBarCoordReadout component.** React component reading
+   `useEditorUi((s) => s.overlay.cursor)`. Renders:
+   ```tsx
+   const c = cursor?.metric;
+   return (
+     <span className={styles.coordReadout} data-component="coord-readout">
+       {c ? `X: ${c.x.toFixed(3)}  Y: ${c.y.toFixed(3)}` : 'X: —  Y: —'}
+     </span>
+   );
+   ```
+3. Mount in `apps/web/src/shell/StatusBar.tsx` next to the existing
+   `<StatusBarGeoRefChip />`.
+4. **Crosshair painter.** `paintCrosshair.ts`:
+   ```ts
+   paintCrosshair(ctx, cursor, sizePct, viewport): void
+   ```
+   When `sizePct >= 100`: draw two lines spanning the entire canvas,
+   horizontal through cursor.y and vertical through cursor.x.
+   When `sizePct < 100`: draw two short crosses of length
+   `sizePct/100 * canvasHeight`, centered at cursor.
+   Color: `canvas.transient.crosshair`. Reset transform; render in
+   screen-space.
+5. paint.ts overlay pass calls paintCrosshair FIRST in the overlay
+   pass (so it sits behind everything else but above entities).
+6. Keyboard router: F7 fires new `onToggleCrosshair` callback. Add to
+   `KeyboardRouterCallbacks`.
+7. EditorRoot's `onToggleCrosshair`: toggle
+   `editorUiStore.viewport.crosshairSizePct` between 100 and 5
+   (preset values). Persist in viewport (UI-only state, not stored).
+8. `docs/operator-shortcuts.md`: bump version 1.0.0 → 1.0.1, add
+   row `| F7 | toggle-crosshair | Toggle crosshair size between
+   full-canvas and pickbox preset (M1.3d) |`. Append changelog row.
+9. Tests:
+   - StatusBarCoordReadout renders updated coords on cursor change.
+   - paintCrosshair generates the right line counts for both presets.
+   - keyboard-router test: F7 fires onToggleCrosshair on canvas focus.
+   - auto-load test: default grid present.
+
+**Invariants introduced:**
+
+- I-DTP-18: `crosshairSizePct` is clamped 0–100 at the action level.
+- I-DTP-19: paintCrosshair runs in screen-space.
+- I-DTP-20: F7 fires `onToggleCrosshair` callback regardless of focus
+  holder (consistent with F3/F8/F9/F12 bypass-key pattern from
+  M1.3a I-32).
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-8.1: Default grid in bootstrap
+  Command: rg -n "newGridId|spacingX: 5" apps/web/src/hooks/useAutoLoadMostRecent.ts
+  Expected: ≥1 match
+
+Gate DTP-8.2: Auto-load test asserts grid presence
+  Command: pnpm --filter @portplanner/web test -- tests/auto-load
+  Expected: passes; grid assertion present
+
+Gate DTP-8.3: StatusBarCoordReadout component exists
+  Command: rg -n "export function StatusBarCoordReadout" packages/editor-2d/src/chrome/StatusBarCoordReadout.tsx
+  Expected: ≥1 match
+
+Gate DTP-8.4: StatusBar mounts the readout
+  Command: rg -n "StatusBarCoordReadout" apps/web/src/shell/StatusBar.tsx
+  Expected: ≥1 match
+
+Gate DTP-8.5: paintCrosshair exists
+  Command: rg -n "export function paintCrosshair" packages/editor-2d/src/canvas/painters/paintCrosshair.ts
+  Expected: ≥1 match
+
+Gate DTP-8.6: F7 in keyboard router
+  Command: rg -n "F7" packages/editor-2d/src/keyboard/router.ts
+  Expected: ≥1 match
+
+Gate DTP-8.7: docs/operator-shortcuts.md updated
+  Command: rg -n "F7|toggle-crosshair|1\\.0\\.1" docs/operator-shortcuts.md
+  Expected: ≥3 matches
+
+Gate DTP-8.8: Component + painter + keyboard tests pass
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/StatusBarCoordReadout tests/paintCrosshair tests/keyboard-router
+  Expected: passes
+```
+
+### Phase 9 — Smoke E2E rewrite (DOM-level scenarios)
+
+**Goal:** Extend the Phase 21 smoke E2E suite to cover the new
+polish surface. Per A18 / Procedure 02 §2.4: each scenario mounts
+`<EditorRoot />` in jsdom and fires DOM events; project-state
+seeding via action API permitted as setup; UI-state writes and
+assertion paths must be DOM-driven.
+
+**Files affected:**
+- `packages/editor-2d/tests/smoke-e2e.test.tsx` (modified — append
+  five polish scenarios + extend SCENARIOS const)
+
+**Steps:**
+
+1. Extend `SCENARIOS` const in `smoke-e2e.test.tsx` with five new
+   names:
+   ```ts
+   const SCENARIOS = [
+     ... existing 5 ...,
+     'live preview during line draw',
+     'snap glyph appears at endpoint',
+     'window vs crossing selection',
+     'grip stretch updates primitive',
+     'cursor coords update on mousemove',
+   ] as const;
+   ```
+2. Author each scenario:
+   - **`live preview during line draw`**: render EditorRoot, seed
+     project, activate `L`, click first point, fire mousemove on
+     canvas, assert `editorUiStore.overlay.previewShape !== null`
+     and its `kind === 'line'`. Click second point. Assert preview
+     gone.
+   - **`snap glyph appears at endpoint`**: render, seed, draw a
+     primitive (line p1=(0,0), p2=(10,0)) via action-API setup.
+     Activate `L`, click first point. Move cursor near (10,0)
+     endpoint via mousemove. Assert
+     `editorUiStore.overlay.snapTarget !== null` and
+     `snapTarget.kind === 'endpoint'`. (Glyph rendering itself is
+     covered by the painter unit test; smoke verifies the wire-up.)
+   - **`window vs crossing selection`**: render, seed two
+     primitives in known positions. Click empty space (start L→R
+     drag), mousemove to the right past the entities, mouseup.
+     Assert window-direction selection AND only fully-enclosed
+     entities selected. Repeat with R→L drag, assert crossing-
+     direction AND any-touched entities selected.
+   - **`grip stretch updates primitive`**: seed a line, mousedown
+     on a grip, mousemove to a new point, mouseup. Assert the
+     primitive's endpoint now matches the new point.
+   - **`cursor coords update on mousemove`**: render, query
+     coord readout, assert initial state shows `X: —  Y: —`. Move
+     cursor (mousemove). Assert readout text matches expected
+     `X: 12.345  Y: -5.678` style.
+3. Update the in-file discipline meta-test (Gate 21.2.disc) to
+   include the five new scenarios automatically (they're already in
+   `SCENARIOS`; the meta-test iterates SCENARIOS).
+
+**Invariants introduced:**
+
+- I-DTP-21: All five new polish scenarios mount `<EditorRoot />` and
+  fire DOM events per A18 / Gate 21.2.disc. Enforced by existing
+  meta-test.
+
+**Mandatory Completion Gates:**
+
+```
+Gate DTP-9.1: Five new scenarios in SCENARIOS const
+  Command: rg -c "live preview|snap glyph|window vs crossing|grip stretch|cursor coords" packages/editor-2d/tests/smoke-e2e.test.tsx
+  Expected: ≥5 matches
+
+Gate DTP-9.2: Smoke E2E passes for all 10 scenarios + discipline meta-test
+  Command: pnpm --filter @portplanner/editor-2d test -- tests/smoke-e2e
+  Expected: 10 / 10 named scenarios pass + discipline meta-test pass; total 11 / 11
+
+Gate DTP-9.3: Full workspace test suite passes
+  Command: pnpm test
+  Expected: all packages pass
+```
+
+### Phase 10 — Final audits + handoff
+
+**Goal:** Run the final audit cycle per Procedure 03 §3.3 + §3.9 +
+§3.8.
+
+**Steps:**
+
+1. Final Audit #1 (full system audit against plan + binding specs).
+2. Final Audit #2 (independent re-audit, fresh reviewer posture).
+3. §3.9 Self-Review Loop (apply Procedure 04 to own commit range,
+   classify findings, remediate Blocker / High-risk).
+4. §3.8 Post-Execution Handoff in chat.
+
+**Exit criteria:**
+
+- All M1.3d gates pass.
+- Self-review loop terminates with zero Blocker / zero High-risk
+  findings.
+- Handoff block emitted in chat with commit range, file lists,
+  binding-spec change log.
+
+## 9. Invariants summary
+
+| ID | Invariant | Enforcement |
+|----|-----------|-------------|
+| I-DTP-1 | `canvas.transient.*` tokens are SOLE source of transient overlay styling; transient painters never read layer color tokens | Gate DTP-T1 (grep on transient painter files) |
+| I-DTP-2 | `overlay.cursor` null when no mousemove yet OR cursor left canvas | Tests (Phase 1) |
+| I-DTP-3 | `viewport.crosshairSizePct` clamped [0,100] at action level | Tests (Phase 1) |
+| I-DTP-4 | canvas-host mousemove rAF-coalesced (≤1 onCanvasHover per frame) | Tests (Phase 2) |
+| I-DTP-5 | onCanvasHover metric derived via screenToMetric (consistent with click) | Tests (Phase 2) |
+| I-DTP-6 | paintSnapGlyph runs in screen-space (constant visual size across zoom) | Painter test (Phase 3) |
+| I-DTP-7 | overlay.snapTarget non-null only when tool awaits 'point' AND OSNAP/GSNAP on | Integration test (Phase 3) |
+| I-DTP-8 | paintTransientLabel SOLE source of transient text; other painters never call ctx.fillText/strokeText | Gate DTP-T2 (grep — exclude paintGrid) |
+| I-DTP-9 | Live preview UI-only — paintPreview reads overlay.previewShape, never projectStore | Gate DTP-T6 (grep — paintPreview never imports projectStore) |
+| I-DTP-10 | previewBuilder invoked on cursor change, not on click | Tool runner test (Phase 4) |
+| I-DTP-11 | Grips appear ONLY on click-select; never on hover. paintSelection reads editorUiStore.selection; paintHoverHighlight never paints grips | Painter tests + integration (Phase 5) |
+| I-DTP-12 | overlay.hoverEntity updated only when activeToolId === null | EditorRoot effect test (Phase 5) |
+| I-DTP-13 | grip-stretch commits exactly one UPDATE Operation per release | Tool test (Phase 6) |
+| I-DTP-14 | gripHitTest screen-space (CSS-px), not metric | Helper test (Phase 6) |
+| I-DTP-15 | Selection-rect direction by start.x vs end.x: L→R=window, R→L=crossing | Tool test (Phase 7) |
+| I-DTP-16 | Window=searchEnclosed (fully-enclosed); crossing=searchFrustum (intersects) | spatial-index test (Phase 7) |
+| I-DTP-17 | Click without drag → hit-test on start, not empty-rect resolution | Tool test (Phase 7) |
+| I-DTP-18 | crosshairSizePct clamped at action level | Tests (Phase 1 + Phase 8) |
+| I-DTP-19 | paintCrosshair runs in screen-space | Painter test (Phase 8) |
+| I-DTP-20 | F7 fires onToggleCrosshair regardless of focus holder | Keyboard router test (Phase 8) |
+| I-DTP-21 | All polish smoke scenarios mount `<EditorRoot />` + fire DOM events | Gate 21.2.disc (existing per-scenario meta-test) |
+
+### Cross-cutting hard gates (run once at end):
+
+```
+Gate DTP-T1: Transient painters never read layer color tokens
+  Command: rg -l "layer\\.color|effectiveColor.*layer" packages/editor-2d/src/canvas/painters/paintPreview.ts packages/editor-2d/src/canvas/painters/paintSnapGlyph.ts packages/editor-2d/src/canvas/painters/paintSelection.ts packages/editor-2d/src/canvas/painters/paintSelectionRect.ts packages/editor-2d/src/canvas/painters/paintTransientLabel.ts packages/editor-2d/src/canvas/painters/paintHoverHighlight.ts packages/editor-2d/src/canvas/painters/paintCrosshair.ts
+  Expected: 0 files matched (no transient painter reads layer styling)
+
+Gate DTP-T2: Only paintTransientLabel calls ctx.fillText / strokeText (paintGrid excluded)
+  Command: rg -l "ctx\\.fillText|ctx\\.strokeText" packages/editor-2d/src/canvas/painters/ | rg -v "paintTransientLabel\\.ts$|paintGrid\\.ts$"
+  Expected: 0 files listed
+
+Gate DTP-T6: paintPreview never imports projectStore
+  Command: rg -n "from '@portplanner/project-store'" packages/editor-2d/src/canvas/painters/paintPreview.ts
+  Expected: 0 matches
+```
+
+## 10. Test strategy
+
+**Tests existing before:** M1.3a + M1.3a-fixes baseline at tag
+`m1.3a` ships 213 tests across 6 packages.
+
+**Tests added by M1.3d:**
+
+- Design-system: no new tests (token namespace is data, covered by
+  CSS-vars emission existing tests if any).
+- Editor-2d:
+  - `tests/paintTransientLabel.test.ts` (Phase 4)
+  - `tests/paintPreview.test.ts` (Phase 4)
+  - `tests/paintSnapGlyph.test.ts` (Phase 3)
+  - `tests/paintSelection.test.ts` (Phase 5)
+  - `tests/paintHoverHighlight.test.ts` (Phase 5)
+  - `tests/paintSelectionRect.test.ts` (Phase 7)
+  - `tests/paintCrosshair.test.ts` (Phase 8)
+  - `tests/grip-positions.test.ts` (Phase 5)
+  - `tests/grip-hit-test.test.ts` (Phase 6)
+  - `tests/grip-stretch.test.ts` (Phase 6)
+  - `tests/select-rect.test.ts` (Phase 7)
+  - `tests/StatusBarCoordReadout.test.tsx` (Phase 8)
+  - `tests/canvas-host.test.tsx` (extended — mousemove coalescing,
+    grip hit-test routing)
+  - `tests/spatial-index.test.ts` (extended — searchEnclosed)
+  - `tests/keyboard-router.test.ts` (extended — F7 + onToggleCrosshair)
+  - `tests/draw-tools.test.ts` (extended — previewBuilder yields)
+  - `tests/ui-state.test.ts` (extended — new overlay slice fields)
+  - `tests/smoke-e2e.test.tsx` (extended — five new scenarios)
+- apps/web:
+  - `tests/auto-load.test.tsx` (extended — default grid in
+    bootstrap)
+
+**Tests intentionally not added (deferred):**
+
+- Modify-operator integration tests — M1.3b.
+- Dimension entity tests — M1.3c.
+- Typed-object lifecycle tests — M2.
+
+## 11. Done Criteria — objective pass/fail
+
+- [ ] Plan file committed + pushed (verified by branch state at
+  closure).
+- [ ] All Phase 1-9 gates pass per §8.
+- [ ] Smoke E2E suite shows 10 / 10 polish + drafting scenarios pass
+  + discipline meta-test pass (verified by Gate DTP-9.2).
+- [ ] Cross-cutting hard gates (DTP-T1, DTP-T2, DTP-T6) pass.
+- [ ] `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build`
+  all pass.
+- [ ] `canvas.transient.*` token namespace lives in design-system;
+  emitted as CSS vars; documented in `docs/design-tokens.md`.
+- [ ] Glossary appended with 8 new terms per §3.5.
+- [ ] `docs/operator-shortcuts.md` bumped to 1.0.1; F7 row added.
+- [ ] **Live preview** during line / polyline / rectangle / circle /
+  arc / xline draw — verified by Gate DTP-9.2 ("live preview during
+  line draw" smoke).
+- [ ] **Snap glyph** appears at endpoint / midpoint / intersection
+  / node / grid-node — verified by Gate DTP-9.2 ("snap glyph
+  appears at endpoint" smoke; remaining kinds covered by painter
+  unit tests).
+- [ ] **Hover highlight** + **selection outline** + **click-select
+  grips** + **no grips on hover** — verified by Gates DTP-5.* +
+  the painter unit tests + integration via "grip stretch updates
+  primitive" smoke.
+- [ ] **Window vs crossing selection** with direction-determined
+  color + behaviour — verified by Gate DTP-9.2 ("window vs crossing
+  selection" smoke).
+- [ ] **Grip-drag stretch** for line / polyline / rectangle / circle
+  / arc / xline — verified by Gate DTP-6.4 (per-kind unit tests) +
+  Gate DTP-9.2 ("grip stretch updates primitive" smoke for one
+  representative kind).
+- [ ] **Default grid** in bootstrap — verified by Gate DTP-8.2.
+- [ ] **Status-bar coord readout** updates on mousemove — verified
+  by Gate DTP-8.8 + Gate DTP-9.2 ("cursor coords update" smoke).
+- [ ] **Cursor crosshair** with F7 toggle between full / pickbox
+  presets — verified by Gate DTP-8.6 + Gate DTP-8.8 (keyboard test).
+- [ ] **Selection auto-fire** on canvas click without active tool —
+  verified by Gate DTP-9.2 ("window vs crossing selection" smoke
+  exercises the no-tool click path).
+
+## 12. Risks and Mitigations
+
+| Risk | Mitigation |
+|------|-----------|
+| **Mousemove + snap-on-cursor at 60 fps burns CPU.** | rAF coalescing (Phase 2) caps cursor updates at refresh rate. Snap engine runs only when a tool awaits 'point' AND a toggle is on. M1.3a workloads (tens-hundreds of primitives) leave headroom. Profile-as-needed; not pre-optimised. |
+| **Live preview rendering on every cursor frame is expensive for polylines with many vertices.** | paintPreview re-uses existing per-kind painter primitives; the rubber-band segment is one extra line. polyline preview chain re-paints existing segments, not stored — overlay pass is bounded by visible-frustum vertex count. |
+| **Discriminated `PreviewShape` union grows when modify operators land in M1.3b.** | Schema extension only — adding new arms is additive. Tools that don't yield previewBuilder work unchanged. |
+| **`canvas.transient.*` token namespace duplicates existing canvas tokens (e.g. snap_indicator).** | Existing `canvas.snap_indicator`, `canvas.selection_fill`, etc. are KEPT; new namespace adds preview-specific tokens. Some (selection_fill / selection_border) are referenced by the new `canvas.transient.selection_window` token via re-use, not duplication. Glossary documents the relationship. |
+| **Selection rectangle is a "drag-style" tool that doesn't fit the standard down→multiple-feedInput→up runner pattern cleanly.** | select-rect uses two `'point'` inputs (down + up) plus a `previewBuilder` that re-runs on cursor change. Mousemove during the drag is consumed by the previewBuilder mechanism, not separate feedInputs. Tool generator stays simple. |
+| **Grip-drag stretch needs the entity-being-modified rendered as preview while the drag is in flight, but the original entity is also being painted.** | grip-stretch's previewBuilder returns the modified-entity shape; paint loop skips the original entity (filtered by an `overlay.suppressEntityPaint?: PrimitiveId | null` field) for the duration of the drag; on release, the field is cleared and the project store update fires the standard subscription update. |
+| **F7 conflicts with browser fullscreen / dev-tools shortcuts on some platforms.** | F7 is rarely OS-bound (Chrome's "caret browsing" toggle on some Win versions, but unobtrusive). If conflict surfaces, swap to a different key in operator-shortcuts.md (1.0.1 → 1.0.2) before merge. Document in §13 if discovered mid-execution. |
+| **Default grid in bootstrap shows a 5m grid that may be too dense for large-scale yards.** | 5m matches container width (~6m). User can disable via Layer Manager → grid properties (when grid-properties UI lands). For M1.3d, 5m is a sensible default; if profiling shows it slow, switch to viewport-aware spacing later. |
+| **Token namespace boundary (transient vs ByLayer) is enforceable by grep but not by type system.** | Gate DTP-T1 catches accidental imports / usages. Long-term: a stronger boundary (separate module for transient tokens) is a refactor opportunity post-M1. |
+| **paintTransientLabel rendering text in screen-space requires the font to load before paint.** | Use a system-default font stack (no web fonts) so paint is synchronous on canvas: `'12px system-ui, -apple-system, sans-serif'`. Captured in the painter contract. |
+| **smoke E2E expansion from 5 → 10 scenarios increases test runtime ~2x.** | Each scenario is ~1s in the editor-2d test suite; total ~5s extra. Acceptable. |
+
+---
+
+## Plan Review Handoff
+
+**Plan:** `docs/plans/feature/m1-3d-drafting-polish.md`
+**Branch:** `feature/m1-3d-drafting-polish`
+**Status:** Plan authored — awaiting review
+
+### Paste to Codex for plan review
+> Review this plan using the protocol at
+> `docs/procedures/Codex/02-plan-review.md` (Procedure 02).
+> Apply strict evidence mode. Start from Round 1.
+
+### Paste to user for approval
+> Please review the plan at
+> `docs/plans/feature/m1-3d-drafting-polish.md` on branch
+> `feature/m1-3d-drafting-polish`. After approval, invoke
+> Procedure 03 to begin execution from Phase 1 (design tokens +
+> ui-state extensions).
