@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-28
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-1 — Codex Round-1 fixes (1 Blocker + 1 High-risk + 2 Quality; all agreed)
 
 ---
 
@@ -14,11 +14,12 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
+| Rev-1 | 2026-04-28 | Codex Round-1 (No-Go on 1 Blocker + 1 High-risk + 2 Quality; all agreed) | **B1** (Blocker) — spec governance mismatch: registry preamble says "Changing an existing shortcut behaviour: major bump"; Rev-0 proposed `1.2.0 → 1.2.1` patch for H2 (timeout removal). Fix: bump to **`2.0.0`** (major) per the literal governance rule. Also DROP the comma-pair (H1) mention from the spec doc — H1 is a TOOL prompt-sequence change (rectangle Dimensions), NOT a shortcut behavior; it doesn't belong in `docs/operator-shortcuts.md`. Spec patch is now H2-only. **H1** (High-risk) — comma-pair parser empty-token coercion: Rev-0 guard was `parts[1].length > 0` but not `parts[0].length > 0`; `Number('')` is `0` (finite), so `,40` would have produced `{a:0, b:40}`. Rectangle's `width=0` aborts so no real bug TODAY, but risky for future tools accepting `'numberPair'`. Fix: strengthen guard to `parts[0].trim().length > 0 && parts[1].trim().length > 0` (trim covers leading-whitespace cases too). Updated §3 A2 + §7 step 2. **Q1** — Gate REM5-H1b's `-A 12` window was brittle (parser-branch drift could false-fail). Replaced with a structure-agnostic gate: `rg -n "numberPair" packages/editor-2d/src/EditorRoot.tsx` ≥1 match. Combined with REM5-H1a + the new tests, end-to-end wiring is provable without a fragile window. **Q2** — §7 step 4 hardcoded "four" timer-clear sites; actual is three. Reworded count-agnostically: "Remove all `clearTimeout(accumulatorTimer)` and `accumulatorTimer = …` references; TypeScript will catch any stragglers." Gate REM5-H2a already enforces zero residual matches. §10 gains a Revision-1 audit subsection per §1.16 step 13, including a procedural note flagging that the registry's "Changing existing shortcut behaviour: major" rule is too coarse (covers both genuinely major changes like L meaning something different AND minor refinements like timer-removal); future rounds may want to refine the governance text. Out of scope here — comply with the literal rule for Round-5. |
 | Rev-0 | 2026-04-28 | Initial draft | Three behavior fixes + one doc-polish from manual user testing of M1.3d-Rem-4 at `2d8a468`: H1 G3 comma-pair input via new `'numberPair'` Input kind (replaces rectangle's two-prompt W/H sub-flow with one `Specify dimensions <width,height>` prompt); H2 remove the 750 ms idle accumulator timeout (true AC parity — accumulator waits indefinitely); H3 flip Dynamic Input pill below cursor (`dy: -24 → +28`) so it stops overlapping the bottom command line; H4 fill the execution-commit placeholder `2d8a468` in the Round-4 plan's post-execution notes (Codex Round-1 quality cleanup). §1.3 three-round audit. AC-style transient-label-integrated pills + Tab cycling explicitly deferred to Round-6 / post-M1 with its own plan + ADR. |
 
 ## 1. Request summary
 
-Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one Codex post-commit Round-1 quality polish item. All implementation-side; one binding-spec doc patch (`docs/operator-shortcuts.md` 1.2.0 → 1.2.1).
+Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one Codex post-commit Round-1 quality polish item. All implementation-side; one binding-spec doc bump — `docs/operator-shortcuts.md` 1.2.0 → 2.0.0 (MAJOR per registry governance for the letter-accumulator behavior change in H2; Rev-1 B1 fix).
 
 - **H1 — G3 comma-pair input for rectangle Dimensions (BUG).** User flow:
   1. Activate REC (`R`+`E`+`C`+Enter)
@@ -58,7 +59,11 @@ Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one 
   ```
   if (cb.acceptedInputKinds.includes('numberPair') && raw.includes(',')) {
     const parts = raw.split(',');
-    if (parts.length === 2) {
+    if (
+      parts.length === 2 &&
+      parts[0].trim().length > 0 &&
+      parts[1].trim().length > 0
+    ) {
       const a = Number(parts[0]);
       const b = Number(parts[1]);
       if (Number.isFinite(a) && Number.isFinite(b)) {
@@ -69,7 +74,12 @@ Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one 
   }
   // Fall through to existing F1 / number / commit logic
   ```
-  Edge cases: `30,` → parts=`['30','']`, `Number('')` is `0` (finite!) — guard with `parts[1].length > 0`. `30,40,50` → parts.length === 3, fail length check, fall through.
+  Edge cases (Rev-1 H1 fix tightened both-token guard):
+  - `30,` → parts=`['30','']`, parts[1].trim().length === 0 → branch skipped (`Number('')` would coerce to `0` (finite!) without this guard).
+  - `,40` → parts=`['','40']`, parts[0].trim().length === 0 → branch skipped (same coercion footgun on the other side).
+  - ` , ` → both trim-empty → branch skipped.
+  - `30,40,50` → parts.length === 3 → branch skipped.
+  - `30, 40` (whitespace tolerated) → both non-empty after trim → `Number(' 40')` is `40` → `{a:30, b:40}`.
 
 - **A3 — draw-rectangle Dimensions sub-flow rewrite.** Replace the two-prompt sequence (`Specify width` → `Specify height`) with one prompt:
   ```
@@ -92,7 +102,9 @@ Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one 
 
 - **A9 — H2 indefinite-wait test.** Replace the existing keyboard-router test `'750 ms idle clears accumulator silently (no activation)'` (which under H2 is no longer true) with `'accumulator persists across long idle periods (no timeout in AC mode)'`. Wait 1000+ ms after pressing a letter, assert the accumulator is still set, no callback fired.
 
-- **A10 — Spec doc patch.** `docs/operator-shortcuts.md` 1.2.0 → 1.2.1 (patch bump per registry governance for "behavior clarification + small bug fix bundle, no new shortcut"). Behavior notes: replace "750 ms silent stale-clear" line with "Accumulator waits indefinitely; clear via Escape." Add a brief mention of the comma-pair input pattern under "Sub-prompt input forms" (or similar). Changelog row.
+- **A10 — Spec doc patch (Rev-1 B1: governance rule literally applied).** `docs/operator-shortcuts.md` **1.2.0 → 2.0.0 (MAJOR bump)** per the registry's preamble rule "Changing an existing shortcut letter or behaviour: major version bump". H2 (timeout removal) is the trigger — letter accumulator behavior changes (no more idle stale-clear). Behavior notes section: replace the "750 ms silent stale-clear" line with "Accumulator persists indefinitely; clear via Escape, Enter, or Space." New changelog row.
+
+  **NOT included in the spec doc:** H1 (`'numberPair'` Input kind for rectangle Dimensions) is a TOOL prompt-sequence change, not a SHORTCUT behavior change. The shortcut `D` (sub-option for Dimensions) is unchanged. The comma-pair input form is documented elsewhere (likely `docs/glossary.md` later, or the M1.3d execution plan reference; out of scope here). H3 (pill placement) is chrome polish, no shortcut impact. H4 is a doc fix, no shortcut impact.
 
 - **A11 — Round-4 plan placeholder fill (H4).** In `docs/plans/feature/m1-3d-drafting-polish-remediation-4.md`, replace the line `**Execution commit:** to be filled by `git log` after the execution commit lands; per Rev-1 footer convention no self-referential placeholder token.` with `**Execution commit:** `2d8a468` (Round-4 G1 + G2 implementation; Codex post-commit Round-1 9.4/10 Go).` Single-line edit.
 
@@ -105,13 +117,13 @@ Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one 
 | `packages/editor-2d/src/tools/types.ts` | (H1) Add `'numberPair'` to `AcceptedInputKind` union. Add `\| { kind: 'numberPair'; a: number; b: number }` arm to `Input` discriminated union. |
 | `packages/editor-2d/src/tools/draw/draw-rectangle.ts` | (H1) Replace the two-prompt Width/Height sub-flow with one prompt `Specify dimensions <width,height>` accepting `'numberPair'`. On `'numberPair'` input: commit rectangle with `width = Math.abs(input.a)`, `height = Math.abs(input.b)`, origin = corner1, localAxisAngle = 0. On any other kind: abort. |
 | `packages/editor-2d/src/EditorRoot.tsx` | (H1) `handleCommandSubmit` — new comma-pair branch BEFORE the F1 directDistanceFrom branch. Reads `commandBar.acceptedInputKinds`; when it includes `'numberPair'` AND `raw.includes(',')`, parses `a,b` and feeds `{kind:'numberPair', a, b}`. Edge guard: `parts.length === 2`, `parts[1].length > 0`, both numbers finite. Falls through on any failure. |
-| `packages/editor-2d/src/keyboard/router.ts` | (H2) Remove 750 ms idle accumulator timeout entirely. Strip `accumulatorTimer` variable, the four cleanup-the-timer call sites (`clearAccumulator`, `pumpAccumulator`, `cleanup`), the `setTimeout(clearAccumulator, ACCUMULATOR_TIMEOUT_MS)` call, and the `ACCUMULATOR_TIMEOUT_MS` constant. Net diff: ~10 lines removed. Pill (G2) continues to render the accumulator as the user types — the visible feedback is the safety net. |
+| `packages/editor-2d/src/keyboard/router.ts` | (H2) Remove 750 ms idle accumulator timeout entirely. Strip `accumulatorTimer` variable, ALL `clearTimeout(accumulatorTimer)` calls and `accumulatorTimer = …` assignments wherever they appear (current sites: `clearAccumulator`, `pumpAccumulator`, `cleanup`), the `setTimeout(clearAccumulator, ACCUMULATOR_TIMEOUT_MS)` call, and the `ACCUMULATOR_TIMEOUT_MS` constant. Net diff: ~10 lines removed. Gate REM5-H2a enforces zero residual matches; TypeScript / Biome catches any stragglers. Pill (G2) continues to render the accumulator as the user types — the visible feedback is the safety net. |
 | `packages/editor-2d/src/chrome/DynamicInputPill.tsx` | (H3) Change `PILL_OFFSET_Y_PX = -24` → `PILL_OFFSET_Y_PX = 28`. Always-below-cursor placement; clears the bottom command line area. |
 | `packages/editor-2d/tests/draw-tools.test.ts` | (H1) Migrate the two F3 Dimensions sub-option tests:<br>(a) `'Dimensions flow'` — feed `{kind:'numberPair', a:8, b:4}` instead of two `{kind:'number'}` inputs. Assertions unchanged.<br>(b) `'Dimensions abort path'` — assertion unchanged; tool guard now triggers on `dims.kind !== 'numberPair'`. (H1 new) Test: `'rectangle Dimensions sub-flow: numberPair input commits W,H'` (or refine the existing one). (H1 new) Test: `'rectangle Dimensions: subOption D yields ONE prompt accepting numberPair (not two prompts)'` to lock the contract. |
 | `packages/editor-2d/tests/keyboard-router.test.ts` | (H2) Replace `'750 ms idle clears accumulator silently (no activation)'` with `'accumulator persists across long idle periods (no timeout in AC mode)'`. Wait 1000+ ms after pressing a letter; assert `editorUiStore.getState().commandBar.accumulator === 'L'` (or whatever was typed); assert `mocks.onActivateTool` was not called. |
 | `packages/editor-2d/tests/DynamicInputPill.test.tsx` | (H3) Update the `'pill anchors at cursor.screen + offset (16, -24)'` test — change expected transform to `'translate(116px, 228px)'` (cursor.screen.y=200 + 28 = 228). Rename test to `'pill anchors at cursor.screen + offset (16, +28) — below cursor'`. |
 | `packages/editor-2d/tests/EditorRoot.test.tsx` *(if exists; otherwise covered by smoke / draw-tools)* | (H1) Test that `handleCommandSubmit('30,40')` with `acceptedInputKinds: ['numberPair']` feeds the right Input. (Likely covered by draw-tools.test indirectly via the rectangle commit assertions.) |
-| `docs/operator-shortcuts.md` | 1.2.0 → 1.2.1 patch bump. Behavior notes: remove "750 ms silent stale-clear" line; replace with "Accumulator persists indefinitely; clear via Escape." Add brief note under Behavior notes documenting the comma-pair input form for sub-prompts that accept it (e.g. rectangle Dimensions). Changelog row. |
+| `docs/operator-shortcuts.md` | **1.2.0 → 2.0.0 (major bump per registry governance — Rev-1 B1).** Behavior notes: remove "750 ms silent stale-clear" line; replace with "Accumulator persists indefinitely; clear via Escape, Enter, or Space." Changelog row added. **H1's comma-pair note is NOT added here** (H1 is a tool prompt-sequence change, not a shortcut-behavior change; the shortcut `D` for Dimensions is unchanged). |
 | `docs/plans/feature/m1-3d-drafting-polish-remediation-4.md` | (H4) Fill the execution-commit placeholder with `2d8a468`. Single-line edit. |
 
 ### 4.2 In scope — files created
@@ -137,7 +149,7 @@ None.
 
 | Doc | Change |
 |---|---|
-| `docs/operator-shortcuts.md` | Patch bump 1.2.0 → 1.2.1. Behavior notes updated: "Accumulator persists indefinitely; clear via Escape" replaces the 750 ms language. Add a small paragraph documenting the comma-pair input form for sub-prompts (rectangle Dimensions example). Changelog row added per registry governance. |
+| `docs/operator-shortcuts.md` | **Major bump 1.2.0 → 2.0.0 (Rev-1 B1: per registry preamble "Changing an existing shortcut behaviour: major bump").** Behavior notes: "Accumulator persists indefinitely; clear via Escape, Enter, or Space." Changelog row added. The comma-pair input form (H1) is intentionally NOT documented here — it's a tool prompt-sequence concern, not a shortcut-behavior concern. |
 | `docs/plans/feature/m1-3d-drafting-polish-remediation-4.md` | (H4) Execution-commit placeholder filled with `2d8a468`. |
 | All other binding spec docs | No change. |
 
@@ -154,12 +166,16 @@ The four fixes (H1 + H2 + H3 + H4) are independent surface changes; bundling the
 1. **H1 type extensions.** In `tools/types.ts`:
    - Add `'numberPair'` to `AcceptedInputKind`.
    - Add `\| { kind: 'numberPair'; a: number; b: number }` arm to `Input`.
-2. **H1 EditorRoot comma-pair parser.** In `EditorRoot.tsx` `handleCommandSubmit`, BEFORE the F1 directDistanceFrom branch, add the comma-pair branch:
+2. **H1 EditorRoot comma-pair parser** (Rev-1 H1 fix: both-token guard with trim). In `EditorRoot.tsx` `handleCommandSubmit`, BEFORE the F1 directDistanceFrom branch, add the comma-pair branch:
    ```ts
    const cb = editorUiStore.getState().commandBar;
    if (cb.acceptedInputKinds.includes('numberPair') && raw.includes(',')) {
      const parts = raw.split(',');
-     if (parts.length === 2 && parts[1].length > 0) {
+     if (
+       parts.length === 2 &&
+       parts[0].trim().length > 0 &&
+       parts[1].trim().length > 0
+     ) {
        const a = Number(parts[0]);
        const b = Number(parts[1]);
        if (Number.isFinite(a) && Number.isFinite(b)) {
@@ -194,18 +210,18 @@ The four fixes (H1 + H2 + H3 + H4) are independent surface changes; bundling the
      return { committed: true, description: 'rectangle (typed dimensions)' };
    }
    ```
-4. **H2 router timeout removal.** In `keyboard/router.ts`:
+4. **H2 router timeout removal** (Rev-1 Q2 fix: count-agnostic wording). In `keyboard/router.ts`:
    - Remove `const ACCUMULATOR_TIMEOUT_MS = 750;`.
    - Remove `let accumulatorTimer: ReturnType<typeof setTimeout> | null = null;`.
-   - Remove the four `if (accumulatorTimer !== null) clearTimeout(accumulatorTimer); accumulatorTimer = null;` patterns (in `clearAccumulator`, `pumpAccumulator`, top of `cleanup`).
+   - Remove ALL `clearTimeout(accumulatorTimer)` calls and ALL `accumulatorTimer = ...` assignments wherever they appear (current sites: `clearAccumulator`, `pumpAccumulator`, `cleanup` — but the count is implementation-detail; rely on TypeScript's "no-unused-variable" + Biome lint to catch any stragglers, plus Gate REM5-H2a's grep that expects 0 matches).
    - Remove the `accumulatorTimer = setTimeout(clearAccumulator, ACCUMULATOR_TIMEOUT_MS);` call at the end of `pumpAccumulator`.
 5. **H3 pill offset.** In `chrome/DynamicInputPill.tsx`, change `const PILL_OFFSET_Y_PX = -24;` → `const PILL_OFFSET_Y_PX = 28;`. Update the inline header comment that documented "above-and-to-the-right" → "below-and-to-the-right".
 6. **H1 test migration in draw-tools.test.ts.** Update the two existing F3 Dimensions tests to feed `'numberPair'` instead of two `'number'` inputs. Add a new test asserting the Dimensions sub-flow yields ONE prompt with `acceptedInputKinds: ['numberPair']` (not two prompts).
 7. **H2 test migration in keyboard-router.test.ts.** Replace `'750 ms idle clears accumulator silently (no activation)'` with `'accumulator persists across long idle periods (no timeout in AC mode)'`. Implementation: press `'L'`, wait 1000+ ms, assert accumulator is still `'L'` and `onActivateTool` not called.
 8. **H3 test update in DynamicInputPill.test.tsx.** Change the expected transform value to `'translate(116px, 228px)'`. Rename to `'pill anchors at cursor.screen + offset (16, +28) — below cursor'`.
-9. **H1 spec doc + comma-pair docs.** Update `docs/operator-shortcuts.md` Behavior notes section. Add the comma-pair input form description.
+9. *(Reserved — was H1 spec doc note in Rev-0; removed in Rev-1 because H1 is a tool prompt-sequence change, NOT a shortcut behavior change. The comma-pair input form does not belong in `docs/operator-shortcuts.md`.)*
 10. **H2 spec doc.** Update `docs/operator-shortcuts.md` Behavior notes — remove the "750 ms silent stale-clear" line; replace with "Accumulator persists indefinitely; clear via Escape, Enter, or Space."
-11. **Spec doc bump + changelog.** Header version 1.2.0 → 1.2.1; new changelog row.
+11. **Spec doc MAJOR bump + changelog (Rev-1 B1).** Header version `1.2.0 → 2.0.0` per registry's "Changing an existing shortcut behaviour: major bump" rule. New changelog row noting the H2 behavior change explicitly + acknowledging this is the first MAJOR bump (registry began at 1.0.0; the M1.3d-Rem-3 governance fix established the "additions = minor" precedent; this is the first "behaviour change = major" application).
 12. **H4 placeholder fill.** Edit `docs/plans/feature/m1-3d-drafting-polish-remediation-4.md` line `**Execution commit:** to be filled...` → `**Execution commit:** \`2d8a468\` (Round-4 G1 + G2 implementation; Codex post-commit Round-1 9.4/10 Go).`.
 
 ### Mandatory completion gates
@@ -215,9 +231,14 @@ Gate REM5-H1a: 'numberPair' Input kind declared
   Command: rg -n "'numberPair'" packages/editor-2d/src/tools/types.ts
   Expected: ≥2 matches (AcceptedInputKind union arm + Input discriminated arm)
 
-Gate REM5-H1b: handleCommandSubmit comma-pair branch
-  Command: rg -A 12 -n "const handleCommandSubmit" packages/editor-2d/src/EditorRoot.tsx | rg "numberPair"
-  Expected: ≥1 match (comma-pair parser branch references the kind)
+Gate REM5-H1b: numberPair handled in EditorRoot (Rev-1 Q1: structure-agnostic — was a brittle -A 12 window)
+  Command: rg -n "numberPair" packages/editor-2d/src/EditorRoot.tsx
+  Expected: ≥1 match. Combined with REM5-H1a (numberPair declared in
+  types.ts) + REM5-H1c (used in draw-rectangle) + REM5-9 (test
+  coverage), the chain proves end-to-end wiring without depending on
+  a fragile parser-branch line offset. If implementation factors the
+  parser into a helper, the helper's name will appear in EditorRoot.tsx
+  alongside the kind name; gate still passes.
 
 Gate REM5-H1c: draw-rectangle Dimensions sub-flow uses numberPair
   Commands:
@@ -258,12 +279,12 @@ Gate REM5-12: Typecheck + Biome + build
   Commands: pnpm typecheck, pnpm check, pnpm build
   Expected: all exit 0
 
-Gate REM5-SPEC: docs/operator-shortcuts.md updated for H1 + H2
+Gate REM5-SPEC: docs/operator-shortcuts.md updated for H2 (Rev-1 B1 — 2.0.0 major bump per governance)
   Commands:
-    (a) rg -n "^\*\*Version:\*\* 1\.2\.1" docs/operator-shortcuts.md
-        Expected: 1 match (header version bumped to 1.2.1)
-    (b) rg -n "^\| 1\.2\.1 " docs/operator-shortcuts.md
-        Expected: 1 match (changelog row for 1.2.1 present)
+    (a) rg -n "^\*\*Version:\*\* 2\.0\.0" docs/operator-shortcuts.md
+        Expected: 1 match (header version bumped to 2.0.0)
+    (b) rg -n "^\| 2\.0\.0 " docs/operator-shortcuts.md
+        Expected: 1 match (changelog row for 2.0.0 present)
     (c) rg -n "750 ms silent stale-clear" docs/operator-shortcuts.md
         Expected: 0 matches (the old behavior text is GONE)
     (d) rg -n "indefinitely|persists indefinitely" docs/operator-shortcuts.md
@@ -276,7 +297,7 @@ Gate REM5-SPEC: docs/operator-shortcuts.md updated for H1 + H2
 - [ ] **H2** — Letter accumulator persists indefinitely; no idle timeout. Verified by Gate REM5-H2a + REM5-9 (keyboard-router test `'accumulator persists across long idle periods (no timeout in AC mode)'`).
 - [ ] **H3** — Dynamic Input pill anchors below cursor (`dy: +28`); no overlap with bottom command line. Verified by Gate REM5-H3 + REM5-9 (DynamicInputPill test).
 - [ ] **H4** — Round-4 plan execution-commit placeholder filled with `2d8a468`. Verified by Gate REM5-H4.
-- [ ] **Binding spec doc updated (H1 + H2)** — `docs/operator-shortcuts.md` bumped 1.2.0 → 1.2.1 with timeout-removal note + comma-pair input form. Verified by Gate REM5-SPEC (a + b + c + d).
+- [ ] **Binding spec doc updated (H2 only — Rev-1 B1)** — `docs/operator-shortcuts.md` MAJOR bumped 1.2.0 → 2.0.0 per registry's "Changing existing shortcut behaviour: major" rule, with timeout-removal note. (H1's comma-pair note is intentionally NOT in this doc — it's a tool prompt-sequence change, not a shortcut behavior.) Verified by Gate REM5-SPEC (a + b + c + d).
 - [ ] All Phase REM5-H1a..REM5-SPEC + REM5-9..REM5-12 gates pass.
 - [ ] Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 pass (parent §9). Verified by Gate REM5-11.
 - [ ] **Workspace test count** ≥ 470 (post-Round-4 baseline 464 + ≥6 net-new). REM5-10 provides the threshold.
@@ -292,7 +313,7 @@ Gate REM5-SPEC: docs/operator-shortcuts.md updated for H1 + H2
 | **H1 edge cases in comma-pair parsing.** Inputs like `30,`, `,40`, `30,40,50`, `abc,40`, `30 40` (space instead of comma) — what happens? | Parser guards are explicit: `parts.length === 2 && parts[1].length > 0 && Number.isFinite(a) && Number.isFinite(b)`. All rejected forms fall through to the existing F1/number/commit logic. The tool then either consumes (F1 dest as 'point' if directDistanceFrom is set) or aborts (number not accepted, no anchor). For the rectangle Dimensions prompt specifically, `acceptedInputKinds: ['numberPair']` only — fall-through to 'number' is rejected by the tool (`dims.kind !== 'numberPair'` → abort). User retries. Documented in §3 A2. |
 | **H1 user types `30,40` at a NON-numberPair prompt** (e.g. line's second prompt, which accepts `'point'` with directDistanceFrom). | Parser branch is gated on `cb.acceptedInputKinds.includes('numberPair')`. False at line's prompt → branch skipped → existing logic: F1 directDistanceFrom is set, but `Number("30,40") === NaN` → fall through → commit input fed → tool aborts. Same behavior as Round-4 (no regression). |
 | **H2 removing the timeout could leave accumulator non-empty if user types `L`, walks away, comes back hours later, types `R` — accumulator becomes `LR` → no shortcut → Enter does nothing.** | Same as AC behavior. The pill (G2) makes the accumulator visible at all times the user looks at the cursor. Esc clears. Acceptable per A1. The 750 ms safety net was overcautious. |
-| **H2 timer-cleanup paths in `cleanup()` referenced an `accumulatorTimer` — removing the variable might leave stale references.** | Step 4 explicitly enumerates the four cleanup sites + the variable declaration. TypeScript catches any leftover `accumulatorTimer` reference at compile time (Gate REM5-12). |
+| **H2 timer-cleanup paths in `cleanup()` referenced an `accumulatorTimer` — removing the variable might leave stale references.** | Step 4 mandates removing ALL `clearTimeout(accumulatorTimer)` and `accumulatorTimer = …` references count-agnostically (Rev-1 Q2 fix). Gate REM5-H2a enforces zero residual matches. TypeScript catches any leftover `accumulatorTimer` reference at compile time (Gate REM5-12). |
 | **H3 pill below cursor may overlap drawn geometry (e.g. when drawing a rectangle, the pill at `+28` could obscure the in-progress rectangle's bottom edge).** | `pointer-events: none` on the pill (existing). Visual overlap with geometry is acceptable per AC parity — AC's DI pills DO sit near drawn geometry. The user can move the cursor; the pill follows. The AC-style redesign (Round-6) integrates pills with transient dimension lines so they sit ALONGSIDE geometry, not atop. |
 | **H4 placeholder fill is editing the Round-4 plan.** Round-4 plan is in the past tense (its execution is done); editing it from Round-5's commit changes a "frozen" doc. | Procedure 05 §5.6 explicitly allows updating prior plans during remediation: "the plan file MUST always reflect the true final state of the implementation." The Round-4 plan's post-execution-notes section is the natural home for the fill. Single-line edit; no semantic change. |
 | **Test count drift.** Estimate is +6-8 net-new; could go higher with edge-case tests. | §10 C2.8 uses a conservative threshold (≥470 = baseline 464 + 6). Over-shoot is fine; under-shoot would fail the gate (and indicate missing tests — desired signal). |
@@ -333,6 +354,34 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
   
   Round-5 doesn't paint Round-6 into a corner — the current `inputBuffer` SSOT can extend to per-field-buffer (e.g. `inputBuffers: Record<DIFieldId, string>`) when needed, and the pill component can become per-field. None of Round-5's changes (timer removal, pill offset, comma-pair) conflict. ✓
 
+### Revision-1 audit (per §1.16 step 13 — three-round pass on the Rev-1 changes)
+
+Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The four Codex Round-1 fixes (B1 + H1 + Q1 + Q2) are small but each interacts with the existing plan text; this section is the real adversarial pass on the *revised* sections.
+
+**Round 1 — Chief Architect on the Rev-1 changes:**
+
+- **R1-C1 — B1 spec bump 1.2.0 → 2.0.0: is the literal governance reading correct?** The registry preamble: "Changing an existing shortcut letter or behaviour: major version bump (e.g. 1.0.0 → 2.0.0)". H2 changes the BEHAVIOR of letter accumulation (no more idle stale-clear). Strict reading: yes, behavior change → major. Round-4 had bumped 1.1.0 → 1.2.0 (minor) for the AC-mode change which is the SAME class of change; Codex Round-2 on Round-4 didn't flag it (9.4/10 Go). Inconsistency in Codex's own enforcement: prior Codex was lenient, current Codex is strict. Pragmatic decision: comply now, propose governance refinement separately. **Locked in plan; documented as note in R3-Cx below.**
+- **R1-C2 — Should H1 be in the spec doc at all?** H1 changes rectangle's Dimensions sub-flow (two prompts → one). The shortcut `D` (sub-option label) is unchanged. The keyboard binding is unchanged. The behavior of typing `D` in canvas focus is unchanged. The change is purely tool-internal (which prompts the rectangle generator yields). Per the registry's scope ("keyboard shortcuts" + "shortcut behaviors"), H1 is out of scope. Dropped from spec doc. ✓
+- **R1-C3 — Parser strengthen with trim().length > 0: any new edge case?** Inputs covered: `,`, `30,`, `,40`, ` , `, ` ,40`, `30 , `, `30,,40`. All correctly skip the branch. Inputs that pass: `30,40`, `30, 40`, ` 30,40 `, `-3.5,7e2` (Number coerces scientific notation). Acceptable.
+- **R1-C4 — Q1 gate: structure-agnostic vs. precise.** New gate `rg -n "numberPair" EditorRoot.tsx` ≥ 1. Trivially passes if `numberPair` appears anywhere — could pass even if the parser is dead code (e.g., declared but never called). Mitigation: combined with REM5-9 (test coverage runs the parser end-to-end via `'rectangle Dimensions sub-flow: numberPair input commits W,H'`). The test failing would mean the parser is broken even if the symbol is present. **Trade-off accepted:** less brittle to refactors, still proves wiring via the test.
+- **R1-C5 — Q2 count drift removal: does Gate REM5-H2a fully replace the prose count?** Gate (a): `rg "ACCUMULATOR_TIMEOUT_MS|accumulatorTimer" router.ts` → 0 matches. Gate (b): `rg "setTimeout\(clearAccumulator" router.ts` → 0 matches. Together: zero residual references; count-agnostic. ✓
+
+**Round 2 — Sceptical reader on the Rev-1 changes:**
+
+- **R2-C1 — B1 spec doc: changelog row should reference Round-5 explicitly.** Step 11 says "noting the H2 behavior change explicitly + acknowledging this is the first MAJOR bump". Concrete proposed text: `| 2.0.0 | 2026-04-28 | Letter accumulator behavior change: 750 ms idle stale-clear removed; accumulator persists indefinitely until Enter, Space, or Escape (AC parity). M1.3d-Remediation-5 H2. Major bump per registry governance (changing existing shortcut behaviour: major).` Verified the row text aligns with REM5-SPEC (b)'s regex `^\| 2\.0\.0 `. ✓
+- **R2-C2 — H1 parser: typing `30.5,40.7` (decimals) — works?** `parts = ['30.5','40.7']`, both trim non-empty, both `Number(...)` finite. Branch fires with `{a:30.5, b:40.7}`. ✓ Also `Math.abs(dims.a)` in draw-rectangle handles negative inputs (user types `-30,40` → width=30 height=40; same as Round-3 F3 `Math.abs` behavior).
+- **R2-C3 — Q1 gate false-positive risk.** `rg "numberPair" EditorRoot.tsx` — could match a comment, a JSDoc, an unrelated string literal. Pragmatic: this round adds the kind to EditorRoot.tsx; the only place `numberPair` will appear is the parser branch. Future plan revisions might add references (e.g., a JSDoc comment) without affecting the gate semantically. False positive risk is low; combined with the test coverage, the gate is sufficient.
+- **R2-C4 — Q2 reword: implementer might still hardcode the count in code-comments.** Plan prose now says "remove ALL". The implementer could write a comment like "removed 4 sites" — that's their choice and doesn't affect the gate. Acceptable.
+
+**Round 3 — Blast radius of the Rev-1 changes:**
+
+- **R3-C1 — Spec doc 2.0.0: any downstream consumer of the version literal?** The `keyboard/shortcuts.ts` implementation file has a comment "Implementation files MUST stay in sync with this registry. Drift between the two is a Blocker." but no version literal in the file. No code reads the version string. Bumping to 2.0.0 has zero implementation impact; purely documentary.
+- **R3-C2 — H1 parser strengthen: any test that exercised the empty-token case?** Round-5's new tests cover the happy path (`30,40`). Add a Rev-1-specific test: `'parser rejects empty first token (e.g., ",40")'`. Adds to §11 list (also added to §4.1 keyboard-router or draw-tools test row at execution time).
+- **R3-C3 — Q1 / Q2 changes downstream.** Gate-text only; no implementation impact.
+- **R3-Cx — Procedural note: registry governance text is too coarse.** The rule "Changing an existing shortcut letter or behaviour: major bump" covers both genuinely major changes (e.g., `L` no longer means draw-line) and minor refinements (e.g., 750 ms timer removed). Codex enforced strictly; I complied. Future rounds may want to refine the governance text to distinguish "binding change" (major — breaks muscle memory) from "interaction-behavior refinement" (minor — ergonomics tweak). **Out of scope for Round-5. Recorded here so future planners don't re-litigate.** A separate follow-up plan could update `docs/operator-shortcuts.md` §Governance with the refinement; it would itself be a "behavior change" — so still major bump under the current rule. The recursion gets silly fast → strong argument for keeping the rule simple and accepting major bumps for any behavior tweak. Lesson recorded.
+
+**Verdict on Revision-1:** All four Codex findings addressed in plan text + gates. New edge-case test for parser empty-token rejection added to §11 (Rev-1 H1 follow-up). Section-consistency pass below. Ready for Codex Round-2.
+
 ## 11. Test strategy
 
 **Tests existing before:** baseline at commit `2d8a468` is 464 / 464 across 6 packages.
@@ -345,9 +394,10 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
   - (Migrated, not new) `'Dimensions flow: typed W/H commit a rectangle of those dimensions from corner1'` — body changed but test name + count unchanged.
   - (Migrated, not new) `'Dimensions abort path'` — semantically valid post-migration; counts the same.
 
-- **H1 EditorRoot comma-pair parser (~2 tests):** could add to draw-tools or a new EditorRoot.test.tsx file. If draw-tools: drive via runner with raw inputs. If new file: pure handleCommandSubmit unit tests. Decision at execution time. At minimum:
+- **H1 EditorRoot comma-pair parser (~3 tests; Rev-1 added empty-token rejection):** could add to draw-tools or a new EditorRoot.test.tsx file. If draw-tools: drive via runner with raw inputs. If new file: pure handleCommandSubmit unit tests. Decision at execution time. At minimum:
   - `'handleCommandSubmit: "30,40" with acceptedInputKinds=numberPair feeds {kind:numberPair, a:30, b:40}'`
   - `'handleCommandSubmit: "30,40" with acceptedInputKinds=number falls through to number'`
+  - `'handleCommandSubmit: parser rejects empty first/second token (",40" / "30," / ",")'` (Rev-1 R3-C2 follow-up — locks the trim().length > 0 guard).
 
 - **H2 indefinite-wait (~1 test):**
   - `tests/keyboard-router.test.ts`: `'accumulator persists across long idle periods (no timeout in AC mode)'` (replaces `'750 ms idle clears...'`).
