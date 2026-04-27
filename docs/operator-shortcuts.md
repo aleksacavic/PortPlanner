@@ -1,6 +1,6 @@
 # Operator Shortcut Registry
 
-**Version:** 1.1.0
+**Version:** 1.2.0
 **Date:** 2026-04-27
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
 
@@ -101,10 +101,34 @@ is the snapshot at supersession; this file is the active registry.
 
 ---
 
+## Behavior notes
+
+**AC-mode letter activation (M1.3d-Remediation-4 G1 / 1.2.0):** letter
+shortcuts at canvas focus accumulate silently. Enter or Space activates
+the accumulated command. Escape clears the accumulator. A 750 ms idle
+timeout silently clears the accumulator without activating. Pre-Rem-4
+the accumulator auto-activated on exact-match-no-extension (the
+heuristic was fragile — it blocked `MI` for Mirror, `MA` for Match-
+Properties, etc., as soon as `M` matched alone). The new policy
+matches AutoCAD parity.
+
+**Dynamic Input pill (M1.3d-Remediation-4 G2 / 1.2.0):** numeric and
+punctuation keys (digits 0-9, `.`, `-`, `,`, Backspace) at canvas
+focus route into the command bar's `inputBuffer` and echo in a small
+floating pill anchored to the cursor. F12 (`toggles.dynamicInput`)
+controls pill visibility. Enter at canvas focus + buffer non-empty +
+tool active submits the buffer through the same path the bottom
+command line's form uses (so direct-distance entry and other prompt
+inputs work whether the user focuses the command line or types
+directly at canvas focus). When the buffer is non-empty, canvas
+clicks are silently eaten — AC parity (the buffer takes precedence
+until the user commits with Enter or aborts with Esc).
+
 ## Changelog
 
 | Version | Date | Change |
 |---|---|---|
+| 1.2.0 | 2026-04-27 | AC-mode letter activation (Enter or Space required; Escape clears; 750 ms silent stale-clear). Dynamic Input pill at the cursor (numeric / punctuation routes into `inputBuffer`; F12 toggles visibility; Enter submits buffer through the same path as the bottom command line; click eaten while buffer non-empty). M1.3d-Remediation-4 G1 + G2. Behavior change; minor bump per registry governance. |
 | 1.1.0 | 2026-04-27 | Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active, else re-invokes most recently completed user-tool). M1.3d-Remediation-3 F6. **Note:** version corrected from initially-applied 1.0.2 (patch) to 1.1.0 (minor) per the registry's "adding a new shortcut → minor bump" governance rule (above §Governance). Codex post-commit Round-1 quality cleanup. |
 | 1.0.1 | 2026-04-26 | Add `F7` → toggle-crosshair (full-canvas / pickbox preset). M1.3d Phase 8. *(Pre-existing governance drift: should have been a minor bump per the rule above; recorded historically as patch. Going forward all additions are minor.)* |
 | 1.0.0 | 2026-04-25 | Initial registry. Seeded from ADR-023 shortcut map at supersession of ADR-022. M1.3a / M1.3b / M1.3c sections populated. |

@@ -24,6 +24,7 @@ import { hitTest } from './canvas/hit-test';
 import { PrimitiveSpatialIndex } from './canvas/spatial-index';
 import { type ScreenPoint, screenToMetric } from './canvas/view-transform';
 import { CommandBar } from './chrome/CommandBar';
+import { DynamicInputPill } from './chrome/DynamicInputPill';
 import { LayerManagerDialog } from './chrome/LayerManagerDialog';
 import { PropertiesPanel } from './chrome/PropertiesPanel';
 import { useEditorUi } from './chrome/use-editor-ui-store';
@@ -153,6 +154,24 @@ export function EditorRoot(): ReactElement {
         const id = editorUiStore.getState().commandBar.lastToolId;
         if (id === null) return;
         activateToolById(id as ToolId);
+      },
+      // M1.3d-Remediation-4 G2 — submit the in-flight inputBuffer via
+      // the same path the bottom command line's form uses, so the F1
+      // direct-distance transform applies uniformly. Per Rev-1 B1
+      // parity fix: explicit `appendHistory` mirrors CommandBar.tsx's
+      // bar-form onSubmit (which writes the same shape into
+      // `commandBar.history`). Both submission surfaces produce
+      // identical history scrollback. Verified by Gate REM4-G2g.
+      onSubmitBuffer: (raw) => {
+        if (raw.length > 0) {
+          editorUiActions.appendHistory({
+            role: 'input',
+            text: raw,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        handleCommandSubmit(raw);
+        editorUiActions.setInputBuffer('');
       },
     });
   }, []);
@@ -363,6 +382,11 @@ export function EditorRoot(): ReactElement {
   }, []);
 
   const handleCanvasClick = (metric: Point2D, screen: { x: number; y: number }): void => {
+    // M1.3d-Remediation-4 G2 — click-eat: when the inputBuffer has
+    // content, the user is mid-typing a value into the Dynamic Input
+    // pill. AC parity: the buffer takes precedence; clicks are silently
+    // eaten until the user commits (Enter) or aborts (Esc) the buffer.
+    if (editorUiStore.getState().commandBar.inputBuffer.length > 0) return;
     const tool = runningToolRef.current;
     if (tool) {
       // M1.3d Phase 3 — if the snap engine resolved a target this frame,
@@ -474,6 +498,8 @@ export function EditorRoot(): ReactElement {
   };
 
   const handleGripDown = (grip: Grip): void => {
+    // M1.3d-Rem-4 G2 — click-eat (see handleCanvasClick).
+    if (editorUiStore.getState().commandBar.inputBuffer.length > 0) return;
     // M1.3d-Remediation-3 F5 BUG FIX — when a tool is already running
     // and awaiting a 'point' input, clicking on a grip MUST feed the
     // grip's exact position as the input (AutoCAD parity: grip serves
@@ -499,6 +525,8 @@ export function EditorRoot(): ReactElement {
   // no tool is active. canvas-host fires onSelectRectStart on EVERY
   // mousedown; we gate on activeToolId === null here.
   const handleSelectRectStart = (metric: Point2D, screen: ScreenPoint): void => {
+    // M1.3d-Rem-4 G2 — click-eat (see handleCanvasClick).
+    if (editorUiStore.getState().commandBar.inputBuffer.length > 0) return;
     if (runningToolRef.current !== null) return;
     const factory = selectRectTool(metric, screen);
     const running = startTool('select-rect', factory);
@@ -557,6 +585,10 @@ export function EditorRoot(): ReactElement {
           onSelectRectStart={handleSelectRectStart}
           onCanvasMouseUp={handleCanvasMouseUp}
         />
+        {/* M1.3d-Rem-4 G2 — Dynamic Input pill anchored at cursor.
+            Sibling of CanvasHost; canvas-area is position:relative so
+            the pill's absolute positioning resolves correctly. */}
+        <DynamicInputPill />
       </div>
       <div
         data-component="properties-area"

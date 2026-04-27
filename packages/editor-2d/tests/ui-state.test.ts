@@ -248,3 +248,21 @@ describe('editorUiStore — M1.3d-Rem-3 slice extensions', () => {
     expect(editorUiStore.getState().commandBar.lastToolId).toBeNull();
   });
 });
+
+// M1.3d-Remediation-4 G1 — accumulator slice extension. Mirror of the
+// keyboard router's local accumulator string so the Dynamic Input pill
+// (G2) can render the in-progress shortcut.
+describe('editorUiStore — M1.3d-Rem-4 G1 accumulator', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  it('G1: commandBar.accumulator default is empty string', () => {
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('');
+  });
+
+  it('G1: setAccumulator stores and clears', () => {
+    editorUiActions.setAccumulator('LA');
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('LA');
+    editorUiActions.setAccumulator('');
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('');
+  });
+});

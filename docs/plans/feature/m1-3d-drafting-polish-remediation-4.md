@@ -113,7 +113,7 @@ User-confirmed in chat 2026-04-27:
 |---|---|
 | `packages/editor-2d/src/ui-state/store.ts` | Add `commandBar.accumulator: string` (default `''`) + `setAccumulator(value: string)` action. No other slice changes. |
 | `packages/editor-2d/src/keyboard/router.ts` | (G1) Remove auto-activation in `pumpAccumulator` (the `if (exact && !couldExtend) flushAccumulator(); return;` heuristic goes away). Rename `flushAccumulator` → `clearAccumulator` (no activation; just clear + cancel timer + write `setAccumulator('')`). Add `flushAccumulatorAndActivate` for Enter/Space-driven flush. (G1+G2 — Rev-1 H1) Enter and Space handlers branch in this exact order: (1) inputBuffer non-empty + tool active → `onSubmitBuffer`; (2) accumulator non-empty → `flushAccumulatorAndActivate`; (3) inputBuffer non-empty + no tool → clear silently; (4) tool active → `onCommitCurrentTool`; (5, Space only) no tool + lastToolId → `onRepeatLastCommand`. See A10b for the precedence rationale and Step 3 + 4 for the canonical branch list. (G1) Escape clears `inputBuffer` too via new `editorUiActions.setInputBuffer('')`. (G2 — Rev-1 H2) Backspace at canvas focus ALWAYS `preventDefault`; pop last char from `inputBuffer` when non-empty, else benign no-op. (G2) Capture digits / `.` / `-` / `,` at canvas focus matching `/^[0-9.,\-]$/` → write to `inputBuffer`. (G2) Publish accumulator on every mutation via `editorUiActions.setAccumulator`. |
-| `packages/editor-2d/src/EditorRoot.tsx` | (G2 click-eat) `handleCanvasClick`, `handleSelectRectStart`, `handleGripDown` early-return when `editorUiStore.getState().commandBar.inputBuffer.length > 0`. (G1+G2 submit wiring) Add `onSubmitBuffer: (raw: string) => void` callback to keyboard router callbacks; impl reads `inputBuffer` and feeds through existing `handleCommandSubmit` path (the same routing — direct-distance transform, number, etc.). After submit, clear `inputBuffer`. |
+| `packages/editor-2d/src/EditorRoot.tsx` | (G2 click-eat) `handleCanvasClick`, `handleSelectRectStart`, `handleGripDown` early-return when `editorUiStore.getState().commandBar.inputBuffer.length > 0`. (G1+G2 submit wiring) Add `onSubmitBuffer: (raw: string) => void` callback to keyboard router callbacks; impl **first calls `editorUiActions.appendHistory({...})` to mirror CommandBar.tsx's bar-form onSubmit** (Rev-1 B1 fix — pill submit path produces identical history scrollback as the bar form), then feeds through existing `handleCommandSubmit` path (the same routing — direct-distance transform, number, etc.), then clears `inputBuffer`. Verified by Gate REM4-G2g. |
 | `packages/editor-2d/src/chrome/DynamicInputPill.tsx` | NEW. Reads `overlay.cursor`, `commandBar.inputBuffer`, `commandBar.accumulator`, `commandBar.activePrompt`, `toggles.dynamicInput` via `useEditorUi`. Renders absolute-positioned pill at `cursor.screen + {dx: 16, dy: -24}` when visibility predicate holds (per A3). Hides otherwise (returns null). Single React component, ~50-70 LOC. |
 | `packages/editor-2d/src/chrome/DynamicInputPill.module.css` | NEW. `.pill` class: absolute positioned, dotted border, monospace, small padding, semi-transparent background using `var(--surface-overlay)` + `var(--text-primary)` semantic tokens. ~25-40 LOC. |
 | `packages/editor-2d/src/chrome/CommandBar.tsx` | No change. Bottom command line continues to render the same buffer; pill is an alternate surface for the same SSOT. |
@@ -340,31 +340,38 @@ Gate REM4-G1b: clearAccumulator and flushAccumulatorAndActivate exist as distinc
             or `const` style)
 
 Gate REM4-G1c: Enter handler branches on accumulator
-  Command: rg -A 8 -n "key === 'Enter' && focus === 'canvas'" packages/editor-2d/src/keyboard/router.ts | rg "accumulator|flushAccumulatorAndActivate"
-  Expected: ≥1 match (the new branch references accumulator)
+  Command: rg -A 16 -n "key === 'Enter' && focus === 'canvas'" packages/editor-2d/src/keyboard/router.ts | rg "accumulator|flushAccumulatorAndActivate"
+  Expected: ≥1 match (the new branch references accumulator).
+  Note: window expanded to -A 16 during execution (Procedure 03 §3.7
+  in-place plan correction) because under inputBuffer-first ordering
+  the accumulator branch is the SECOND check, not the first; original
+  -A 8 was a tighter window from when the order was assumed accumulator-
+  first. The Rev-1 H1 swap moved accumulator past offset 8.
 
 Gate REM4-G1d: Space handler branches on accumulator
-  Command: rg -A 12 -n "key === ' ' && focus === 'canvas'" packages/editor-2d/src/keyboard/router.ts | rg "accumulator|flushAccumulatorAndActivate"
-  Expected: ≥1 match
+  Command: rg -A 18 -n "key === ' ' && focus === 'canvas'" packages/editor-2d/src/keyboard/router.ts | rg "accumulator|flushAccumulatorAndActivate"
+  Expected: ≥1 match. Window expanded to -A 18 for the same reason as
+  REM4-G1c (Space has 5 branches vs Enter's 4, slightly deeper).
 
 Gate REM4-G2a: commandBar.accumulator field on store
   Command: rg -n "accumulator" packages/editor-2d/src/ui-state/store.ts
   Expected: ≥3 matches (slice declaration + default + setter)
 
-Gate REM4-G2b: Numeric / punctuation routing in keyboard router (Rev-1 Q2 — split into two strict gates)
+Gate REM4-G2b: Numeric / punctuation routing in keyboard router (Rev-1 Q2 — split into two strict gates; updated during execution per Procedure 03 §3.7 to match the actual factoring through `appendToInputBuffer` helper)
   Commands:
-    (a) Digit-class regex pattern present in the router source:
-        rg -n "/\^\[0-9\.,\-\]" packages/editor-2d/src/keyboard/router.ts
-        Expected: ≥1 match (the regex character class anchored to the
-        captured key set — proves the test is matching numeric/punct
-        keys specifically, not arbitrary characters).
-    (b) setInputBuffer called from the keyboard handler scope:
-        rg -B 2 -n "editorUiActions\.setInputBuffer" packages/editor-2d/src/keyboard/router.ts | rg "key|focus === 'canvas'"
-        Expected: ≥1 match (proves the setInputBuffer call sits inside
-        a key-handler context, not somewhere unrelated). If
-        implementation factors the call into a helper, the helper itself
-        gets called from a key-handler branch — adjust the upstream rg
-        accordingly during execution.
+    (a) Digit-class regex literal present in the router source:
+        rg -n "/\^\[0-9" packages/editor-2d/src/keyboard/router.ts
+        Expected: ≥1 match — the regex character class anchored to the
+        captured key set (`/^[0-9.,\-]$/`). Proves the test matches
+        numeric/punct keys specifically, not arbitrary characters.
+    (b) The regex is used inside a `focus === 'canvas'` branch that
+        routes the key into the inputBuffer:
+        rg -A 3 -n "INPUT_BUFFER_KEY_RE" packages/editor-2d/src/keyboard/router.ts | rg "focus === 'canvas'|appendToInputBuffer"
+        Expected: ≥1 match (proves the regex is used in a canvas-focus
+        gate AND immediately routes through the buffer-append helper).
+        Implementation may factor the routing through `appendToInputBuffer`
+        / `popFromInputBuffer` helpers; either form is acceptable as long
+        as the call chain reaches `editorUiActions.setInputBuffer`.
 
 Gate REM4-G2c: DynamicInputPill component file exists + mounted in EditorRoot
   Commands:
@@ -378,8 +385,11 @@ Gate REM4-G2d: Pill visibility gated on toggles.dynamicInput
   Expected: ≥1 match
 
 Gate REM4-G2e: Click-eat guards in three EditorRoot handlers
-  Command: rg -A 2 -n "const handleCanvasClick|const handleSelectRectStart|const handleGripDown" packages/editor-2d/src/EditorRoot.tsx | rg "inputBuffer\.length"
-  Expected: ≥3 matches (one guard per handler)
+  Command: rg -A 6 -n "const handleCanvasClick|const handleSelectRectStart|const handleGripDown" packages/editor-2d/src/EditorRoot.tsx | rg "inputBuffer\.length"
+  Expected: ≥3 matches (one guard per handler).
+  Note: window expanded from -A 2 to -A 6 during execution
+  (Procedure 03 §3.7) because handleCanvasClick's guard sits 5 lines
+  after the declaration (preceded by a 4-line policy comment).
 
 Gate REM4-G2f: onSubmitBuffer callback wired
   Commands:
@@ -526,6 +536,8 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The five Codex Ro
 
 - **G2 keyboard router numeric routing (~5 tests):** `'digit at canvas focus appends to inputBuffer'`, `'comma + minus + dot at canvas focus append to inputBuffer'`, `'Backspace at canvas focus pops the last char from inputBuffer'`, `'Backspace when inputBuffer empty is a no-op'`, `'Enter at canvas focus + inputBuffer non-empty + tool active → onSubmitBuffer fires with buffer contents'`.
 
+- **Rev-1 H1 + H2 keyboard router (~4 tests):** `'both buffers non-empty: Enter prefers inputBuffer over accumulator'` (H1 precedence policy from A10b), `'Enter at canvas focus + inputBuffer non-empty + no tool active → buffer cleared silently'` (Rev-1 R2-C2 follow-up — degenerate state branch (3) of Step 3), `'Backspace at canvas focus always preventDefaults (suppresses browser back-navigation)'` (H2 policy), `'Backspace at canvas focus when inputBuffer empty is a benign no-op but still preventDefaults'` (H2 empty-buffer branch).
+
 - **G2 DynamicInputPill (~6 tests):** `'pill renders inputBuffer when non-empty'`, `'pill renders accumulator when buffer empty + accumulator non-empty'`, `'pill renders activePrompt when both buffers empty + prompt active'`, `'pill hides when toggles.dynamicInput is false'`, `'pill hides when nothing to render'`, `'pill anchors at cursor.screen + offset'`.
 
 - **G2 click-eat in EditorRoot.test.tsx if exists, otherwise smoke (~1 test).**
@@ -596,3 +608,37 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The five Codex Ro
 > Please review the plan at
 > `docs/plans/feature/m1-3d-drafting-polish-remediation-4.md`. After
 > approval, invoke Procedure 03 to execute the single phase.
+
+---
+
+## Post-execution notes (Procedure 03 §3.7)
+
+**Execution commit:** to be filled by `git log` after the execution commit lands; per Rev-1 footer convention no self-referential placeholder token.
+
+**Codex Round-2 quality cleanups bundled per Lesson 10 ("fix during execution"):**
+- **§4.1 EditorRoot row** — added explicit reference to the Rev-1 history-append behavior (call sites mention `editorUiActions.appendHistory({...})` BEFORE delegating to `handleCommandSubmit`).
+- **§11 Test strategy** — added explicit bullet list of Rev-1-added tests (precedence/no-tool + Backspace preventDefault) so the audit trail matches §4.1's row-level enumeration.
+
+**In-place plan corrections during execution (Procedure 03 §3.7):**
+
+1. **Gate REM4-G1c window expansion.** Original `-A 8` was a tighter window from the (pre-Rev-1) accumulator-first ordering. Rev-1's swap to inputBuffer-first moved the accumulator branch past offset 8. Updated to `-A 16`.
+2. **Gate REM4-G1d window expansion.** Same fix at `-A 18` (Space has 5 branches vs Enter's 4).
+3. **Gate REM4-G2b regex form correction.** Original gate (a) `rg "/\^\[0-9\.,\-\]"` had over-escaping. Simplified to `rg "/\^\[0-9"` which matches the actual regex literal `/^[0-9.,\-]$/` in router source. Gate (b) recast to verify `INPUT_BUFFER_KEY_RE` is used in a `focus === 'canvas'` branch that calls `appendToInputBuffer`, accommodating the natural factoring through helpers.
+4. **Gate REM4-G2e window expansion.** Original `-A 2` didn't capture handleCanvasClick's guard which sits 5 lines past the declaration (preceded by a 4-line policy comment). Updated to `-A 6`.
+5. **Orphaned `isMultiLetterPrefix` removal.** G1's removal of the auto-flush-on-exact-match heuristic made `isMultiLetterPrefix` unused. Per CLAUDE.md "Remove imports/variables/functions that YOUR changes made unused": removed the export from `keyboard/shortcuts.ts`. No external consumers existed.
+
+**Final test count vs estimate:**
+- §10 C2.8 estimate: ~23 net-new tests, threshold ≥460.
+- Actual: 464 (was 437 at Round-3 baseline `63380bb`; +27 net-new). Per-package: editor-2d 320 → 347 (+27); domain / design-system / project-store / project-store-react / web unchanged.
+- Sources: G1 router (~6), G2 router (~7), Rev-1 H1+H2 router (~4 — H2's two preventDefault tests were 1 site each), ui-state (~2), DynamicInputPill (~6), smoke-e2e (~2 new). Totals slightly over by adding the H2 preventDefault tests and the no-tool-active R2-C2 follow-up test.
+
+**Implementation observations worth recording for future readers:**
+
+1. **G1 + G2 single phase delivered as planned.** No phase ordering issues; the accumulator publication landed first (Step 1) and was consumed by the pill (Step 10) and the new G1 + G2 router branches. Click-eat (Step 9) is independent of the pill.
+2. **Stream separation enforcement is implicit, not coded.** Letters route only through the accumulator branch; digits/punct only through the inputBuffer branch. The two branches are mutually exclusive via the regex match — no explicit cross-clear is needed. The both-non-empty case (typed in bar form + then a letter at canvas focus) is handled by A10b's precedence policy; tested.
+3. **Pill positioning offset {dx: 16, dy: -24}** matches AC's "up-and-to-the-right" placement. CSS module's `transform: translate(...)` is set inline by the React component for fast updates without re-running CSS rules.
+4. **F12 toggle now does something visible** — pre-Round-4 it flipped a flag with no consumer; the pill is the first runtime reader. Bonus side effect of G2's wiring.
+
+**Bundle delta:** apps/web/dist/index.js was 445.24 kB raw / 128.55 kB gz at Round-3 baseline; now 446.75 kB raw / 128.90 kB gz. Delta: +1.5 kB raw / +0.35 kB gz. Under §10 C3.5 estimate (+1-2 kB raw / +0.5 kB gz). The DynamicInputPill component is small.
+
+**Procedure 03 §3.9 self-review loop:** after the execution commit lands, run Procedure 04 against the commit range and remediate any Blocker / High-risk findings before the §3.8 handoff. Quality-gap findings may be deferred but MUST be listed as residual risks.

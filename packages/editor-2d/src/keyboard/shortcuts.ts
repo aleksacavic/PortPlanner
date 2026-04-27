@@ -66,12 +66,6 @@ export function lookupShortcut(buffer: string): ToolId | null {
   return null;
 }
 
-/** Returns true if `buffer` is a prefix of any multi-letter shortcut. */
-export function isMultiLetterPrefix(buffer: string): boolean {
-  const up = buffer.toUpperCase();
-  return Object.keys(MULTI_LETTER_SHORTCUTS).some((k) => k.startsWith(up) && k !== up);
-}
-
 /**
  * M1.3d-Remediation-3 F7 — toolId → display name for the command-bar
  * tool badge. Internal / modeless tools (`select-rect`, `grip-stretch`,

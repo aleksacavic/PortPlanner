@@ -87,9 +87,15 @@ const SCENARIOS = [
   // SOLE integration surface (router.ts handler + EditorRoot's
   // onRepeatLastCommand wiring across the runner's lastToolId capture).
   'spacebar repeats last command',
+  // M1.3d-Remediation-4 G2 — Dynamic Input pill + numeric routing at
+  // canvas focus + Enter-submits-buffer. SOLE integration surface for
+  // G2 (router routes numerics into inputBuffer; EditorRoot's
+  // onSubmitBuffer feeds via handleCommandSubmit + appendHistory).
+  'dynamic input pill: typing a number while in line tool shows pill + Enter submits',
+  // M1.3d-Remediation-4 G2 — click-eat. SOLE integration surface for
+  // the click-eat path (handleCanvasClick guard on inputBuffer).
+  'click is eaten while inputBuffer non-empty (AC parity)',
 ] as const;
-
-const ACCUMULATOR_FLUSH_MS = 800;
 
 function makeProject(): Project {
   return {
@@ -151,7 +157,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // A18-uistate: tool activation via window-level keyboard.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
     // A18-uistate: pointer events drive tool inputs.
@@ -239,7 +247,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     // A18-uistate: open Layer Manager via L+A multi-letter shortcut.
     fireEvent.keyDown(window, { key: 'L' });
     fireEvent.keyDown(window, { key: 'A' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
 
     // A18-assert: dialog renders.
     const dialog = container.querySelector('[data-component="layer-manager-dialog"]');
@@ -259,7 +269,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // Activate draw-line and click two points.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
     fireEvent.mouseDown(canvas, { button: 0, clientX: 100, clientY: 100 });
@@ -376,7 +388,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // A18-assert: drafting still works after closing the chip.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
     fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
@@ -403,7 +417,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     // Activate draw-line via keyboard, click first point, fire
     // mousemove and assert overlay.previewShape is a line shape.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
@@ -442,7 +458,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     // existing line's endpoint at screen (500, 300) — well inside the
     // 16-px snap tolerance from M1.3a.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     fireEvent.mouseDown(canvas, { button: 0, clientX: 100, clientY: 100 });
     await wait(20);
     fireEvent.mouseMove(canvas, { clientX: 502, clientY: 300 });
@@ -680,7 +698,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // Activate L (draw-line).
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
     // First click: metric (0, 0) → screen (400, 300) at zoom=10 / viewport (800, 600).
@@ -756,7 +776,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // Activate MOVE.
     fireEvent.keyDown(window, { key: 'M' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('move');
 
     // Click an arbitrary base point at metric (-10, -5) → screen (300, 350).
@@ -789,6 +811,101 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     expect(editorUiStore.getState().activeToolId).not.toBe('grip-stretch');
   });
 
+  // ============================================================
+  // M1.3d-Remediation-4 — G1 + G2 SOLE integration scenarios.
+  // ============================================================
+
+  it('dynamic input pill: typing a number while in line tool shows pill + Enter submits', async () => {
+    // G2 — Activate LINE via L+Enter (G1 AC mode); click p1; move
+    // cursor on canvas (sets lastKnownCursor + cursor.screen so the
+    // pill anchor resolves); type "7" via canvas-focus number-keys
+    // (router routes into inputBuffer); pill renders; Enter at canvas
+    // focus + buffer non-empty + tool active fires onSubmitBuffer →
+    // EditorRoot's handler appends history + handleCommandSubmit
+    // (which applies F1 direct-distance: dest = p1 + unit(cursor-p1)*7).
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate draw-line (AC mode: letter + Enter).
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    // Click p1 at metric (0, 0) → screen (400, 300).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    // Move cursor to (450, 300) → metric (5, 0) — establishes the
+    // direction vector for F1.
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(40);
+
+    // Type "7" via canvas-focus number key (router routes into inputBuffer).
+    expect(editorUiStore.getState().focusHolder).toBe('canvas');
+    fireEvent.keyDown(window, { key: '7' });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('7');
+
+    // Pill renders the buffer.
+    const pill = container.querySelector('[data-component="dynamic-input-pill"]');
+    expect(pill).not.toBeNull();
+    expect(pill!.textContent).toBe('7');
+
+    // Enter submits. inputBuffer is fed through handleCommandSubmit
+    // → F1 transform → dest = (0, 0) + (1, 0) * 7 = (7, 0).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(50);
+
+    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'line',
+    );
+    expect(lines).toHaveLength(1);
+    const ln = lines[0] as { p1: { x: number; y: number }; p2: { x: number; y: number } };
+    expect(ln.p1).toEqual({ x: 0, y: 0 });
+    expect(ln.p2.x).toBeCloseTo(7, 6);
+    expect(ln.p2.y).toBeCloseTo(0, 6);
+
+    // Buffer cleared after submit; history appended (Rev-1 B1 parity).
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+    const inputEntries = editorUiStore
+      .getState()
+      .commandBar.history.filter((h) => h.role === 'input');
+    expect(inputEntries.some((h) => h.text === '7')).toBe(true);
+  });
+
+  it('click is eaten while inputBuffer non-empty (AC parity)', async () => {
+    // G2 — When the user is mid-typing a value into the buffer,
+    // canvas clicks are silently eaten until the user commits (Enter)
+    // or aborts (Esc) the buffer. AC parity.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate L + Enter, click p1.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+
+    // Pollute the inputBuffer (simulating mid-typing).
+    fireEvent.keyDown(window, { key: '5' });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+
+    // Click on canvas — should be EATEN (no second point fed to draw-line).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+
+    // Tool is still running (no line committed because the click was eaten).
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+    expect(
+      Object.values(projectStore.getState().project!.primitives).filter((p) => p.kind === 'line')
+        .length,
+    ).toBe(0);
+    // Buffer still pending.
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+  });
+
   it('spacebar repeats last command', async () => {
     // F6 — Activate L, commit a line, then press Space at canvas focus →
     // draw-line activates again. SOLE integration: router.ts spacebar
@@ -800,7 +917,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // Activate L, draw a line.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
     fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });

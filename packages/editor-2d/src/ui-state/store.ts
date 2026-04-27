@@ -110,6 +110,21 @@ export interface CommandBarState {
    * means the very first spacebar after page load is a no-op.
    */
   lastToolId: string | null;
+  /**
+   * M1.3d-Remediation-4 G1 — multi-letter shortcut staging buffer
+   * published by the keyboard router. Mirrors the router's local
+   * accumulator string so the Dynamic Input pill (G2) can render the
+   * in-progress shortcut as the user types. Read-only from the pill;
+   * sole writer is the keyboard router via `setAccumulator`. Default
+   * `''` (empty string).
+   *
+   * Stream separation: this slice holds LETTERS being assembled into
+   * a tool-activation shortcut (e.g. `LA` → Layer Manager). The
+   * sibling `inputBuffer` field holds DIGITS / punctuation / Backspace
+   * for value entry into the active tool's prompt. Two distinct
+   * streams matching AC's mental model (see plan §3 A4 / A10b).
+   */
+  accumulator: string;
 }
 
 export interface OverlayState {
@@ -251,6 +266,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     acceptedInputKinds: [],
     directDistanceFrom: null,
     lastToolId: null,
+    accumulator: '',
   },
   focusHolder: 'canvas',
   focusStack: [],
@@ -433,6 +449,15 @@ export const editorUiActions = {
   setLastToolId(id: string | null): void {
     editorUiStore.setState((s) => {
       s.commandBar.lastToolId = id;
+    });
+  },
+  // M1.3d-Remediation-4 G1 — multi-letter accumulator setter. Sole
+  // writer is the keyboard router; sole reader (this round) is the
+  // Dynamic Input pill. Mirrors the router's local accumulator
+  // closure variable so the pill can render the in-progress shortcut.
+  setAccumulator(value: string): void {
+    editorUiStore.setState((s) => {
+      s.commandBar.accumulator = value;
     });
   },
   /**
