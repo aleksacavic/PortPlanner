@@ -513,13 +513,15 @@ export function EditorRoot(): ReactElement {
     runningToolRef.current?.feedInput({ kind: 'commit' });
   };
 
-  // M1.3d Phase 6 — grip hit-test + grip-stretch lifecycle. canvas-host
-  // calls handleGripHitTest BEFORE its onCanvasClick. If a grip hits,
-  // we abort the active tool (if any), start grip-stretch, and route
-  // the eventual mouseup as the 'point' commit. The mouseup wiring
-  // lands in Phase 7 (canvas-host onCanvasMouseUp + tool runner input
-  // routing); for now, the user releases the mouse off-canvas or
-  // clicks again to commit the new position.
+  // M1.3d Phase 6 + post-merge fix (fix/grip-stretch-click-sticky-click)
+  // — grip hit-test + grip-stretch lifecycle. canvas-host calls
+  // handleGripHitTest BEFORE its onCanvasClick. If a grip hits, we
+  // start grip-stretch (or, F5 path, feed the grip's position to the
+  // already-running tool). The grip-stretch tool then awaits a 'point'
+  // input which is fed by the NEXT canvas click — AC parity:
+  // click-sticky-click, not click-drag. The mouseup of the initial
+  // grip-click is intentionally ignored (handleCanvasMouseUp's
+  // whitelist excludes grip-stretch).
   const handleGripHitTest = (screen: ScreenPoint): Grip | null => {
     const grips = editorUiStore.getState().overlay.grips;
     if (!grips || grips.length === 0) return null;
@@ -565,11 +567,24 @@ export function EditorRoot(): ReactElement {
     });
   };
 
-  // M1.3d Phase 7 — mouseup whitelist (C13). Only forward mouseup as a
-  // 'point' input when the active tool is one of the drag-style tools
-  // that expects an mouseup-driven commit. Other tools (line, circle,
-  // arc, etc.) take their points from mousedown via onCanvasClick;
-  // forwarding a mouseup point would cause an unwanted "extra point".
+  // M1.3d Phase 7 + post-merge fix (fix/grip-stretch-click-sticky-click)
+  // — mouseup whitelist. Only forward mouseup as a 'point' input when
+  // the active tool is `select-rect` (the SOLE remaining drag-style
+  // tool: rectangle defined by mousedown-and-drag-to-mouseup gesture).
+  //
+  // grip-stretch USED to be in this whitelist (M1.3d's original
+  // design), but that produced a drag-pattern UX (must hold the mouse
+  // button between grip-pick and destination-click) which conflicts
+  // with AC's click-sticky-click pattern (full click on grip → cursor
+  // sticks → full click at destination commits). The fix removes
+  // grip-stretch from the whitelist; the destination commit is now
+  // delivered by the next canvas click via `handleCanvasClick` (which
+  // already handles "tool active → feed point" — see the canvas-click
+  // path) or by another grip-click via `handleGripDown`'s F5 branch.
+  //
+  // Other tools (line, circle, arc, etc.) take their points from
+  // mousedown via onCanvasClick; forwarding a mouseup point would
+  // cause an unwanted "extra point" — that's why the whitelist exists.
   //
   // M1.3d-Remediation R4 — symmetry with handleCanvasClick: when a snap
   // target is resolved this frame, feed the snap-resolved metric (bit-
@@ -578,7 +593,7 @@ export function EditorRoot(): ReactElement {
   // glyph rendered, click committed at the raw cursor — Phase 7 oversight.
   const handleCanvasMouseUp = (metric: Point2D, _screen: ScreenPoint): void => {
     const id = editorUiStore.getState().activeToolId;
-    if (id !== 'select-rect' && id !== 'grip-stretch') return;
+    if (id !== 'select-rect') return;
     const snap = editorUiStore.getState().overlay.snapTarget;
     const point = snap ? commitSnappedVertex(snap.point) : metric;
     runningToolRef.current?.feedInput({ kind: 'point', point });

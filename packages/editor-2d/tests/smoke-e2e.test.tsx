@@ -59,10 +59,13 @@ const SCENARIOS = [
   'window vs crossing selection',
   'grip stretch updates primitive',
   'cursor coords update on mousemove',
-  // M1.3d-Remediation R4 — snap consumption on mouseup-driven 'point'
-  // inputs. SOLE validation surface for R4 (handleCanvasMouseUp's
-  // commitSnappedVertex wiring lives in EditorRoot, not in tools).
-  'snap honored on grip-stretch mouseup',
+  // M1.3d-Remediation R4 + post-merge fix
+  // (fix/grip-stretch-click-sticky-click) — snap consumption on the
+  // grip-stretch destination click. Originally tested on mouseup
+  // (drag pattern); migrated to click-sticky-click. SOLE validation
+  // surface that EditorRoot's snap-resolved metric is fed via
+  // handleCanvasClick when grip-stretch is awaiting its destination.
+  'snap honored on grip-stretch destination click',
   // M1.3d-Remediation-2 R5 — crossing selection uses geometric
   // wire-vs-rect intersect, not bbox-intersect. SOLE integration
   // validation surface for R5 (wire-intersect.test.ts covers per-kind
@@ -550,10 +553,16 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     await wait(20);
 
     const canvas = getCanvasOrThrow(container);
-    // p1 grip is at metric (0, 0) → screen (400, 300). Grab it and
-    // drag to metric (5, 5) → screen (450, 250). Mouseup commits.
+    // p1 grip is at metric (0, 0) → screen (400, 300). Click on the
+    // grip (full click — mousedown + mouseup at the same position;
+    // post-fix click-sticky-click pattern means the mouseup does NOT
+    // commit). Then click destination at metric (5, 5) → screen
+    // (450, 250); the destination mousedown commits via
+    // handleCanvasClick.
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 400, clientY: 300 });
     await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 250 });
     fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 250 });
     await wait(50);
 
@@ -585,14 +594,17 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     expect(readout?.textContent).toMatch(/Y: 0\.000/);
   });
 
-  it('snap honored on grip-stretch mouseup', async () => {
-    // M1.3d-Remediation R4 — SOLE validation surface for snap-on-mouseup.
-    // The wiring under test lives in EditorRoot.handleCanvasMouseUp:
-    // when overlay.snapTarget is set at mouseup time, the runner receives
-    // the snap-resolved metric (commitSnappedVertex bit-copy), NOT the
-    // raw cursor metric. Tool-level tests (grip-stretch.test.ts /
-    // select-rect.test.ts) cannot validate this — they call
-    // tool.feedInput directly and bypass EditorRoot entirely.
+  it('snap honored on grip-stretch destination click', async () => {
+    // M1.3d-Remediation R4 + post-merge fix
+    // (fix/grip-stretch-click-sticky-click) — SOLE validation surface
+    // for snap consumption at grip-stretch's destination click. The
+    // wiring under test lives in EditorRoot.handleCanvasClick: when
+    // overlay.snapTarget is set at click time AND grip-stretch is
+    // awaiting a 'point', the runner receives the snap-resolved metric
+    // (commitSnappedVertex bit-copy), NOT the raw cursor metric.
+    // Pre-fix this test exercised mouseup (drag pattern); post-fix
+    // it exercises mousedown of the destination click (click-sticky-click).
+    // Tool-level tests bypass EditorRoot and cannot validate this path.
     const { container } = render(<EditorRoot />);
     createNewProject(makeProject());
 
@@ -623,18 +635,22 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     await wait(20);
 
     const canvas = getCanvasOrThrow(container);
-    // Grab the dragged line's p1 grip at screen (400, 350).
+    // Click on the dragged line's p1 grip at screen (400, 350) — full
+    // click (mousedown+mouseup at same position). Post-fix the mouseup
+    // does NOT commit; cursor sticks to grip-stretch.
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 350 });
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 400, clientY: 350 });
     await wait(20);
     // Move cursor near the targetLine's p1 endpoint (screen 450, 300) so
     // the snap-on-cursor effect resolves overlay.snapTarget to the
-    // endpoint at metric (5, 0). Land 2 px off so the raw mouseup metric
+    // endpoint at metric (5, 0). Land 2 px off so the raw click metric
     // would NOT equal the snap-resolved metric — proving the gate.
     fireEvent.mouseMove(canvas, { clientX: 452, clientY: 301 });
     await wait(80); // rAF flush + snap resolution + paint requestPaint
 
-    // Mouseup at the slightly-off position; commit MUST use the snap-
-    // resolved metric (5, 0), not the raw mouseup metric (5.2, -0.1).
+    // Destination click at the slightly-off position; commit MUST use
+    // the snap-resolved metric (5, 0), not the raw click metric.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 452, clientY: 301 });
     fireEvent.mouseUp(canvas, { button: 0, clientX: 452, clientY: 301 });
     await wait(50);
 
