@@ -106,6 +106,17 @@ describe('useAutoLoadMostRecent (via <App />)', () => {
     expect(project.name).toBe('Untitled');
     expect(project.primitives).toEqual({});
     expect(project.layers[LayerId.DEFAULT]).toBeDefined();
+    // M1.3d Phase 8 — bootstrap also seeds a 5×5m grid on DEFAULT
+    // layer, activeForSnap so GSNAP has something to snap to out of
+    // the box.
+    const grids = Object.values(project.grids);
+    expect(grids).toHaveLength(1);
+    const grid = grids[0]!;
+    expect(grid.spacingX).toBe(5);
+    expect(grid.spacingY).toBe(5);
+    expect(grid.layerId).toBe(LayerId.DEFAULT);
+    expect(grid.activeForSnap).toBe(true);
+    expect(grid.visible).toBe(true);
   });
 
   it('contains malformed record failure — no crash, no unhandled rejection, store stays null', async () => {

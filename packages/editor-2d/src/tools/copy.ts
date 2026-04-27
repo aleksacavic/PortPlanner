@@ -38,10 +38,28 @@ export async function* copyTool(): ToolGenerator {
   }
   const baseInput = yield { text: 'Specify base point', acceptedInputKinds: ['point'] };
   if (baseInput.kind !== 'point') return { committed: false, reason: 'aborted' };
-  const targetInput = yield { text: 'Specify second point', acceptedInputKinds: ['point'] };
+  // M1.3d-Remediation-3 F4 — ghost preview of the would-be copies at the
+  // current cursor offset. Snapshot the source primitives at base-point-
+  // pick time so the preview is stable across the second prompt.
+  const baseProject = projectStore.getState().project;
+  const ghostPrimitives: Primitive[] = baseProject
+    ? selection.flatMap((id) => {
+        const p = baseProject.primitives[id];
+        return p ? [p] : [];
+      })
+    : [];
+  const base = baseInput.point;
+  const targetInput = yield {
+    text: 'Specify second point',
+    acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({
+      kind: 'modified-entities',
+      primitives: ghostPrimitives,
+      offsetMetric: { x: cursor.x - base.x, y: cursor.y - base.y },
+    }),
+  };
   if (targetInput.kind !== 'point') return { committed: false, reason: 'aborted' };
 
-  const base = baseInput.point;
   const target = targetInput.point as Point2D;
   const dx = target.x - base.x;
   const dy = target.y - base.y;

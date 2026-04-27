@@ -30,9 +30,23 @@ function circumcircle(
 export async function* drawArcTool(): ToolGenerator {
   const start = yield { text: 'Specify start point', acceptedInputKinds: ['point'] };
   if (start.kind !== 'point') return { committed: false, reason: 'aborted' };
-  const mid = yield { text: 'Specify mid point', acceptedInputKinds: ['point'] };
+  const p1 = start.point;
+  const mid = yield {
+    text: 'Specify mid point',
+    acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({ kind: 'arc-2pt', p1, cursor }),
+    // F1: typed numeric distance lands at p1 + unit(cursor - p1) * d.
+    directDistanceFrom: p1,
+  };
   if (mid.kind !== 'point') return { committed: false, reason: 'aborted' };
-  const end = yield { text: 'Specify end point', acceptedInputKinds: ['point'] };
+  const p2 = mid.point;
+  const end = yield {
+    text: 'Specify end point',
+    acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({ kind: 'arc-3pt', p1, p2, cursor }),
+    // F1: typed numeric distance lands at p2 + unit(cursor - p2) * d.
+    directDistanceFrom: p2,
+  };
   if (end.kind !== 'point') return { committed: false, reason: 'aborted' };
 
   const cc = circumcircle(start.point, mid.point, end.point);

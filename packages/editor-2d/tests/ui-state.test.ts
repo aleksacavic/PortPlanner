@@ -1,3 +1,4 @@
+import { newPrimitiveId } from '@portplanner/domain';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
@@ -45,5 +46,223 @@ describe('editorUiStore', () => {
     expect(cb.subOptions).toHaveLength(1);
     expect(cb.defaultValue).toBe('0');
     expect(cb.inputBuffer).toBe('');
+  });
+});
+
+// M1.3d Phase 1 — overlay slice extensions + crosshairSizePct.
+describe('editorUiStore — M1.3d overlay extensions', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  it('overlay defaults are all null/empty', () => {
+    const o = editorUiStore.getState().overlay;
+    expect(o.cursor).toBeNull();
+    expect(o.snapTarget).toBeNull();
+    expect(o.previewShape).toBeNull();
+    expect(o.hoverEntity).toBeNull();
+    expect(o.transientLabels).toEqual([]);
+    expect(o.grips).toBeNull();
+    expect(o.suppressEntityPaint).toBeNull();
+    // Existing fields retained.
+    expect(o.guides).toEqual([]);
+    expect(o.selectionHandles).toEqual([]);
+  });
+
+  it('setCursor stores metric + screen and clears via null', () => {
+    editorUiActions.setCursor({ metric: { x: 1.5, y: -2.5 }, screen: { x: 100, y: 200 } });
+    const o1 = editorUiStore.getState().overlay;
+    expect(o1.cursor).toEqual({ metric: { x: 1.5, y: -2.5 }, screen: { x: 100, y: 200 } });
+
+    editorUiActions.setCursor(null);
+    expect(editorUiStore.getState().overlay.cursor).toBeNull();
+  });
+
+  it('setPreviewShape stores a discriminated union arm', () => {
+    editorUiActions.setPreviewShape({
+      kind: 'line',
+      p1: { x: 0, y: 0 },
+      cursor: { x: 5, y: 5 },
+    });
+    const ps = editorUiStore.getState().overlay.previewShape;
+    expect(ps?.kind).toBe('line');
+
+    editorUiActions.setPreviewShape(null);
+    expect(editorUiStore.getState().overlay.previewShape).toBeNull();
+  });
+
+  it('setSnapTarget accepts a SnapHit-shaped target and clears via null', () => {
+    editorUiActions.setSnapTarget({ kind: 'endpoint', point: { x: 10, y: 0 } });
+    const t = editorUiStore.getState().overlay.snapTarget;
+    expect(t).toEqual({ kind: 'endpoint', point: { x: 10, y: 0 } });
+
+    editorUiActions.setSnapTarget(null);
+    expect(editorUiStore.getState().overlay.snapTarget).toBeNull();
+  });
+
+  it('setHoverEntity stores an id and clears via null', () => {
+    const id = newPrimitiveId();
+    editorUiActions.setHoverEntity(id);
+    expect(editorUiStore.getState().overlay.hoverEntity).toBe(id);
+    editorUiActions.setHoverEntity(null);
+    expect(editorUiStore.getState().overlay.hoverEntity).toBeNull();
+  });
+
+  it('setTransientLabels replaces the labels array', () => {
+    editorUiActions.setTransientLabels([{ anchor: { metric: { x: 1, y: 2 } }, text: '5.000 m' }]);
+    expect(editorUiStore.getState().overlay.transientLabels).toHaveLength(1);
+    editorUiActions.setTransientLabels([]);
+    expect(editorUiStore.getState().overlay.transientLabels).toEqual([]);
+  });
+
+  it('setGrips stores grip records and clears via null', () => {
+    const id = newPrimitiveId();
+    editorUiActions.setGrips([
+      { entityId: id, gripKind: 'p1', position: { x: 0, y: 0 } },
+      { entityId: id, gripKind: 'p2', position: { x: 10, y: 0 } },
+    ]);
+    expect(editorUiStore.getState().overlay.grips).toHaveLength(2);
+    editorUiActions.setGrips(null);
+    expect(editorUiStore.getState().overlay.grips).toBeNull();
+  });
+
+  it('setSuppressEntityPaint stores an id and clears via null', () => {
+    const id = newPrimitiveId();
+    editorUiActions.setSuppressEntityPaint(id);
+    expect(editorUiStore.getState().overlay.suppressEntityPaint).toBe(id);
+    editorUiActions.setSuppressEntityPaint(null);
+    expect(editorUiStore.getState().overlay.suppressEntityPaint).toBeNull();
+  });
+
+  // M1.3d-Remediation-2 R7 — overlay.hoveredGrip.
+
+  it('R7: overlay.hoveredGrip default is null', () => {
+    const o = editorUiStore.getState().overlay;
+    expect(o.hoveredGrip).toBeNull();
+  });
+
+  it('R7: setHoveredGrip stores and clears via null', () => {
+    const id = newPrimitiveId();
+    editorUiActions.setHoveredGrip({ entityId: id, gripKind: 'p1' });
+    expect(editorUiStore.getState().overlay.hoveredGrip).toEqual({
+      entityId: id,
+      gripKind: 'p1',
+    });
+    editorUiActions.setHoveredGrip(null);
+    expect(editorUiStore.getState().overlay.hoveredGrip).toBeNull();
+  });
+
+  it('individual setters do not disturb sibling overlay fields', () => {
+    const id = newPrimitiveId();
+    editorUiActions.setHoverEntity(id);
+    editorUiActions.setCursor({ metric: { x: 0, y: 0 }, screen: { x: 0, y: 0 } });
+    const o = editorUiStore.getState().overlay;
+    expect(o.hoverEntity).toBe(id);
+    expect(o.cursor).not.toBeNull();
+    expect(o.previewShape).toBeNull();
+    expect(o.transientLabels).toEqual([]);
+  });
+});
+
+describe('editorUiStore — viewport.crosshairSizePct (I-DTP-3 / I-DTP-18)', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  it('default crosshairSizePct is 100 (full-canvas, AutoCAD default)', () => {
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(100);
+  });
+
+  it('setCrosshairSizePct stores in-range values verbatim', () => {
+    editorUiActions.setCrosshairSizePct(5);
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(5);
+    editorUiActions.setCrosshairSizePct(50.5);
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(50.5);
+    editorUiActions.setCrosshairSizePct(0);
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(0);
+    editorUiActions.setCrosshairSizePct(100);
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(100);
+  });
+
+  it('setCrosshairSizePct clamps below 0 to 0', () => {
+    editorUiActions.setCrosshairSizePct(-25);
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(0);
+  });
+
+  it('setCrosshairSizePct clamps above 100 to 100', () => {
+    editorUiActions.setCrosshairSizePct(150);
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(100);
+  });
+});
+
+// M1.3d-Remediation-3 — slice extensions for F1 (directDistanceFrom +
+// lastKnownCursor), F2 (modifiers.shift), F6 (lastToolId).
+describe('editorUiStore — M1.3d-Rem-3 slice extensions', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  // F1 — directDistanceFrom on commandBar slice.
+  it('F1: commandBar.directDistanceFrom defaults to null', () => {
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toBeNull();
+  });
+
+  it('F1: setPrompt extended 5th arg writes directDistanceFrom', () => {
+    editorUiActions.setPrompt('Specify end point', [], null, ['point'], { x: 3, y: 4 });
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toEqual({ x: 3, y: 4 });
+    // Default-omitted setPrompt resets to null (typical "next prompt has no anchor").
+    editorUiActions.setPrompt('Specify base point', [], null, ['point']);
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toBeNull();
+  });
+
+  // F1 — lastKnownCursor on overlay slice.
+  it('F1: overlay.lastKnownCursor defaults to null', () => {
+    expect(editorUiStore.getState().overlay.lastKnownCursor).toBeNull();
+  });
+
+  it('F1: setLastKnownCursor stores and is NEVER cleared by null cursor', () => {
+    editorUiActions.setLastKnownCursor({ x: 1, y: 2 });
+    expect(editorUiStore.getState().overlay.lastKnownCursor).toEqual({ x: 1, y: 2 });
+    // setCursor(null) does NOT clear lastKnownCursor — F1 contract: it's
+    // a memory of the last on-canvas cursor, used while pointer is over
+    // the command bar (where overlay.cursor is null).
+    editorUiActions.setCursor(null);
+    expect(editorUiStore.getState().overlay.lastKnownCursor).toEqual({ x: 1, y: 2 });
+  });
+
+  // F2 — modifiers slice.
+  it('F2: modifiers.shift defaults to false', () => {
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+
+  it('F2: setShift toggles the shift modifier', () => {
+    editorUiActions.setShift(true);
+    expect(editorUiStore.getState().modifiers.shift).toBe(true);
+    editorUiActions.setShift(false);
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+
+  // F6 — lastToolId on commandBar slice.
+  it('F6: commandBar.lastToolId defaults to null', () => {
+    expect(editorUiStore.getState().commandBar.lastToolId).toBeNull();
+  });
+
+  it('F6: setLastToolId stores and clears via null', () => {
+    editorUiActions.setLastToolId('draw-line');
+    expect(editorUiStore.getState().commandBar.lastToolId).toBe('draw-line');
+    editorUiActions.setLastToolId(null);
+    expect(editorUiStore.getState().commandBar.lastToolId).toBeNull();
+  });
+});
+
+// M1.3d-Remediation-4 G1 — accumulator slice extension. Mirror of the
+// keyboard router's local accumulator string so the Dynamic Input pill
+// (G2) can render the in-progress shortcut.
+describe('editorUiStore — M1.3d-Rem-4 G1 accumulator', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  it('G1: commandBar.accumulator default is empty string', () => {
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('');
+  });
+
+  it('G1: setAccumulator stores and clears', () => {
+    editorUiActions.setAccumulator('LA');
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('LA');
+    editorUiActions.setAccumulator('');
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('');
   });
 });

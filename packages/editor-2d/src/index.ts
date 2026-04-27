@@ -4,3 +4,4 @@
 
 export { EditorRoot } from './EditorRoot';
 export { StatusBarGeoRefChip } from './chrome/StatusBarGeoRefChip';
+export { StatusBarCoordReadout } from './chrome/StatusBarCoordReadout';

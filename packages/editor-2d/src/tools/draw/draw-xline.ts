@@ -9,9 +9,11 @@ import type { ToolGenerator } from '../types';
 export async function* drawXlineTool(): ToolGenerator {
   const pivot = yield { text: 'Specify pivot point', acceptedInputKinds: ['point'] };
   if (pivot.kind !== 'point') return { committed: false, reason: 'aborted' };
+  const pv = pivot.point;
   const through = yield {
     text: 'Specify a point on the line (sets direction)',
     acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({ kind: 'xline', pivot: pv, cursor }),
   };
   if (through.kind !== 'point') return { committed: false, reason: 'aborted' };
 

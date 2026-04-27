@@ -1,4 +1,4 @@
-import { StatusBarGeoRefChip } from '@portplanner/editor-2d';
+import { StatusBarCoordReadout, StatusBarGeoRefChip } from '@portplanner/editor-2d';
 import { useIsDirty, useLastSavedAt, useProject } from '@portplanner/project-store-react';
 
 import styles from './StatusBar.module.css';
@@ -33,6 +33,7 @@ export function StatusBar() {
     <footer className={styles.statusBar}>
       <div className={leftClass}>{leftContent}</div>
       <div className={styles.right}>
+        {project !== null ? <StatusBarCoordReadout /> : null}
         {project !== null ? <StatusBarGeoRefChip /> : null}
         <span style={{ marginLeft: 8 }}>v0.1.0</span>
       </div>

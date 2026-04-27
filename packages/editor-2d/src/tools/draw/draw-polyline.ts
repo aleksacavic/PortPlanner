@@ -25,6 +25,11 @@ export async function* drawPolylineTool(): ToolGenerator {
   let closed = false;
 
   while (true) {
+    // Capture the current vertex chain in a closure for the preview
+    // builder. previewBuilder MUST be a pure function of cursor; the
+    // chain is bound at yield time so the runner can re-invoke it on
+    // every cursor frame without re-yielding.
+    const verticesSnapshot: Point2D[] = [...vertices];
     const next = yield {
       text: 'Specify next point or [Close/Undo]',
       subOptions: [
@@ -32,6 +37,14 @@ export async function* drawPolylineTool(): ToolGenerator {
         { label: 'Undo', shortcut: 'u' },
       ],
       acceptedInputKinds: ['point', 'subOption'],
+      previewBuilder: (cursor) => ({
+        kind: 'polyline',
+        vertices: verticesSnapshot,
+        cursor,
+        closed: false,
+      }),
+      // F1: typed numeric distance lands at lastVertex + unit(cursor - lastVertex) * d.
+      directDistanceFrom: verticesSnapshot[verticesSnapshot.length - 1]!,
     };
     if (next.kind === 'subOption' && next.optionLabel === 'Close') {
       if (vertices.length < 3) {

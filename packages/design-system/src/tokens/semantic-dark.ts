@@ -65,5 +65,35 @@ export const dark: SemanticTokens = {
     detached_tint: 'rgba(245, 166, 35, 0.12)',
     validation_error: color.red[400],
     validation_warn: color.amber[400],
+    transient: {
+      preview_stroke: '#7d8fa3',
+      preview_fill: 'rgba(125, 143, 163, 0.05)',
+      preview_dash: '6 4',
+      // M1.3d-Remediation-2 R6 — small blue rounded pill for in-flight
+      // measurements. blue matches selection_window.stroke / accent.primary
+      // for consistent "selection / accent" visual vocabulary across
+      // overlay surfaces. White text on blue for max contrast on the
+      // dark canvas background. Padding shrunk 4 → 3 for compactness.
+      label_text: '#ffffff',
+      label_bg: 'rgba(42, 127, 255, 0.9)',
+      label_padding: '3',
+      crosshair: 'rgba(180, 200, 255, 0.35)',
+      crosshair_dash: 'solid',
+      dimension_line: '#7d8fa3',
+      selection_window: {
+        stroke: 'rgba(42, 127, 255, 0.9)',
+        fill: 'rgba(42, 127, 255, 0.07)',
+        dash: '6 4',
+      },
+      selection_crossing: {
+        stroke: 'rgba(0, 255, 128, 0.9)',
+        fill: 'rgba(0, 255, 128, 0.07)',
+        dash: '6 4',
+      },
+      hover_highlight: {
+        stroke: 'rgba(180, 200, 255, 0.5)',
+        dash: '4 2',
+      },
+    },
   },
 };

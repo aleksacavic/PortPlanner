@@ -43,8 +43,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { EditorRoot } from '../src/EditorRoot';
+import { StatusBarCoordReadout } from '../src/chrome/StatusBarCoordReadout';
 import { StatusBarGeoRefChip } from '../src/chrome/StatusBarGeoRefChip';
-import { editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
+import { editorUiActions, editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
 const SCENARIOS = [
   'draw line and reload',
@@ -52,9 +53,63 @@ const SCENARIOS = [
   'layer manager flow',
   'properties edit',
   'geo-ref chip non-blocking',
+  // M1.3d Phase 9 — polish surface scenarios.
+  'live preview during line draw',
+  'snap glyph appears at endpoint',
+  'window vs crossing selection',
+  'grip stretch updates primitive',
+  'cursor coords update on mousemove',
+  // M1.3d-Remediation R4 — snap consumption on mouseup-driven 'point'
+  // inputs. SOLE validation surface for R4 (handleCanvasMouseUp's
+  // commitSnappedVertex wiring lives in EditorRoot, not in tools).
+  'snap honored on grip-stretch mouseup',
+  // M1.3d-Remediation-2 R5 — crossing selection uses geometric
+  // wire-vs-rect intersect, not bbox-intersect. SOLE integration
+  // validation surface for R5 (wire-intersect.test.ts covers per-kind
+  // helper math; smoke verifies EditorRoot → select-rect → searchCrossing
+  // wiring).
+  'crossing selection narrows to wire-intersect (not bbox)',
+  // M1.3d-Remediation-2 R7 — hovered-grip differential rendering.
+  // SOLE integration validation surface for R7 (paintSelection.test.ts
+  // covers the rendering math; smoke verifies the EditorRoot
+  // cursor-effect → setHoveredGrip → paintSelection consumption wiring).
+  'hovered grip highlights on cursor proximity',
+  // M1.3d-Remediation-3 F1 — direct distance entry. SOLE integration
+  // surface (EditorRoot.handleCommandSubmit reads directDistanceFrom +
+  // lastKnownCursor → 'point'; tool-level tests can't exercise this).
+  'direct distance entry',
+  // M1.3d-Remediation-3 F5 — bug fix: grip click during a running tool
+  // feeds grip.position as 'point' input instead of aborting. SOLE
+  // integration surface (EditorRoot.handleGripDown wrap; grip-stretch.test
+  // covers tool-layer regression but not the routing change).
+  'grip click during running tool feeds point',
+  // M1.3d-Remediation-3 F6 — Spacebar at canvas focus repeats last tool.
+  // SOLE integration surface (router.ts handler + EditorRoot's
+  // onRepeatLastCommand wiring across the runner's lastToolId capture).
+  'spacebar repeats last command',
+  // M1.3d-Remediation-4 G2 — Dynamic Input pill + numeric routing at
+  // canvas focus + Enter-submits-buffer. SOLE integration surface for
+  // G2 (router routes numerics into inputBuffer; EditorRoot's
+  // onSubmitBuffer feeds via handleCommandSubmit + appendHistory).
+  'dynamic input pill: typing a number while in line tool shows pill + Enter submits',
+  // M1.3d-Remediation-4 G2 — click-eat. SOLE integration surface for
+  // the click-eat path (handleCanvasClick guard on inputBuffer).
+  'click is eaten while inputBuffer non-empty (AC parity)',
+  // M1.3d-Remediation-5 H1 — rectangle Dimensions comma-pair input.
+  // SOLE integration surface: EditorRoot.handleCommandSubmit's
+  // numberPair branch + draw-rectangle's single-prompt sub-flow.
+  'rectangle Dimensions: typed "30,40" + Enter commits W=30 H=40',
+  // M1.3d-Remediation-5 H2 — accumulator persists indefinitely (no
+  // 750 ms timeout). SOLE integration surface: keyboard router silently
+  // holds the accumulator past any idle interval until Enter activates.
+  'accumulator persists indefinitely (no idle timeout, AC parity)',
+  // M1.3d-Remediation-5 Codex-Round-1 post-commit fix — direct
+  // parser-boundary test for malformed comma-pair inputs at the
+  // handleCommandSubmit level (the Round-5 plan's draw-tools.test
+  // version was a tool-level abort proxy and did NOT exercise the
+  // parser boundary).
+  'rectangle Dimensions: parser rejects malformed comma-pairs at handleCommandSubmit boundary',
 ] as const;
-
-const ACCUMULATOR_FLUSH_MS = 800;
 
 function makeProject(): Project {
   return {
@@ -116,7 +171,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // A18-uistate: tool activation via window-level keyboard.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
     // A18-uistate: pointer events drive tool inputs.
@@ -204,7 +261,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     // A18-uistate: open Layer Manager via L+A multi-letter shortcut.
     fireEvent.keyDown(window, { key: 'L' });
     fireEvent.keyDown(window, { key: 'A' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
 
     // A18-assert: dialog renders.
     const dialog = container.querySelector('[data-component="layer-manager-dialog"]');
@@ -224,7 +283,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // Activate draw-line and click two points.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
     fireEvent.mouseDown(canvas, { button: 0, clientX: 100, clientY: 100 });
@@ -256,13 +317,16 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     const canvas = getCanvasOrThrow(container);
 
-    // A18-uistate: drive selection through a canvas pointerDown rather
-    // than editorUiActions.setSelection (Revision-4 narrowing). The
-    // hit-test treats circles as outlines (distance to circumference),
-    // so we click at the right edge of the radius-5 circle —
-    // metric (5,0) maps to screen (450, 300) at zoom=10 with default
-    // viewport size 800×600.
+    // A18-uistate: drive selection through a canvas pointerDown +
+    // pointerUp pair (Revision-4 narrowing). The hit-test treats
+    // circles as outlines (distance to circumference), so we click at
+    // the right edge of the radius-5 circle — metric (5,0) maps to
+    // screen (450, 300) at zoom=10 with default viewport size 800×600.
+    // M1.3d Phase 7 update: single-click selection now flows through
+    // the select-rect tool's click-without-drag branch, which commits
+    // on mouseup. The test fires both events at the same screen point.
     fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 300 });
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 300 });
     await wait(20);
 
     // A18-assert: Properties panel renders the selection's fields.
@@ -338,7 +402,9 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
 
     // A18-assert: drafting still works after closing the chip.
     fireEvent.keyDown(window, { key: 'L' });
-    await wait(ACCUMULATOR_FLUSH_MS);
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
     fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
@@ -347,6 +413,716 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
       (p) => p.kind === 'line',
     );
     expect(lines).toHaveLength(1);
+  });
+
+  // ============================================================
+  // M1.3d Phase 9 — polish surface scenarios.
+  // Each mounts <EditorRoot /> and drives the polish item via DOM
+  // events. End-to-end wire-up only; per-painter / per-helper unit
+  // tests exhaust the kind matrix (paintSnapGlyph, grip-positions,
+  // grip-stretch, select-rect, etc.).
+  // ============================================================
+
+  it('live preview during line draw', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate draw-line via keyboard, click first point, fire
+    // mousemove and assert overlay.previewShape is a line shape.
+    fireEvent.keyDown(window, { key: 'L' });
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 500, clientY: 300 });
+    await wait(60);
+
+    const ps = editorUiStore.getState().overlay.previewShape;
+    expect(ps).not.toBeNull();
+    expect(ps?.kind).toBe('line');
+
+    // Commit the second point and assert the preview clears.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+    expect(editorUiStore.getState().overlay.previewShape).toBeNull();
+  });
+
+  it('snap glyph appears at endpoint', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    // Seed a horizontal line with endpoints at metric (0,0) and (10,0)
+    // — viewport zoom=10, so screen (400, 300) is metric (0,0) and
+    // (500, 300) is metric (10, 0).
+    addPrimitive({
+      id: newPrimitiveId(),
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate draw-line so a 'point' input is awaited (snap-on-cursor
+    // gates on this), click first point, then move cursor near the
+    // existing line's endpoint at screen (500, 300) — well inside the
+    // 16-px snap tolerance from M1.3a.
+    fireEvent.keyDown(window, { key: 'L' });
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 100, clientY: 100 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 502, clientY: 300 });
+    await wait(60);
+
+    const snap = editorUiStore.getState().overlay.snapTarget;
+    expect(snap).not.toBeNull();
+    expect(snap?.kind).toBe('endpoint');
+  });
+
+  it('window vs crossing selection', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    // Seed two lines: A is fully inside the window (1..4 metric), B
+    // straddles into outside (3..50 metric). Window selects only A;
+    // crossing selects both.
+    const idA = newPrimitiveId();
+    const idB = newPrimitiveId();
+    addPrimitive({
+      id: idA,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 1, y: 1 },
+      p2: { x: 4, y: 4 },
+    });
+    addPrimitive({
+      id: idB,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 3, y: 3 },
+      p2: { x: 50, y: 50 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // L→R drag (window). Viewport: 800×600, zoom=10. Metric (0,0) →
+    // screen (400, 300). Metric (10, 10) → screen (500, 200) (Y flips).
+    // Use a pure rect that captures only A (fully) but cuts off B.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 250 }); // metric (5, 5)
+    await wait(20);
+    let sel = editorUiStore.getState().selection;
+    expect(sel).toContain(idA);
+    expect(sel).not.toContain(idB);
+
+    // Clear and try R→L drag (crossing). Same metric area but reversed.
+    editorUiActions.setSelection([]);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 250 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    sel = editorUiStore.getState().selection;
+    expect(sel).toContain(idA);
+    expect(sel).toContain(idB);
+  });
+
+  it('grip stretch updates primitive', async () => {
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const id = newPrimitiveId();
+    addPrimitive({
+      id,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    // Select the line so its grips populate (Phase 5 effect).
+    editorUiActions.setSelection([id]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+    // p1 grip is at metric (0, 0) → screen (400, 300). Grab it and
+    // drag to metric (5, 5) → screen (450, 250). Mouseup commits.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 250 });
+    await wait(50);
+
+    const after = projectStore.getState().project!.primitives[id]!;
+    expect((after as { p1: { x: number; y: number } }).p1.x).toBeCloseTo(5, 6);
+    expect((after as { p1: { x: number; y: number } }).p1.y).toBeCloseTo(5, 6);
+  });
+
+  it('cursor coords update on mousemove', async () => {
+    const { container } = render(
+      <>
+        <EditorRoot />
+        <StatusBarCoordReadout />
+      </>,
+    );
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Initial readout shows placeholder.
+    let readout = container.querySelector('[data-component="coord-readout"]');
+    expect(readout?.textContent).toContain('X: —');
+
+    // Move cursor and wait for the rAF flush + render.
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(80);
+
+    readout = container.querySelector('[data-component="coord-readout"]');
+    expect(readout?.textContent).toMatch(/X: 5\.000/);
+    expect(readout?.textContent).toMatch(/Y: 0\.000/);
+  });
+
+  it('snap honored on grip-stretch mouseup', async () => {
+    // M1.3d-Remediation R4 — SOLE validation surface for snap-on-mouseup.
+    // The wiring under test lives in EditorRoot.handleCanvasMouseUp:
+    // when overlay.snapTarget is set at mouseup time, the runner receives
+    // the snap-resolved metric (commitSnappedVertex bit-copy), NOT the
+    // raw cursor metric. Tool-level tests (grip-stretch.test.ts /
+    // select-rect.test.ts) cannot validate this — they call
+    // tool.feedInput directly and bypass EditorRoot entirely.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+
+    // Two primitives:
+    //   targetLine — supplies the snap target (endpoint at metric (5, 0)
+    //                → screen (450, 300) at zoom=10).
+    //   draggedLine — has its p1 grip at metric (0, -5) → screen (400, 350).
+    const targetId = newPrimitiveId();
+    addPrimitive({
+      id: targetId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 5, y: 0 },
+      p2: { x: 15, y: 0 },
+    });
+    const draggedId = newPrimitiveId();
+    addPrimitive({
+      id: draggedId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: -5 },
+      p2: { x: 0, y: -10 },
+    });
+    // Select the dragged line so its grips populate (Phase 5 effect).
+    editorUiActions.setSelection([draggedId]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+    // Grab the dragged line's p1 grip at screen (400, 350).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 350 });
+    await wait(20);
+    // Move cursor near the targetLine's p1 endpoint (screen 450, 300) so
+    // the snap-on-cursor effect resolves overlay.snapTarget to the
+    // endpoint at metric (5, 0). Land 2 px off so the raw mouseup metric
+    // would NOT equal the snap-resolved metric — proving the gate.
+    fireEvent.mouseMove(canvas, { clientX: 452, clientY: 301 });
+    await wait(80); // rAF flush + snap resolution + paint requestPaint
+
+    // Mouseup at the slightly-off position; commit MUST use the snap-
+    // resolved metric (5, 0), not the raw mouseup metric (5.2, -0.1).
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 452, clientY: 301 });
+    await wait(50);
+
+    const after = projectStore.getState().project!.primitives[draggedId]!;
+    const p1 = (after as { p1: { x: number; y: number } }).p1;
+    // commitSnappedVertex bit-copies the snap point — assert exact equality
+    // (toBeCloseTo with 9-decimal tolerance handles any float artefact).
+    expect(p1.x).toBeCloseTo(5, 9);
+    expect(p1.y).toBeCloseTo(0, 9);
+  });
+
+  it('crossing selection narrows to wire-intersect (not bbox)', async () => {
+    // M1.3d-Remediation-2 R5 — SOLE integration validation surface.
+    // Pre-R5: crossing used bbox-intersects, so a diagonal line with
+    // bbox overlapping the rect would be selected even if its wire
+    // didn't cross. Post-R5: searchCrossing uses wireIntersectsRect
+    // (Liang-Barsky for segments), so bbox-only-overlap is filtered out.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    // Two primitives:
+    //   wireCrosser — small line whose actual wire crosses the rect.
+    //                 (1, 1) → (4, 4): bbox AND wire both inside rect (10x10).
+    //                 We use a smaller-than-rect line entirely inside.
+    //   bboxOnly    — diagonal whose bbox covers the rect but wire stays
+    //                 well clear. Same shape as wire-intersect.test.ts:
+    //                 (-5, 50) → (50, -5). Bbox = (-5,-5)→(50,50).
+    //                 At x ∈ [10, 15], y ≈ 33-37 (above rect's [10, 15]).
+    const wireCrosserId = newPrimitiveId();
+    addPrimitive({
+      id: wireCrosserId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 11, y: 11 },
+      p2: { x: 14, y: 14 },
+    });
+    const bboxOnlyId = newPrimitiveId();
+    addPrimitive({
+      id: bboxOnlyId,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: -5, y: 50 },
+      p2: { x: 50, y: -5 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // R→L drag for crossing selection over the rect (10, 10) → (15, 15).
+    // Viewport: zoom=10, pan (0,0). Metric (15, 15) → screen (550, 150).
+    // Metric (10, 10) → screen (500, 200). end.x < start.x → crossing.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 550, clientY: 150 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 500, clientY: 200 });
+    await wait(50);
+
+    const sel = editorUiStore.getState().selection;
+    expect(sel).toContain(wireCrosserId);
+    expect(sel).not.toContain(bboxOnlyId);
+  });
+
+  // ============================================================
+  // M1.3d-Remediation-3 — F1 / F5 / F6 SOLE integration scenarios.
+  // ============================================================
+
+  it('direct distance entry', async () => {
+    // F1 — typing a numeric distance in the command bar after the first
+    // line click computes p2 along cursor heading from p1. SOLE
+    // integration surface: EditorRoot.handleCommandSubmit reads
+    // commandBar.directDistanceFrom (published by the runner from
+    // draw-line's second prompt) + overlay.lastKnownCursor (captured by
+    // handleCanvasHover) and feeds a 'point' input.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate L (draw-line).
+    fireEvent.keyDown(window, { key: 'L' });
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    // First click: metric (0, 0) → screen (400, 300) at zoom=10 / viewport (800, 600).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+
+    // Move cursor to (450, 300) → metric (5, 0) — establishes lastKnownCursor +
+    // a horizontal heading from the anchor (0, 0).
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(40);
+    expect(editorUiStore.getState().overlay.lastKnownCursor).not.toBeNull();
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toEqual({ x: 0, y: 0 });
+
+    // Type "7" in the command bar input and submit (form Enter).
+    const input = container.querySelector<HTMLInputElement>('[data-component="command-input"]');
+    expect(input).toBeTruthy();
+    fireEvent.focus(input!);
+    fireEvent.change(input!, { target: { value: '7' } });
+    // Yield so React flushes the local state update before form submit
+    // reads it (CommandPromptLine.handleSubmit reads `local`, not the
+    // store's inputBuffer).
+    await wait(20);
+    const form = container.querySelector('[data-component="command-prompt"]');
+    fireEvent.submit(form!);
+    await wait(50);
+
+    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'line',
+    );
+    expect(lines).toHaveLength(1);
+    const ln = lines[0] as { p1: { x: number; y: number }; p2: { x: number; y: number } };
+    expect(ln.p1).toEqual({ x: 0, y: 0 });
+    // unit(cursor - anchor) = unit(5, 0) = (1, 0); dest = (0, 0) + 7 * (1, 0) = (7, 0).
+    expect(ln.p2.x).toBeCloseTo(7, 6);
+    expect(ln.p2.y).toBeCloseTo(0, 6);
+  });
+
+  it('grip click during running tool feeds point', async () => {
+    // F5 BUG FIX — pre-fix: clicking a grip while move tool is running
+    // aborted the tool and started grip-stretch. Post-fix: the grip's
+    // position is fed to the running tool as a 'point' input. SOLE
+    // integration surface: EditorRoot.handleGripDown 2-branch dispatch.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+
+    // Two lines — A is the entity to move (selected for grip rendering),
+    // B is where we'll click a grip mid-MOVE so its endpoint serves as
+    // the move destination.
+    const idA = newPrimitiveId();
+    addPrimitive({
+      id: idA,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: -10, y: -5 },
+      p2: { x: -8, y: -5 },
+    });
+    const idB = newPrimitiveId();
+    addPrimitive({
+      id: idB,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 5, y: 0 }, // → screen (450, 300)
+      p2: { x: 10, y: 0 },
+    });
+    // Pre-select A so its grips populate (so the F5 grip-click path makes sense
+    // ONLY when MOVE is running and we click on B's grip).
+    editorUiActions.setSelection([idA]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate MOVE.
+    fireEvent.keyDown(window, { key: 'M' });
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('move');
+
+    // Click an arbitrary base point at metric (-10, -5) → screen (300, 350).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 300, clientY: 350 });
+    await wait(20);
+
+    // Now select B too so its grips appear AS WELL (we want a grip on B
+    // to click for the destination). Select-rect would normally do this;
+    // for the test we set selection directly via the UI-state action
+    // (A18-uistate is satisfied because the keyboard event activated MOVE
+    // and the canvas event committed the base point).
+    editorUiActions.setSelection([idA, idB]);
+    await wait(20);
+
+    // B's p1 grip is at metric (5, 0) → screen (450, 300). With MOVE
+    // running and awaiting the second 'point', clicking on this grip
+    // should feed { x: 5, y: 0 } into MOVE — NOT abort + start grip-stretch.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 300 });
+    await wait(50);
+
+    // Post-condition: A moved by (5 - (-10), 0 - (-5)) = (15, 5). MOVE
+    // completed; activeToolId is null (NOT 'grip-stretch').
+    const lineAfterA = projectStore.getState().project!.primitives[idA] as {
+      p1: { x: number; y: number };
+    };
+    // Original A.p1 = (-10, -5); base = (-10, -5); destination = (5, 0); delta = (15, 5).
+    expect(lineAfterA.p1.x).toBeCloseTo(5, 6);
+    expect(lineAfterA.p1.y).toBeCloseTo(0, 6);
+    // No grip-stretch started (MOVE consumed the click).
+    expect(editorUiStore.getState().activeToolId).not.toBe('grip-stretch');
+  });
+
+  // ============================================================
+  // M1.3d-Remediation-4 — G1 + G2 SOLE integration scenarios.
+  // ============================================================
+
+  it('dynamic input pill: typing a number while in line tool shows pill + Enter submits', async () => {
+    // G2 — Activate LINE via L+Enter (G1 AC mode); click p1; move
+    // cursor on canvas (sets lastKnownCursor + cursor.screen so the
+    // pill anchor resolves); type "7" via canvas-focus number-keys
+    // (router routes into inputBuffer); pill renders; Enter at canvas
+    // focus + buffer non-empty + tool active fires onSubmitBuffer →
+    // EditorRoot's handler appends history + handleCommandSubmit
+    // (which applies F1 direct-distance: dest = p1 + unit(cursor-p1)*7).
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate draw-line (AC mode: letter + Enter).
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    // Click p1 at metric (0, 0) → screen (400, 300).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    // Move cursor to (450, 300) → metric (5, 0) — establishes the
+    // direction vector for F1.
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(40);
+
+    // Type "7" via canvas-focus number key (router routes into inputBuffer).
+    expect(editorUiStore.getState().focusHolder).toBe('canvas');
+    fireEvent.keyDown(window, { key: '7' });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('7');
+
+    // Pill renders the buffer.
+    const pill = container.querySelector('[data-component="dynamic-input-pill"]');
+    expect(pill).not.toBeNull();
+    expect(pill!.textContent).toBe('7');
+
+    // Enter submits. inputBuffer is fed through handleCommandSubmit
+    // → F1 transform → dest = (0, 0) + (1, 0) * 7 = (7, 0).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(50);
+
+    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'line',
+    );
+    expect(lines).toHaveLength(1);
+    const ln = lines[0] as { p1: { x: number; y: number }; p2: { x: number; y: number } };
+    expect(ln.p1).toEqual({ x: 0, y: 0 });
+    expect(ln.p2.x).toBeCloseTo(7, 6);
+    expect(ln.p2.y).toBeCloseTo(0, 6);
+
+    // Buffer cleared after submit; history appended (Rev-1 B1 parity).
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+    const inputEntries = editorUiStore
+      .getState()
+      .commandBar.history.filter((h) => h.role === 'input');
+    expect(inputEntries.some((h) => h.text === '7')).toBe(true);
+  });
+
+  it('click is eaten while inputBuffer non-empty (AC parity)', async () => {
+    // G2 — When the user is mid-typing a value into the buffer,
+    // canvas clicks are silently eaten until the user commits (Enter)
+    // or aborts (Esc) the buffer. AC parity.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate L + Enter, click p1.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+
+    // Pollute the inputBuffer (simulating mid-typing).
+    fireEvent.keyDown(window, { key: '5' });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+
+    // Click on canvas — should be EATEN (no second point fed to draw-line).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+
+    // Tool is still running (no line committed because the click was eaten).
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+    expect(
+      Object.values(projectStore.getState().project!.primitives).filter((p) => p.kind === 'line')
+        .length,
+    ).toBe(0);
+    // Buffer still pending.
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+  });
+
+  it('rectangle Dimensions: typed "30,40" + Enter commits W=30 H=40', async () => {
+    // M1.3d-Rem-5 H1 — SOLE integration validation. Activate REC + Enter,
+    // click first corner, click [Dimensions] sub-option (or type D + Enter),
+    // type "30,40" via canvas-focus number-keys (router routes into
+    // inputBuffer), Enter submits. EditorRoot's handleCommandSubmit
+    // numberPair branch parses + feeds; rectangle commits with W=30, H=40.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate REC: R+E+C+Enter (AC mode).
+    fireEvent.keyDown(window, { key: 'R' });
+    fireEvent.keyDown(window, { key: 'E' });
+    fireEvent.keyDown(window, { key: 'C' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-rectangle');
+
+    // Click first corner at metric (1, 2) → screen (410, 280) at zoom=10.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 410, clientY: 280 });
+    await wait(20);
+
+    // Type D — sub-option fast-path fires immediately (no Enter needed
+    // because the active tool's subOptions include 'd' for Dimensions).
+    fireEvent.keyDown(window, { key: 'D' });
+    await wait(20);
+
+    // Buffer should now be empty + prompt should accept numberPair.
+    expect(editorUiStore.getState().commandBar.acceptedInputKinds).toEqual(['numberPair']);
+
+    // Type "30,40" via canvas-focus numeric routing.
+    fireEvent.keyDown(window, { key: '3' });
+    fireEvent.keyDown(window, { key: '0' });
+    fireEvent.keyDown(window, { key: ',' });
+    fireEvent.keyDown(window, { key: '4' });
+    fireEvent.keyDown(window, { key: '0' });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('30,40');
+
+    // Enter submits — handleCommandSubmit parses comma-pair, tool commits.
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(50);
+
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(1);
+    const r = rects[0] as { origin: { x: number; y: number }; width: number; height: number };
+    expect(r.origin).toEqual({ x: 1, y: 2 });
+    expect(r.width).toBe(30);
+    expect(r.height).toBe(40);
+    // Buffer cleared after submit.
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+  });
+
+  it('rectangle Dimensions: parser rejects malformed comma-pairs at handleCommandSubmit boundary', async () => {
+    // Codex post-commit Round-1 H1 fix — the Round-5 plan called for
+    // direct parser-boundary coverage of `,40` / `30,` / `,` inputs;
+    // the originally-shipped draw-tools.test version was a tool-level
+    // abort proxy that didn't exercise the parser. This smoke fires
+    // raw malformed strings through the buffer + Enter pipeline and
+    // asserts NO numberPair is fed (no rectangle commits).
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate REC + Enter, click first corner, enter Dimensions sub-flow.
+    fireEvent.keyDown(window, { key: 'R' });
+    fireEvent.keyDown(window, { key: 'E' });
+    fireEvent.keyDown(window, { key: 'C' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 410, clientY: 280 });
+    await wait(20);
+    fireEvent.keyDown(window, { key: 'D' });
+    await wait(20);
+    expect(editorUiStore.getState().commandBar.acceptedInputKinds).toEqual(['numberPair']);
+
+    // Helper: type a buffer string + Enter, then assert no rectangle yet
+    // and the tool is still in numberPair-wait state.
+    const submitBufferAndAssertRejected = async (raw: string): Promise<void> => {
+      // Clear any prior buffer first.
+      editorUiActions.setInputBuffer('');
+      // Type each char via canvas-focus number/punct routing.
+      for (const ch of raw) {
+        fireEvent.keyDown(window, { key: ch });
+      }
+      expect(editorUiStore.getState().commandBar.inputBuffer).toBe(raw);
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await wait(30);
+      // Buffer cleared by onSubmitBuffer regardless of parser outcome.
+      expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+      // No rectangle committed (parser rejected; tool not fed numberPair).
+      expect(
+        Object.values(projectStore.getState().project!.primitives).filter(
+          (p) => p.kind === 'rectangle',
+        ),
+      ).toHaveLength(0);
+      // Tool still in numberPair-wait state.
+      expect(editorUiStore.getState().commandBar.acceptedInputKinds).toEqual(['numberPair']);
+      expect(editorUiStore.getState().activeToolId).toBe('draw-rectangle');
+    };
+
+    // Parser-boundary rejections per A2/Step 2 trim-both-tokens guard.
+    await submitBufferAndAssertRejected(',');
+    await submitBufferAndAssertRejected(',40');
+    await submitBufferAndAssertRejected('30,');
+
+    // Sanity: a valid pair AFTER three rejections still works (no state
+    // corruption from the rejection path).
+    editorUiActions.setInputBuffer('');
+    for (const ch of '30,40') fireEvent.keyDown(window, { key: ch });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('30,40');
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(50);
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(1);
+    const r = rects[0] as { width: number; height: number };
+    expect(r.width).toBe(30);
+    expect(r.height).toBe(40);
+  });
+
+  it('accumulator persists indefinitely (no idle timeout, AC parity)', async () => {
+    // M1.3d-Rem-5 H2 — SOLE integration validation. Type L (silent
+    // accumulator under G1), wait WELL past the OLD 750 ms timeout
+    // window, verify accumulator is STILL 'L' and no tool activated.
+    // Then Enter activates — confirms the accumulator was live the
+    // whole time. AC parity (no idle stale-clear).
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    void getCanvasOrThrow(container);
+
+    fireEvent.keyDown(window, { key: 'L' });
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('L');
+    // Wait 1100 ms — well past the (now-removed) 750 ms timeout window.
+    await wait(1100);
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('L');
+    // Enter activates.
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+  });
+
+  it('spacebar repeats last command', async () => {
+    // F6 — Activate L, commit a line, then press Space at canvas focus →
+    // draw-line activates again. SOLE integration: router.ts spacebar
+    // handler → EditorRoot.onRepeatLastCommand → activateToolById, with
+    // lastToolId captured by the runner's finally block.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate L, draw a line.
+    fireEvent.keyDown(window, { key: 'L' });
+    // M1.3d-Rem-4 G1 — Enter required (no more auto-flush).
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    // lastToolId is captured by the runner.
+    expect(editorUiStore.getState().commandBar.lastToolId).toBe('draw-line');
+
+    // Press Space at canvas focus — should re-invoke draw-line.
+    fireEvent.keyDown(window, { key: ' ' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+  });
+
+  it('hovered grip highlights on cursor proximity', async () => {
+    // M1.3d-Remediation-2 R7 — SOLE integration validation surface.
+    // EditorRoot's cursor effect runs gripHitTest on overlay.cursor change
+    // and writes overlay.hoveredGrip when a grip is within tolerance.
+    // paintSelection consumes the field for differential rendering.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const id = newPrimitiveId();
+    addPrimitive({
+      id,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    // Select the line so its grips populate.
+    editorUiActions.setSelection([id]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+    // p1 grip at metric (0, 0) → screen (400, 300).
+    // Move cursor to (401, 301) — well inside the 4-CSS-px tolerance.
+    fireEvent.mouseMove(canvas, { clientX: 401, clientY: 301 });
+    await wait(80);
+
+    const hovered = editorUiStore.getState().overlay.hoveredGrip;
+    expect(hovered).not.toBeNull();
+    expect(hovered?.entityId).toBe(id);
+    expect(hovered?.gripKind).toBe('p1');
   });
 });
 

@@ -23,7 +23,14 @@ export type ToolId =
   | 'draw-rectangle'
   | 'draw-circle'
   | 'draw-arc'
-  | 'draw-xline';
+  | 'draw-xline'
+  // M1.3d Phase 6 + Phase 7 — modeless drag-style tools started by
+  // canvas-host (NOT by keyboard shortcut). They live in the ToolId
+  // union so the registry, runner, and store-isolation can refer to
+  // them, but they're absent from SINGLE_LETTER_SHORTCUTS /
+  // MULTI_LETTER_SHORTCUTS — keyboard activation would be the wrong UX.
+  | 'grip-stretch'
+  | 'select-rect';
 
 /** Single-letter shortcut → tool id (M1.3a essential operators + Line/Arc draw tools). */
 export const SINGLE_LETTER_SHORTCUTS: Record<string, ToolId> = {
@@ -59,8 +66,36 @@ export function lookupShortcut(buffer: string): ToolId | null {
   return null;
 }
 
-/** Returns true if `buffer` is a prefix of any multi-letter shortcut. */
-export function isMultiLetterPrefix(buffer: string): boolean {
-  const up = buffer.toUpperCase();
-  return Object.keys(MULTI_LETTER_SHORTCUTS).some((k) => k.startsWith(up) && k !== up);
-}
+/**
+ * M1.3d-Remediation-3 F7 — toolId → display name for the command-bar
+ * tool badge. Internal / modeless tools (`select-rect`, `grip-stretch`,
+ * `escape`) map to `null` so the badge does not render for them. SSOT
+ * lives next to ToolId + the shortcut maps so all tool metadata is in
+ * one file.
+ *
+ * Adding a new ToolId? Add a matching entry here too — TypeScript's
+ * `Record<ToolId, ...>` exhaustiveness check enforces it at compile
+ * time.
+ */
+export const TOOL_DISPLAY_NAMES: Record<ToolId, string | null> = {
+  select: 'SELECT',
+  erase: 'ERASE',
+  move: 'MOVE',
+  copy: 'COPY',
+  undo: 'UNDO',
+  redo: 'REDO',
+  zoom: 'ZOOM',
+  pan: 'PAN',
+  properties: 'PROPERTIES',
+  'layer-manager': 'LAYER MANAGER',
+  escape: null,
+  'draw-point': 'POINT',
+  'draw-line': 'LINE',
+  'draw-polyline': 'POLYLINE',
+  'draw-rectangle': 'RECTANGLE',
+  'draw-circle': 'CIRCLE',
+  'draw-arc': 'ARC',
+  'draw-xline': 'XLINE',
+  'grip-stretch': null,
+  'select-rect': null,
+};

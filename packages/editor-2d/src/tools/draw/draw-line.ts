@@ -7,7 +7,14 @@ import type { ToolGenerator } from '../types';
 export async function* drawLineTool(): ToolGenerator {
   const start = yield { text: 'Specify start point', acceptedInputKinds: ['point'] };
   if (start.kind !== 'point') return { committed: false, reason: 'aborted' };
-  const end = yield { text: 'Specify end point', acceptedInputKinds: ['point'] };
+  const p1 = start.point;
+  const end = yield {
+    text: 'Specify end point',
+    acceptedInputKinds: ['point'],
+    previewBuilder: (cursor) => ({ kind: 'line', p1, cursor }),
+    // F1: typed numeric distance lands at p1 + unit(cursor - p1) * d.
+    directDistanceFrom: p1,
+  };
   if (end.kind !== 'point') return { committed: false, reason: 'aborted' };
   const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;
   addPrimitive({

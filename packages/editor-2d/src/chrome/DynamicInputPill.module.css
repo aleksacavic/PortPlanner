@@ -1,0 +1,21 @@
+/* M1.3d-Remediation-4 G2 — Dynamic Input pill at the cursor.
+   Floating dotted-border pill that echoes the in-flight inputBuffer /
+   accumulator / activePrompt. pointer-events none so canvas clicks
+   pass through. Positioned via inline `transform: translate(...)` set
+   by the React component; this stylesheet only provides the static
+   visual rules. */
+.pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background: var(--surface-overlay, rgba(17, 17, 17, 0.92));
+  color: var(--text-primary, #eee);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px dotted var(--surface-border, #555);
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 10;
+}
