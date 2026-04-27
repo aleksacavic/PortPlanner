@@ -239,6 +239,39 @@ describe('grip-stretch — xline pivot vs direction', () => {
   });
 });
 
+// M1.3d-Remediation-3 F5 — regression marker. The bug fix lives in
+// EditorRoot.handleGripDown (when a tool is running, feed grip.position
+// as 'point' rather than aborting). Tool-level tests can't exercise the
+// EditorRoot routing change, but they can confirm the runner-level
+// invariant: if a tool is running and receives a 'point' input at the
+// grip's position, it consumes it like any other 'point'. The SOLE
+// integration validation surface is `smoke-e2e.test.tsx`'s
+// `'grip click during running tool feeds point'` scenario.
+describe('F5 regression — feeding grip.position as a point reaches the running tool', () => {
+  it('a tool that expects a point consumes grip.position the same as any point', async () => {
+    const line: LinePrimitive = {
+      id: newPrimitiveId(),
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    };
+    hydrateProject(makeProjectWith(line), '2026-04-26T00:00:00.000Z');
+    const grip = gripsOf(line).find((g) => g.gripKind === 'p1')!;
+    expect(grip.position).toEqual({ x: 0, y: 0 });
+    const tool = startTool('grip-stretch', gripStretchTool(grip));
+    await tick();
+    // EditorRoot's F5 fix calls `tool.feedInput({ kind: 'point', point: grip.position })`.
+    // We replicate that exact call here.
+    tool.feedInput({ kind: 'point', point: grip.position });
+    await tool.done();
+    // The grip-stretch tool consumed the point and updated p1 → grip.position.
+    const after = projectStore.getState().project!.primitives[line.id] as LinePrimitive;
+    expect(after.p1).toEqual(grip.position);
+  });
+});
+
 describe('grip-stretch — abort lifecycle', () => {
   it('escape aborts the tool and clears suppressEntityPaint', async () => {
     const line: LinePrimitive = {

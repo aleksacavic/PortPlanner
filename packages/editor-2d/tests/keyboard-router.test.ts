@@ -12,6 +12,7 @@ interface RouterMocks {
   onCommitCurrentTool: ReturnType<typeof vi.fn>;
   onSubOption: ReturnType<typeof vi.fn>;
   onToggleCrosshair: ReturnType<typeof vi.fn>;
+  onRepeatLastCommand: ReturnType<typeof vi.fn>;
 }
 
 let mocks: RouterMocks;
@@ -31,6 +32,7 @@ beforeEach(() => {
     onCommitCurrentTool: vi.fn(),
     onSubOption: vi.fn(),
     onToggleCrosshair: vi.fn(),
+    onRepeatLastCommand: vi.fn(),
   };
   registerKeyboardRouter(mocks);
 });
@@ -168,6 +170,66 @@ describe('keyboard router', () => {
     editorUiActions.setFocusHolder('dialog');
     pressKey('F7');
     expect(mocks.onToggleCrosshair).toHaveBeenCalledTimes(3);
+  });
+});
+
+// M1.3d-Remediation-3 F2 — global Shift modifier tracking via window
+// keydown / keyup / blur listeners.
+describe('keyboard router — F2 Shift modifier tracking', () => {
+  it('Shift keydown sets modifiers.shift = true', () => {
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+    pressKey('Shift');
+    expect(editorUiStore.getState().modifiers.shift).toBe(true);
+  });
+
+  it('Shift keyup sets modifiers.shift = false', () => {
+    pressKey('Shift'); // keydown
+    expect(editorUiStore.getState().modifiers.shift).toBe(true);
+    const keyup = new KeyboardEvent('keyup', { key: 'Shift', bubbles: true });
+    window.dispatchEvent(keyup);
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+
+  it('window blur clears modifiers.shift (alt-tab-with-shift-held lifecycle)', () => {
+    pressKey('Shift');
+    expect(editorUiStore.getState().modifiers.shift).toBe(true);
+    const blurEvt = new Event('blur');
+    window.dispatchEvent(blurEvt);
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+
+  it('non-Shift keys do NOT toggle modifiers.shift', () => {
+    pressKey('A');
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+});
+
+// M1.3d-Remediation-3 F6 — Spacebar at canvas focus mirrors Enter:
+//   - Active tool → onCommitCurrentTool
+//   - No active tool → onRepeatLastCommand
+// Bar focus → no callback fires (native input handles space).
+describe('keyboard router — F6 Spacebar repeat-last-command', () => {
+  it('Space at canvas focus + active tool → onCommitCurrentTool', () => {
+    editorUiActions.setFocusHolder('canvas');
+    editorUiActions.setActiveToolId('draw-line');
+    pressKey(' ');
+    expect(mocks.onCommitCurrentTool).toHaveBeenCalledTimes(1);
+    expect(mocks.onRepeatLastCommand).not.toHaveBeenCalled();
+  });
+
+  it('Space at canvas focus + no active tool → onRepeatLastCommand', () => {
+    editorUiActions.setFocusHolder('canvas');
+    editorUiActions.setActiveToolId(null);
+    pressKey(' ');
+    expect(mocks.onRepeatLastCommand).toHaveBeenCalledTimes(1);
+    expect(mocks.onCommitCurrentTool).not.toHaveBeenCalled();
+  });
+
+  it('Space at bar focus → neither callback fires (native input handles)', () => {
+    editorUiActions.setFocusHolder('bar');
+    pressKey(' ');
+    expect(mocks.onRepeatLastCommand).not.toHaveBeenCalled();
+    expect(mocks.onCommitCurrentTool).not.toHaveBeenCalled();
   });
 });
 

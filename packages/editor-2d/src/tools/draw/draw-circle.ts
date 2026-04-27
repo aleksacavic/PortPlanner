@@ -15,6 +15,8 @@ export async function* drawCircleTool(): ToolGenerator {
     text: 'Specify radius (point on circle)',
     acceptedInputKinds: ['point'],
     previewBuilder: (cursor) => ({ kind: 'circle', center: ctr, cursor }),
+    // F1: typed numeric value = radius (distance from center along cursor heading).
+    directDistanceFrom: ctr,
   };
   if (edge.kind !== 'point') return { committed: false, reason: 'aborted' };
 

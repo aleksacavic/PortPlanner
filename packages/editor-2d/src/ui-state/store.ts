@@ -88,6 +88,28 @@ export interface CommandBarState {
    * Empty when no prompt is active.
    */
   acceptedInputKinds: AcceptedInputKind[];
+  /**
+   * M1.3d-Remediation-3 F1 — direct distance entry anchor published by
+   * the tool runner from `prompt.directDistanceFrom`. When non-null
+   * AND the user types a numeric input AND `overlay.lastKnownCursor`
+   * is non-null, EditorRoot.handleCommandSubmit transforms the number
+   * into a 'point' input at `anchor + unit(cursor - anchor) * distance`
+   * (AutoCAD direct-distance entry). Null when no prompt is active OR
+   * the active prompt's numeric semantic is something other than a
+   * cursor-direction distance (e.g. typed Width/Height for rectangle's
+   * Dimensions sub-option).
+   */
+  directDistanceFrom: Point2D | null;
+  /**
+   * M1.3d-Remediation-3 F6 — most recently completed (or aborted)
+   * user-invoked tool id. Captured by the tool runner's finally block
+   * when `setActiveToolId(null)` fires after a non-null id that is
+   * NOT in `EXCLUDED_FROM_LAST` (`select-rect`, `grip-stretch`,
+   * `escape` — modeless / system tools never user-invoked). Spacebar
+   * at canvas focus with no active tool re-invokes this id; null
+   * means the very first spacebar after page load is a no-op.
+   */
+  lastToolId: string | null;
 }
 
 export interface OverlayState {
@@ -155,6 +177,28 @@ export interface OverlayState {
    * AutoCAD parity: signals to the user which grip clicking will grab.
    */
   hoveredGrip: { entityId: PrimitiveId; gripKind: string } | null;
+  /**
+   * M1.3d-Remediation-3 F1 — last non-null cursor metric seen on canvas.
+   * Captures the latest `cursor.metric` and NEVER clears once set. Used
+   * by direct-distance entry: when the pointer is over the command bar,
+   * `overlay.cursor` is null (the cursor isn't on canvas) but the user
+   * still needs a "where the cursor was" to compute the direction. F1
+   * routing reads this. paintCrosshair stays bound to the live
+   * `overlay.cursor` (only paint when cursor is actually on canvas);
+   * `lastKnownCursor` is purely a memory of the last-seen position.
+   */
+  lastKnownCursor: Point2D | null;
+}
+
+/**
+ * M1.3d-Remediation-3 F2 — global modifier-key state. Updated by the
+ * keyboard router's `keydown` / `keyup` / `blur` listeners. Currently
+ * only `shift` is tracked (consumed by `draw-rectangle` to force the
+ * preview / commit to a 1:1 aspect ratio when held). Other modifiers
+ * (alt, ctrl, meta) extend the same slice when needed; SSOT preserved.
+ */
+export interface ModifiersState {
+  shift: boolean;
 }
 
 export interface EditorUiState {
@@ -173,6 +217,7 @@ export interface EditorUiState {
   /** Stack of previous focus holders so dialog open/close can restore. */
   focusStack: FocusHolder[];
   overlay: OverlayState;
+  modifiers: ModifiersState;
 }
 
 const HISTORY_CAP = 200;
@@ -204,6 +249,8 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     history: [],
     activeToolId: null,
     acceptedInputKinds: [],
+    directDistanceFrom: null,
+    lastToolId: null,
   },
   focusHolder: 'canvas',
   focusStack: [],
@@ -218,7 +265,9 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     grips: null,
     suppressEntityPaint: null,
     hoveredGrip: null,
+    lastKnownCursor: null,
   },
+  modifiers: { shift: false },
 });
 
 export const editorUiStore = createStore<EditorUiState>()(
@@ -274,6 +323,7 @@ export const editorUiActions = {
     subOptions: SubOption[] = [],
     defaultValue: string | null = null,
     acceptedInputKinds: AcceptedInputKind[] = [],
+    directDistanceFrom: Point2D | null = null,
   ): void {
     editorUiStore.setState((s) => {
       s.commandBar.activePrompt = prompt;
@@ -281,6 +331,7 @@ export const editorUiActions = {
       s.commandBar.defaultValue = defaultValue;
       s.commandBar.inputBuffer = '';
       s.commandBar.acceptedInputKinds = acceptedInputKinds;
+      s.commandBar.directDistanceFrom = directDistanceFrom;
     });
   },
   appendHistory(entry: CommandBarHistoryEntry): void {
@@ -360,6 +411,28 @@ export const editorUiActions = {
   setHoveredGrip(grip: { entityId: PrimitiveId; gripKind: string } | null): void {
     editorUiStore.setState((s) => {
       s.overlay.hoveredGrip = grip;
+    });
+  },
+  // M1.3d-Remediation-3 F1 — captures last non-null cursor metric. Once
+  // set, NEVER cleared (so direct-distance entry works while pointer is
+  // over the command bar where overlay.cursor is null).
+  setLastKnownCursor(metric: Point2D): void {
+    editorUiStore.setState((s) => {
+      s.overlay.lastKnownCursor = metric;
+    });
+  },
+  // M1.3d-Remediation-3 F2 — Shift modifier setter, called by the
+  // keyboard router on keydown / keyup / window.blur.
+  setShift(held: boolean): void {
+    editorUiStore.setState((s) => {
+      s.modifiers.shift = held;
+    });
+  },
+  // M1.3d-Remediation-3 F6 — last user-invoked tool id setter. Spacebar
+  // at canvas focus with no active tool re-invokes this id.
+  setLastToolId(id: string | null): void {
+    editorUiStore.setState((s) => {
+      s.commandBar.lastToolId = id;
     });
   },
   /**

@@ -1,7 +1,7 @@
 # Operator Shortcut Registry
 
-**Version:** 1.0.1
-**Date:** 2026-04-26
+**Version:** 1.0.2
+**Date:** 2026-04-27
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
 
 This registry is the going-forward source of truth for keyboard
@@ -43,6 +43,7 @@ is the snapshot at supersession; this file is the active registry.
 | `Ctrl+1` | Properties | |
 | `LA` | Layer Manager | |
 | `Escape` | Cancel current tool | always returns focus to canvas |
+| `Space` | repeat-last-command | Canvas focus only; same handler shape as Enter — commits in-flight tool when active, else re-invokes last user-tool |
 | `F3` | OSNAP toggle | |
 | `F8` | Ortho toggle | |
 | `F9` | GSNAP toggle | |
@@ -104,5 +105,6 @@ is the snapshot at supersession; this file is the active registry.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.0.2 | 2026-04-27 | Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active, else re-invokes most recently completed user-tool). M1.3d-Remediation-3 F6. |
 | 1.0.1 | 2026-04-26 | Add `F7` → toggle-crosshair (full-canvas / pickbox preset). M1.3d Phase 8. |
 | 1.0.0 | 2026-04-25 | Initial registry. Seeded from ADR-023 shortcut map at supersession of ADR-022. M1.3a / M1.3b / M1.3c sections populated. |

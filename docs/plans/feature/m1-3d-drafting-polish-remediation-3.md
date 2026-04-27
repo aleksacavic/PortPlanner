@@ -19,8 +19,11 @@
 
 ## 1. Request summary
 
-Seven items from user-side testing of M1.3d at `98e0915`. All implementation-side
-polish + one bug fix; no spec change, no ADR.
+Seven items from user-side testing of M1.3d at `98e0915`. Six are pure
+implementation-side polish + one is a bug fix (F5). No ADR change.
+**One binding-spec doc update**: `docs/operator-shortcuts.md` bumps from
+1.0.1 → 1.0.2 to register F6's new `Space` → repeat-last-command
+shortcut (added in Rev-1 per Codex Round-1 Blocker — see §5 + §4.1).
 
 - **F1 — Direct distance entry while drawing.** When a draw tool is awaiting
   a `'point'` input, typing a number in the command bar should be interpreted
@@ -164,7 +167,7 @@ User-confirmed in chat 2026-04-27:
 | `packages/editor-2d/src/keyboard/shortcuts.ts` | (F7) Add `TOOL_DISPLAY_NAMES: Record<ToolId, string \| null>` constant mapping each ToolId to its badge label. Internal tools (`'select-rect'`, `'grip-stretch'`, `'escape'`) map to `null` (no badge). |
 | `packages/editor-2d/src/chrome/CommandBar.tsx` | (F7) Read `editorUiStore.activeToolId`, look up `TOOL_DISPLAY_NAMES[activeToolId]`. If non-null, render `<span className={styles.toolBadge}>{name}</span>` to the left of the existing prompt text. |
 | `packages/editor-2d/src/chrome/CommandBar.module.css` | (F7) Add `.toolBadge` style: `var(--accent-primary)` background, white text, padding 2px 8px, border-radius 999px (pill), font-size 11px, weight 600, letter-spacing 0.05em. Sit inline with prompt text. |
-| `packages/editor-2d/tests/types.test.ts` (or similar) — actually `tests/draw-tools.test.ts` | (F1) Extend per-tool tests to assert `directDistanceFrom` is yielded on the right prompt. |
+| `packages/editor-2d/tests/draw-tools.test.ts` | (F1) Extend per-tool tests to assert `directDistanceFrom` is yielded on the right prompt. |
 | `packages/editor-2d/tests/ui-state.test.ts` | (F1, F2, F6) Test new slice fields: `directDistanceFrom`, `lastKnownCursor`, `modifiers.shift`, `lastToolId` defaults + setters. |
 | `packages/editor-2d/tests/runner.test.ts` (or `tool-runner.test.ts`) | (F6) Test `lastToolId` update on tool completion (excluded tools NOT tracked). |
 | `packages/editor-2d/tests/keyboard-router.test.ts` | (F6) Spacebar at canvas + no tool + lastToolId set → `onRepeatLastCommand`. Spacebar + active tool → `onCommitCurrentTool`. Spacebar at bar focus → no callback (native input handles). (F2) Shift keydown/keyup updates `modifiers.shift`. |
@@ -783,6 +786,35 @@ placeholder tokens.)
 > Parent plans + Round-1 + Round-2 plan files + their revision histories
 > + post-execution / post-commit notes are the authoritative context for
 > invariants, gates, and the existing implementation surface.
+
+---
+
+## Post-execution notes (Procedure 03 §3.7)
+
+**Execution commit:** to be filled by `git log` after the execution commit lands; per Rev-1 footer convention (Round-1 Rev-5 lesson) no self-referential placeholder token.
+
+**Codex Round-2 quality gaps bundled per "fix during execution" pattern (Lesson 10):**
+- **QG-A** — §1 Request summary previously said "no spec change"; updated to reflect the binding-doc update for `docs/operator-shortcuts.md` 1.0.2 introduced in Rev-1.
+- **QG-B** — §4.1 had ambiguous test-file phrasing `tests/types.test.ts (or similar) — actually tests/draw-tools.test.ts`; reduced to the single authoritative path `tests/draw-tools.test.ts`.
+
+Both QG fixes landed in this same execution commit per user direction "fix during execution"; equivalent to Rem-2 Rev-2 pattern.
+
+**Final test count vs estimate:**
+- §10 C2.8 estimate: ~25 net-new tests, threshold ≥416.
+- Actual: 437 (was 391 at Rem-2 baseline `98e0915`; +46 net-new). Per-package: editor-2d 274 → 320 (+46); domain / design-system / project-store / project-store-react / web unchanged.
+- Sources of overshoot: paintPreview F4 modified-entities arm got 8 sub-tests (one per Primitive kind plus the multi-primitive case), draw-tools F1 directDistanceFrom got 5 per-tool yields, F2 / F3 each had 2-3 sub-paths. Same shape of estimate-vs-actual drift acknowledged in Rem-2 Rev-3 — using a conservative threshold so under-shoots don't fail.
+
+**Implementation observations worth recording for future readers:**
+
+1. **F5 fix is exactly the 5-LOC change estimated** (handleGripDown 2-branch dispatch). The pre-fix path `runningToolRef.current?.abort(); runningToolRef.current = null;` BEFORE starting grip-stretch was redundant in the new structure (the only path reaching grip-stretch is the no-active-tool branch where the ref is already null), so it was elided in the rewrite. Behavioral equivalence preserved. Net change in handleGripDown: -2 lines existing + ~7 lines new = +5 lines.
+2. **F6 lastToolId type fudge.** `commandBar.lastToolId: string | null` is held as `string`, not `ToolId`, because typing it as `ToolId` would force the ui-state store (lower-level package) to import from `keyboard/shortcuts.ts` (higher-level). A small `as ToolId` cast in EditorRoot's `onRepeatLastCommand` bridges the gap; `lookupTool(id)` returns null for unknown ids regardless, so the cast is defensive even if mistyped. Cleaner than introducing a cross-module dep.
+3. **F4 `'modified-entities'` arm primitive snapshot.** move.ts and copy.ts capture the source primitives at base-point-pick time (not at second-point time). Reason: snapshot stability across the second prompt — if the project store mutated mid-prompt (unlikely but possible via undo/redo), the ghost would jump. Captured primitives flow through closure into the previewBuilder.
+4. **F7 badge UX detail.** Moving `border-top` from `.promptLine` to a new `.promptRow` wrapper was needed so the divider line spans the full bar width (across badge + prompt form). Without this, the divider would appear to span only the form's column, giving the badge a "floating above the line" look.
+5. **§7 Step 7 (modifier slice) and step 8 (router listeners) implemented per plan with one design micro-decision: blur listener calls `setShift(false)` (NOT clearing the whole modifiers slice).** Future modifiers (alt, ctrl, meta) can be cleared by separate handlers; isolating per-key clear keeps the slice extension forward-compatible.
+
+**Bundle delta:** apps/web/dist/index.js was 441 kB raw / 127 kB gz at Rem-2 baseline; now 445 kB raw / 128.55 kB gz. Delta: +4 kB raw / +1.55 kB gz. Within the +5-10 kB raw / +2 kB gz estimate from §10 C3.7.
+
+**Procedure 03 §3.9 self-review loop:** after the execution commit lands, run Procedure 04 against the commit range and remediate any Blocker / High-risk findings before the §3.8 handoff. Quality-gap findings may be deferred but MUST be listed as residual risks.
 
 ### Paste to user for approval
 > Please review the plan at

@@ -3,7 +3,7 @@
 // ToolRunner drives the generator and routes canvas / keyboard / bar
 // inputs in.
 
-import type { Point2D, TargetKind } from '@portplanner/domain';
+import type { Point2D, Primitive, TargetKind } from '@portplanner/domain';
 
 export interface SubOption {
   label: string;
@@ -40,7 +40,15 @@ export type PreviewShape =
       start: Point2D;
       end: Point2D;
       direction: 'window' | 'crossing';
-    };
+    }
+  // M1.3d-Remediation-3 F4 — translucent ghost of entities being moved /
+  // copied (and, when M1.3b ships, rotated / scaled / mirrored). The
+  // arm carries the source primitives + a metric translation. The
+  // painter (drawModifiedEntitiesPreview) strokes each primitive's
+  // outline at the offset using the same canvas.transient.preview_stroke
+  // styling as the other arms. M1.3b extends per-operator usage; for
+  // M1.3d-Rem-3 only move + copy yield this arm.
+  | { kind: 'modified-entities'; primitives: Primitive[]; offsetMetric: Point2D };
 
 export interface Prompt {
   text: string;
@@ -63,6 +71,21 @@ export interface Prompt {
    * returns.
    */
   previewBuilder?: (cursor: Point2D) => PreviewShape;
+  /**
+   * M1.3d-Remediation-3 F1 — direct distance entry anchor. When set,
+   * a numeric input typed into the command bar is interpreted as a
+   * distance along the cursor direction from this anchor:
+   *   `dest = anchor + unit(cursor - anchor) * distance`
+   * EditorRoot.handleCommandSubmit reads this (via the runner-published
+   * `commandBar.directDistanceFrom` slice field) plus the latest
+   * non-null cursor (`overlay.lastKnownCursor`) and feeds a 'point'
+   * input instead of a 'number' input. Tools opt in by yielding the
+   * anchor (line p1, polyline last vertex, circle center, arc p1/p2,
+   * etc.). Omit when the prompt's numeric semantic is NOT a distance
+   * along cursor heading (e.g. typed Width/Height for rectangle's
+   * Dimensions sub-option).
+   */
+  directDistanceFrom?: Point2D;
 }
 
 export type Input =

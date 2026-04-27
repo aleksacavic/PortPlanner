@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { lookupTool } from '../src/tools';
 import { startTool } from '../src/tools/runner';
+import { editorUiActions, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -298,5 +299,199 @@ describe('draw tools yield previewBuilder (M1.3d Phase 4)', () => {
     const first = await gen.next();
     expect((first.value as { previewBuilder?: unknown }).previewBuilder).toBeUndefined();
     await gen.return({ committed: false, reason: 'aborted' });
+  });
+});
+
+// M1.3d-Remediation-3 F1 — opted-in draw tools yield directDistanceFrom
+// alongside the previewBuilder. EditorRoot's handleCommandSubmit
+// converts numeric input + this anchor + lastKnownCursor → 'point'.
+describe('draw tools yield directDistanceFrom (M1.3d-Rem-3 F1)', () => {
+  beforeEach(() => createNewProject(makeProject()));
+  afterEach(() => resetProjectStoreForTests());
+
+  it('draw-line yields directDistanceFrom = p1 on the second prompt', async () => {
+    const factory = lookupTool('draw-line')!;
+    const gen = factory();
+    const first = await gen.next();
+    expect((first.value as { directDistanceFrom?: unknown }).directDistanceFrom).toBeUndefined();
+    const second = await gen.next({ kind: 'point', point: { x: 7, y: 11 } });
+    expect(
+      (second.value as { directDistanceFrom?: { x: number; y: number } }).directDistanceFrom,
+    ).toEqual({
+      x: 7,
+      y: 11,
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-polyline yields directDistanceFrom = lastVertex on each loop iteration', async () => {
+    const factory = lookupTool('draw-polyline')!;
+    const gen = factory();
+    await gen.next();
+    const loop1 = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    expect(
+      (loop1.value as { directDistanceFrom?: { x: number; y: number } }).directDistanceFrom,
+    ).toEqual({
+      x: 0,
+      y: 0,
+    });
+    const loop2 = await gen.next({ kind: 'point', point: { x: 10, y: 5 } });
+    expect(
+      (loop2.value as { directDistanceFrom?: { x: number; y: number } }).directDistanceFrom,
+    ).toEqual({
+      x: 10,
+      y: 5,
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-circle yields directDistanceFrom = center on the second prompt', async () => {
+    const factory = lookupTool('draw-circle')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 3, y: 4 } });
+    expect(
+      (second.value as { directDistanceFrom?: { x: number; y: number } }).directDistanceFrom,
+    ).toEqual({
+      x: 3,
+      y: 4,
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-arc yields directDistanceFrom on second (=p1) and third (=p2) prompts', async () => {
+    const factory = lookupTool('draw-arc')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 1, y: 0 } });
+    expect(
+      (second.value as { directDistanceFrom?: { x: number; y: number } }).directDistanceFrom,
+    ).toEqual({
+      x: 1,
+      y: 0,
+    });
+    const third = await gen.next({ kind: 'point', point: { x: 0, y: 1 } });
+    expect(
+      (third.value as { directDistanceFrom?: { x: number; y: number } }).directDistanceFrom,
+    ).toEqual({
+      x: 0,
+      y: 1,
+    });
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('draw-rectangle does NOT yield directDistanceFrom (F3 D-sub-option handles its typed dims)', async () => {
+    const factory = lookupTool('draw-rectangle')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    expect((second.value as { directDistanceFrom?: unknown }).directDistanceFrom).toBeUndefined();
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+});
+
+// M1.3d-Remediation-3 F2 — Shift held during second click forces square.
+// Test mutates editorUiStore.modifiers.shift directly to simulate the
+// keyboard router's keydown listener.
+describe('draw-rectangle F2 — Shift forces square', () => {
+  beforeEach(() => createNewProject(makeProject()));
+  afterEach(() => {
+    resetProjectStoreForTests();
+    resetEditorUiStoreForTests();
+  });
+
+  it('Shift held: rectangle commits as a square sized by max(|dx|, |dy|)', async () => {
+    editorUiActions.setShift(true);
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    // Cursor at (5, 3) with shift → side = max(5, 3) = 5 → square 5×5.
+    tool.feedInput({ kind: 'point', point: { x: 5, y: 3 } });
+    await tool.done();
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(1);
+    const r = rects[0] as { width: number; height: number };
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(5);
+  });
+
+  it('Shift NOT held: rectangle commits as the actual W×H from the two clicks', async () => {
+    editorUiActions.setShift(false);
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 5, y: 3 } });
+    await tool.done();
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    const r = rects[0] as { width: number; height: number };
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+});
+
+// M1.3d-Remediation-3 F3 — Dimensions sub-option flow.
+describe('draw-rectangle F3 — Dimensions sub-option', () => {
+  beforeEach(() => createNewProject(makeProject()));
+  afterEach(() => {
+    resetProjectStoreForTests();
+    resetEditorUiStoreForTests();
+  });
+
+  it('second prompt declares the [Dimensions] sub-option with shortcut "d"', async () => {
+    const factory = lookupTool('draw-rectangle')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    const subOptions = (second.value as { subOptions?: Array<{ label: string; shortcut: string }> })
+      .subOptions;
+    expect(subOptions).toEqual([{ label: 'Dimensions', shortcut: 'd' }]);
+    expect((second.value as { acceptedInputKinds: string[] }).acceptedInputKinds).toContain(
+      'subOption',
+    );
+    await gen.return({ committed: false, reason: 'aborted' });
+  });
+
+  it('Dimensions flow: typed W/H commit a rectangle of those dimensions from corner1', async () => {
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 1, y: 2 } });
+    await tick();
+    tool.feedInput({ kind: 'subOption', optionLabel: 'Dimensions' });
+    await tick();
+    tool.feedInput({ kind: 'number', value: 8 });
+    await tick();
+    tool.feedInput({ kind: 'number', value: 4 });
+    await tool.done();
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(1);
+    const r = rects[0] as { origin: { x: number; y: number }; width: number; height: number };
+    expect(r.origin).toEqual({ x: 1, y: 2 });
+    expect(r.width).toBe(8);
+    expect(r.height).toBe(4);
+  });
+
+  it('Dimensions abort path: missing width input aborts cleanly', async () => {
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'subOption', optionLabel: 'Dimensions' });
+    await tick();
+    // Send a non-numeric input → tool aborts.
+    tool.feedInput({ kind: 'commit' });
+    const result = await tool.done();
+    expect(result.committed).toBe(false);
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(0);
   });
 });

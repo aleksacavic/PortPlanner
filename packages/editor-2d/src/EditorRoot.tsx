@@ -28,6 +28,7 @@ import { LayerManagerDialog } from './chrome/LayerManagerDialog';
 import { PropertiesPanel } from './chrome/PropertiesPanel';
 import { useEditorUi } from './chrome/use-editor-ui-store';
 import { registerKeyboardRouter } from './keyboard/router';
+import type { ToolId } from './keyboard/shortcuts';
 import { commitSnappedVertex } from './snap/commit';
 import { resolveSnap } from './snap/priority';
 import { lookupTool } from './tools';
@@ -83,21 +84,32 @@ export function EditorRoot(): ReactElement {
   // unmount. registerKeyboardRouter is idempotent (I-65) so React 19
   // StrictMode + per-test mounts work correctly.
   useEffect(() => {
+    // Shared "activate tool by id" flow used by both onActivateTool
+    // (single/multi-letter shortcut) and onRepeatLastCommand
+    // (M1.3d-Remediation-3 F6 spacebar repeat). Aborts any in-flight
+    // tool, then starts the requested one. Layer manager is special-
+    // cased to also pop the dialog.
+    // `id` typed as ToolId (the keyboard router's union); onRepeatLastCommand
+    // reads lastToolId as string and casts it — at runtime lastToolId is
+    // always sourced from a successful prior activation, so the cast holds.
+    // lookupTool returns null for unknown ids regardless, so this stays
+    // defensive even if the cast were wrong.
+    const activateToolById = (id: ToolId): void => {
+      runningToolRef.current?.abort();
+      runningToolRef.current = null;
+      if (id === 'layer-manager') {
+        setLayerManagerOpen(true);
+      }
+      const factory = lookupTool(id);
+      if (!factory) return;
+      const running = startTool(id, factory);
+      runningToolRef.current = running;
+      running.done().finally(() => {
+        if (runningToolRef.current === running) runningToolRef.current = null;
+      });
+    };
     return registerKeyboardRouter({
-      onActivateTool: (id) => {
-        runningToolRef.current?.abort();
-        runningToolRef.current = null;
-        if (id === 'layer-manager') {
-          setLayerManagerOpen(true);
-        }
-        const factory = lookupTool(id);
-        if (!factory) return;
-        const running = startTool(id, factory);
-        runningToolRef.current = running;
-        running.done().finally(() => {
-          if (runningToolRef.current === running) runningToolRef.current = null;
-        });
-      },
+      onActivateTool: (id) => activateToolById(id),
       onUndo: () => {
         runningToolRef.current?.abort();
         runningToolRef.current = null;
@@ -132,6 +144,15 @@ export function EditorRoot(): ReactElement {
         // just flips between the two extremes.
         const current = editorUiStore.getState().viewport.crosshairSizePct;
         editorUiActions.setCrosshairSizePct(current >= 50 ? 5 : 100);
+      },
+      // M1.3d-Remediation-3 F6 — Spacebar at canvas focus + no active
+      // tool re-invokes the last user-tool. lastToolId is captured by
+      // the runner's finally block (see runner.ts EXCLUDED_FROM_LAST).
+      // No-op when lastToolId is null (first spacebar after page load).
+      onRepeatLastCommand: () => {
+        const id = editorUiStore.getState().commandBar.lastToolId;
+        if (id === null) return;
+        activateToolById(id as ToolId);
       },
     });
   }, []);
@@ -230,6 +251,10 @@ export function EditorRoot(): ReactElement {
 
   const handleCanvasHover = (metric: Point2D, screen: ScreenPoint): void => {
     editorUiActions.setCursor({ metric, screen });
+    // M1.3d-Remediation-3 F1 — capture last cursor for direct-distance
+    // entry. Once set, never cleared (so typing a distance in the
+    // command bar — where overlay.cursor is null — still works).
+    editorUiActions.setLastKnownCursor(metric);
   };
 
   // M1.3d Phase 5 — hover entity highlight. When NO tool is active
@@ -402,9 +427,32 @@ export function EditorRoot(): ReactElement {
       return;
     }
     const num = Number(raw);
-    if (Number.isFinite(num)) {
-      runningToolRef.current?.feedInput({ kind: 'number', value: num });
+    if (!Number.isFinite(num)) return;
+
+    // M1.3d-Remediation-3 F1 — direct distance entry. When the active
+    // prompt published a `directDistanceFrom` anchor AND we have a
+    // last-known cursor, transform the typed distance into a 'point'
+    // input at `anchor + unit(cursor - anchor) * distance`. Otherwise
+    // fall through to the existing 'number' input (e.g. typed Width /
+    // Height for rectangle's Dimensions sub-option).
+    const cb = editorUiStore.getState().commandBar;
+    const anchor = cb.directDistanceFrom;
+    const lkc = editorUiStore.getState().overlay.lastKnownCursor;
+    if (anchor && lkc) {
+      const dx = lkc.x - anchor.x;
+      const dy = lkc.y - anchor.y;
+      const len = Math.hypot(dx, dy);
+      if (len > 0) {
+        const ux = dx / len;
+        const uy = dy / len;
+        const dest: Point2D = { x: anchor.x + ux * num, y: anchor.y + uy * num };
+        runningToolRef.current?.feedInput({ kind: 'point', point: dest });
+        return;
+      }
+      // Zero-length direction (cursor exactly on anchor): fall through
+      // to 'number' — tool will treat it per its own contract.
     }
+    runningToolRef.current?.feedInput({ kind: 'number', value: num });
   };
 
   const handleCanvasCommit = (): void => {
@@ -426,8 +474,19 @@ export function EditorRoot(): ReactElement {
   };
 
   const handleGripDown = (grip: Grip): void => {
-    runningToolRef.current?.abort();
-    runningToolRef.current = null;
+    // M1.3d-Remediation-3 F5 BUG FIX — when a tool is already running
+    // and awaiting a 'point' input, clicking on a grip MUST feed the
+    // grip's exact position as the input (AutoCAD parity: grip serves
+    // as a snap target). Pre-fix, this branch unconditionally aborted
+    // the running tool and started grip-stretch; the running tool
+    // never received the grip click. Bit-copy semantics — grip.position
+    // is the canonical metric, no snap re-resolution needed.
+    const tool = runningToolRef.current;
+    if (tool) {
+      tool.feedInput({ kind: 'point', point: grip.position });
+      return;
+    }
+    // No active tool — selection-mode grip-stretch (existing behavior).
     const factory = gripStretchTool(grip);
     const running = startTool('grip-stretch', factory);
     runningToolRef.current = running;

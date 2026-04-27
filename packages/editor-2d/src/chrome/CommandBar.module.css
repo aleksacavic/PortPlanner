@@ -23,8 +23,10 @@
   display: flex;
   gap: 8px;
   align-items: center;
-  border-top: 1px solid var(--surface-border, #333);
-  padding-top: 4px;
+  /* border-top + padding-top moved to .promptRow (M1.3d-Rem-3 F7) so
+     the divider spans across the badge + form, not just the form. */
+  flex: 1;
+  min-width: 0;
 }
 
 .promptText {
@@ -43,4 +45,35 @@
   outline: none;
   color: inherit;
   font: inherit;
+}
+
+/* M1.3d-Remediation-3 F7 — wraps the badge + the existing prompt line
+   so the badge sits inline to its left without disturbing the form's
+   own layout. The prompt-line form keeps its grid-column; this row is
+   purely a flex container. Owns the divider line that previously lived
+   on .promptLine so the border spans the badge + form. */
+.promptRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border-top: 1px solid var(--surface-border, #333);
+  padding-top: 4px;
+}
+
+/* Tool badge pill — accent color matches the in-flight selection-window
+   stroke and the R6 transient-label pill (consistent in-flight-action
+   vocabulary). White text on accent-primary background. Compact pill
+   shape via large border-radius. */
+.toolBadge {
+  display: inline-block;
+  background: var(--accent-primary, #2870ed);
+  color: #fff;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }

@@ -29,6 +29,10 @@ export interface KeyboardRouterCallbacks {
    *  and pickbox (5%) presets. M1.3d Phase 8. EditorRoot owns the
    *  toggle behaviour; the router just fires the callback. */
   onToggleCrosshair: () => void;
+  /** M1.3d-Remediation-3 F6 — Spacebar at canvas focus when no tool is
+   *  active re-invokes the most recently completed user-tool. EditorRoot
+   *  reads `editorUiStore.commandBar.lastToolId` and re-activates it. */
+  onRepeatLastCommand: () => void;
 }
 
 const ACCUMULATOR_TIMEOUT_MS = 750;
@@ -128,6 +132,23 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       callbacks.onCommitCurrentTool();
       return;
     }
+    // M1.3d-Remediation-3 F6 — Spacebar at canvas focus mirrors Enter:
+    //   - Active tool → commit (same as Enter).
+    //   - No active tool → re-invoke last user-tool (via lastToolId).
+    // Bar focus: native input handles space (typing a literal space
+    // character); we don't intercept. Same per-focus pattern as letter
+    // routing below.
+    if (key === ' ' && focus === 'canvas') {
+      e.preventDefault();
+      flushAccumulator();
+      const activeId = editorUiStore.getState().activeToolId;
+      if (activeId !== null) {
+        callbacks.onCommitCurrentTool();
+      } else {
+        callbacks.onRepeatLastCommand();
+      }
+      return;
+    }
     if (key === 'Delete' && focus === 'canvas') {
       e.preventDefault();
       callbacks.onActivateTool('erase');
@@ -158,9 +179,32 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     // intercept here. The bar component consumes its own keystrokes.
   };
 
+  // M1.3d-Remediation-3 F2 — global Shift modifier tracking. Updates
+  // editorUiStore.modifiers.shift on keydown/keyup. The `blur` listener
+  // resets to false to handle the "user holds shift, alt-tabs out,
+  // releases shift outside the window" edge case where keyup never
+  // fires inside the app and the slice would otherwise stay stuck at
+  // true. draw-rectangle reads modifiers.shift for the F2 square
+  // constraint; future tools / modifiers extend the same slice.
+  const shiftKeydown = (e: KeyboardEvent): void => {
+    if (e.key === 'Shift') editorUiActions.setShift(true);
+  };
+  const shiftKeyup = (e: KeyboardEvent): void => {
+    if (e.key === 'Shift') editorUiActions.setShift(false);
+  };
+  const windowBlur = (): void => {
+    editorUiActions.setShift(false);
+  };
+
   window.addEventListener('keydown', handler);
+  window.addEventListener('keydown', shiftKeydown);
+  window.addEventListener('keyup', shiftKeyup);
+  window.addEventListener('blur', windowBlur);
   cleanup = () => {
     window.removeEventListener('keydown', handler);
+    window.removeEventListener('keydown', shiftKeydown);
+    window.removeEventListener('keyup', shiftKeyup);
+    window.removeEventListener('blur', windowBlur);
     if (accumulatorTimer !== null) clearTimeout(accumulatorTimer);
     registered = false;
     cleanup = null;

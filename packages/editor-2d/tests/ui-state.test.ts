@@ -190,3 +190,61 @@ describe('editorUiStore — viewport.crosshairSizePct (I-DTP-3 / I-DTP-18)', () 
     expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(100);
   });
 });
+
+// M1.3d-Remediation-3 — slice extensions for F1 (directDistanceFrom +
+// lastKnownCursor), F2 (modifiers.shift), F6 (lastToolId).
+describe('editorUiStore — M1.3d-Rem-3 slice extensions', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  // F1 — directDistanceFrom on commandBar slice.
+  it('F1: commandBar.directDistanceFrom defaults to null', () => {
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toBeNull();
+  });
+
+  it('F1: setPrompt extended 5th arg writes directDistanceFrom', () => {
+    editorUiActions.setPrompt('Specify end point', [], null, ['point'], { x: 3, y: 4 });
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toEqual({ x: 3, y: 4 });
+    // Default-omitted setPrompt resets to null (typical "next prompt has no anchor").
+    editorUiActions.setPrompt('Specify base point', [], null, ['point']);
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toBeNull();
+  });
+
+  // F1 — lastKnownCursor on overlay slice.
+  it('F1: overlay.lastKnownCursor defaults to null', () => {
+    expect(editorUiStore.getState().overlay.lastKnownCursor).toBeNull();
+  });
+
+  it('F1: setLastKnownCursor stores and is NEVER cleared by null cursor', () => {
+    editorUiActions.setLastKnownCursor({ x: 1, y: 2 });
+    expect(editorUiStore.getState().overlay.lastKnownCursor).toEqual({ x: 1, y: 2 });
+    // setCursor(null) does NOT clear lastKnownCursor — F1 contract: it's
+    // a memory of the last on-canvas cursor, used while pointer is over
+    // the command bar (where overlay.cursor is null).
+    editorUiActions.setCursor(null);
+    expect(editorUiStore.getState().overlay.lastKnownCursor).toEqual({ x: 1, y: 2 });
+  });
+
+  // F2 — modifiers slice.
+  it('F2: modifiers.shift defaults to false', () => {
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+
+  it('F2: setShift toggles the shift modifier', () => {
+    editorUiActions.setShift(true);
+    expect(editorUiStore.getState().modifiers.shift).toBe(true);
+    editorUiActions.setShift(false);
+    expect(editorUiStore.getState().modifiers.shift).toBe(false);
+  });
+
+  // F6 — lastToolId on commandBar slice.
+  it('F6: commandBar.lastToolId defaults to null', () => {
+    expect(editorUiStore.getState().commandBar.lastToolId).toBeNull();
+  });
+
+  it('F6: setLastToolId stores and clears via null', () => {
+    editorUiActions.setLastToolId('draw-line');
+    expect(editorUiStore.getState().commandBar.lastToolId).toBe('draw-line');
+    editorUiActions.setLastToolId(null);
+    expect(editorUiStore.getState().commandBar.lastToolId).toBeNull();
+  });
+});

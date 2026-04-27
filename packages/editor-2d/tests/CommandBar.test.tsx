@@ -47,3 +47,27 @@ describe('CommandBar component', () => {
     expect(getByText('entry-4')).toBeTruthy();
   });
 });
+
+// M1.3d-Remediation-3 F7 — tool badge renders when activeToolId maps to
+// a non-null TOOL_DISPLAY_NAMES entry; hides when null.
+describe('CommandBar — F7 tool badge', () => {
+  it('badge hidden when no tool is active', () => {
+    act(() => editorUiActions.setActiveToolId(null));
+    const { container } = render(<CommandBar />);
+    expect(container.querySelector('[data-component="command-tool-badge"]')).toBeNull();
+  });
+
+  it('badge renders with display name for an active user-tool', () => {
+    act(() => editorUiActions.setActiveToolId('draw-line'));
+    const { container } = render(<CommandBar />);
+    const badge = container.querySelector('[data-component="command-tool-badge"]');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('LINE');
+  });
+
+  it('badge hidden for internal tools (select-rect / grip-stretch) — null in TOOL_DISPLAY_NAMES', () => {
+    act(() => editorUiActions.setActiveToolId('select-rect'));
+    const { container } = render(<CommandBar />);
+    expect(container.querySelector('[data-component="command-tool-badge"]')).toBeNull();
+  });
+});

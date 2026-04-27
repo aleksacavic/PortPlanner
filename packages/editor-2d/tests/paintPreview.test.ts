@@ -6,6 +6,7 @@
 
 import { readFileSync } from 'node:fs';
 import { dark } from '@portplanner/design-system';
+import { LayerId, newPrimitiveId } from '@portplanner/domain';
 import { describe, expect, it } from 'vitest';
 
 import { paintPreview } from '../src/canvas/painters/paintPreview';
@@ -227,6 +228,250 @@ describe('paintPreview — kind dispatch (line / polyline / rectangle / circle /
       dark,
     );
     expect(calls).toEqual([]);
+  });
+});
+
+// M1.3d-Remediation-3 F4 — modified-entities arm. Per-kind sub-tests
+// because each Primitive kind dispatches to its own ctx primitive set.
+// Lesson from Rem-2 wire-intersect: count `case` branches in the
+// implementation switch (point/line/polyline/rectangle/circle/arc/xline
+// = 7) and ensure each has an `it()`.
+describe('paintPreview — modified-entities arm (F4)', () => {
+  const layerId = LayerId.DEFAULT;
+
+  it('line: stroked at the offset position (moveTo + lineTo + stroke)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId,
+            displayOverrides: {},
+            p1: { x: 0, y: 0 },
+            p2: { x: 5, y: 0 },
+          },
+        ],
+        offsetMetric: { x: 10, y: 20 },
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo?.args).toEqual([10, 20]);
+    expect(lineTo?.args).toEqual([15, 20]);
+    expect(calls.some((c) => c.method === 'stroke')).toBe(true);
+  });
+
+  it('polyline closed: rect-like outline + closePath', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'polyline',
+            layerId,
+            displayOverrides: {},
+            vertices: [
+              { x: 0, y: 0 },
+              { x: 5, y: 0 },
+              { x: 5, y: 3 },
+            ],
+            bulges: [0, 0, 0],
+            closed: true,
+          },
+        ],
+        offsetMetric: { x: 1, y: 1 },
+      },
+      viewport,
+      dark,
+    );
+    expect(calls.find((c) => c.method === 'moveTo')?.args).toEqual([1, 1]);
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    expect(lineTos.length).toBeGreaterThanOrEqual(2);
+    expect(calls.some((c) => c.method === 'closePath')).toBe(true);
+  });
+
+  it('rectangle: ctx.rect at offset origin with the original dimensions', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'rectangle',
+            layerId,
+            displayOverrides: {},
+            origin: { x: 0, y: 0 },
+            width: 8,
+            height: 4,
+            localAxisAngle: 0,
+          },
+        ],
+        offsetMetric: { x: 10, y: 5 },
+      },
+      viewport,
+      dark,
+    );
+    const rect = calls.find((c) => c.method === 'rect');
+    expect(rect?.args).toEqual([10, 5, 8, 4]);
+  });
+
+  it('circle: ctx.arc full sweep at offset center, original radius', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'circle',
+            layerId,
+            displayOverrides: {},
+            center: { x: 0, y: 0 },
+            radius: 7,
+          },
+        ],
+        offsetMetric: { x: 3, y: -2 },
+      },
+      viewport,
+      dark,
+    );
+    const arc = calls.find((c) => c.method === 'arc');
+    expect(arc?.args[0]).toBe(3);
+    expect(arc?.args[1]).toBe(-2);
+    expect(arc?.args[2]).toBe(7);
+    expect(arc?.args[3]).toBe(0);
+    expect(arc?.args[4]).toBeCloseTo(Math.PI * 2, 9);
+  });
+
+  it('arc: ctx.arc at offset center with original startAngle/endAngle', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'arc',
+            layerId,
+            displayOverrides: {},
+            center: { x: 0, y: 0 },
+            radius: 5,
+            startAngle: 0,
+            endAngle: Math.PI / 2,
+          },
+        ],
+        offsetMetric: { x: 1, y: 1 },
+      },
+      viewport,
+      dark,
+    );
+    const arc = calls.find((c) => c.method === 'arc');
+    expect(arc?.args[0]).toBe(1);
+    expect(arc?.args[1]).toBe(1);
+    expect(arc?.args[2]).toBe(5);
+    expect(arc?.args[3]).toBe(0);
+    expect(arc?.args[4]).toBeCloseTo(Math.PI / 2, 9);
+  });
+
+  it('xline: long segment through the offset pivot in its angle', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'xline',
+            layerId,
+            displayOverrides: {},
+            pivot: { x: 0, y: 0 },
+            angle: 0,
+          },
+        ],
+        offsetMetric: { x: 5, y: 5 },
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo).toBeDefined();
+    expect(lineTo).toBeDefined();
+    // Far-extent endpoints (1e6 in helper) — magnitude well above 100.
+    expect(Math.abs(moveTo!.args[0] as number)).toBeGreaterThan(1e5);
+    expect(Math.abs(lineTo!.args[0] as number)).toBeGreaterThan(1e5);
+  });
+
+  it('point: degenerate — emits a stroke at the offset position', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'point',
+            layerId,
+            displayOverrides: {},
+            position: { x: 0, y: 0 },
+          },
+        ],
+        offsetMetric: { x: 7, y: 8 },
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    expect(moveTo?.args).toEqual([7, 8]);
+    expect(calls.some((c) => c.method === 'stroke')).toBe(true);
+  });
+
+  it('multiple primitives: each gets its own draw pass at the same offset', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId,
+            displayOverrides: {},
+            p1: { x: 0, y: 0 },
+            p2: { x: 1, y: 0 },
+          },
+          {
+            id: newPrimitiveId(),
+            kind: 'circle',
+            layerId,
+            displayOverrides: {},
+            center: { x: 0, y: 0 },
+            radius: 1,
+          },
+        ],
+        offsetMetric: { x: 10, y: 0 },
+      },
+      viewport,
+      dark,
+    );
+    // Two strokes — one per primitive.
+    expect(calls.filter((c) => c.method === 'stroke').length).toBeGreaterThanOrEqual(2);
   });
 });
 

@@ -43,6 +43,8 @@ export async function* drawPolylineTool(): ToolGenerator {
         cursor,
         closed: false,
       }),
+      // F1: typed numeric distance lands at lastVertex + unit(cursor - lastVertex) * d.
+      directDistanceFrom: verticesSnapshot[verticesSnapshot.length - 1]!,
     };
     if (next.kind === 'subOption' && next.optionLabel === 'Close') {
       if (vertices.length < 3) {

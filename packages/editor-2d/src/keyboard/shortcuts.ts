@@ -71,3 +71,37 @@ export function isMultiLetterPrefix(buffer: string): boolean {
   const up = buffer.toUpperCase();
   return Object.keys(MULTI_LETTER_SHORTCUTS).some((k) => k.startsWith(up) && k !== up);
 }
+
+/**
+ * M1.3d-Remediation-3 F7 — toolId → display name for the command-bar
+ * tool badge. Internal / modeless tools (`select-rect`, `grip-stretch`,
+ * `escape`) map to `null` so the badge does not render for them. SSOT
+ * lives next to ToolId + the shortcut maps so all tool metadata is in
+ * one file.
+ *
+ * Adding a new ToolId? Add a matching entry here too — TypeScript's
+ * `Record<ToolId, ...>` exhaustiveness check enforces it at compile
+ * time.
+ */
+export const TOOL_DISPLAY_NAMES: Record<ToolId, string | null> = {
+  select: 'SELECT',
+  erase: 'ERASE',
+  move: 'MOVE',
+  copy: 'COPY',
+  undo: 'UNDO',
+  redo: 'REDO',
+  zoom: 'ZOOM',
+  pan: 'PAN',
+  properties: 'PROPERTIES',
+  'layer-manager': 'LAYER MANAGER',
+  escape: null,
+  'draw-point': 'POINT',
+  'draw-line': 'LINE',
+  'draw-polyline': 'POLYLINE',
+  'draw-rectangle': 'RECTANGLE',
+  'draw-circle': 'CIRCLE',
+  'draw-arc': 'ARC',
+  'draw-xline': 'XLINE',
+  'grip-stretch': null,
+  'select-rect': null,
+};

@@ -74,6 +74,19 @@ const SCENARIOS = [
   // covers the rendering math; smoke verifies the EditorRoot
   // cursor-effect → setHoveredGrip → paintSelection consumption wiring).
   'hovered grip highlights on cursor proximity',
+  // M1.3d-Remediation-3 F1 — direct distance entry. SOLE integration
+  // surface (EditorRoot.handleCommandSubmit reads directDistanceFrom +
+  // lastKnownCursor → 'point'; tool-level tests can't exercise this).
+  'direct distance entry',
+  // M1.3d-Remediation-3 F5 — bug fix: grip click during a running tool
+  // feeds grip.position as 'point' input instead of aborting. SOLE
+  // integration surface (EditorRoot.handleGripDown wrap; grip-stretch.test
+  // covers tool-layer regression but not the routing change).
+  'grip click during running tool feeds point',
+  // M1.3d-Remediation-3 F6 — Spacebar at canvas focus repeats last tool.
+  // SOLE integration surface (router.ts handler + EditorRoot's
+  // onRepeatLastCommand wiring across the runner's lastToolId capture).
+  'spacebar repeats last command',
 ] as const;
 
 const ACCUMULATOR_FLUSH_MS = 800;
@@ -648,6 +661,158 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     const sel = editorUiStore.getState().selection;
     expect(sel).toContain(wireCrosserId);
     expect(sel).not.toContain(bboxOnlyId);
+  });
+
+  // ============================================================
+  // M1.3d-Remediation-3 — F1 / F5 / F6 SOLE integration scenarios.
+  // ============================================================
+
+  it('direct distance entry', async () => {
+    // F1 — typing a numeric distance in the command bar after the first
+    // line click computes p2 along cursor heading from p1. SOLE
+    // integration surface: EditorRoot.handleCommandSubmit reads
+    // commandBar.directDistanceFrom (published by the runner from
+    // draw-line's second prompt) + overlay.lastKnownCursor (captured by
+    // handleCanvasHover) and feeds a 'point' input.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate L (draw-line).
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+
+    // First click: metric (0, 0) → screen (400, 300) at zoom=10 / viewport (800, 600).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+
+    // Move cursor to (450, 300) → metric (5, 0) — establishes lastKnownCursor +
+    // a horizontal heading from the anchor (0, 0).
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(40);
+    expect(editorUiStore.getState().overlay.lastKnownCursor).not.toBeNull();
+    expect(editorUiStore.getState().commandBar.directDistanceFrom).toEqual({ x: 0, y: 0 });
+
+    // Type "7" in the command bar input and submit (form Enter).
+    const input = container.querySelector<HTMLInputElement>('[data-component="command-input"]');
+    expect(input).toBeTruthy();
+    fireEvent.focus(input!);
+    fireEvent.change(input!, { target: { value: '7' } });
+    // Yield so React flushes the local state update before form submit
+    // reads it (CommandPromptLine.handleSubmit reads `local`, not the
+    // store's inputBuffer).
+    await wait(20);
+    const form = container.querySelector('[data-component="command-prompt"]');
+    fireEvent.submit(form!);
+    await wait(50);
+
+    const lines = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'line',
+    );
+    expect(lines).toHaveLength(1);
+    const ln = lines[0] as { p1: { x: number; y: number }; p2: { x: number; y: number } };
+    expect(ln.p1).toEqual({ x: 0, y: 0 });
+    // unit(cursor - anchor) = unit(5, 0) = (1, 0); dest = (0, 0) + 7 * (1, 0) = (7, 0).
+    expect(ln.p2.x).toBeCloseTo(7, 6);
+    expect(ln.p2.y).toBeCloseTo(0, 6);
+  });
+
+  it('grip click during running tool feeds point', async () => {
+    // F5 BUG FIX — pre-fix: clicking a grip while move tool is running
+    // aborted the tool and started grip-stretch. Post-fix: the grip's
+    // position is fed to the running tool as a 'point' input. SOLE
+    // integration surface: EditorRoot.handleGripDown 2-branch dispatch.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+
+    // Two lines — A is the entity to move (selected for grip rendering),
+    // B is where we'll click a grip mid-MOVE so its endpoint serves as
+    // the move destination.
+    const idA = newPrimitiveId();
+    addPrimitive({
+      id: idA,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: -10, y: -5 },
+      p2: { x: -8, y: -5 },
+    });
+    const idB = newPrimitiveId();
+    addPrimitive({
+      id: idB,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 5, y: 0 }, // → screen (450, 300)
+      p2: { x: 10, y: 0 },
+    });
+    // Pre-select A so its grips populate (so the F5 grip-click path makes sense
+    // ONLY when MOVE is running and we click on B's grip).
+    editorUiActions.setSelection([idA]);
+    await wait(20);
+
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate MOVE.
+    fireEvent.keyDown(window, { key: 'M' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('move');
+
+    // Click an arbitrary base point at metric (-10, -5) → screen (300, 350).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 300, clientY: 350 });
+    await wait(20);
+
+    // Now select B too so its grips appear AS WELL (we want a grip on B
+    // to click for the destination). Select-rect would normally do this;
+    // for the test we set selection directly via the UI-state action
+    // (A18-uistate is satisfied because the keyboard event activated MOVE
+    // and the canvas event committed the base point).
+    editorUiActions.setSelection([idA, idB]);
+    await wait(20);
+
+    // B's p1 grip is at metric (5, 0) → screen (450, 300). With MOVE
+    // running and awaiting the second 'point', clicking on this grip
+    // should feed { x: 5, y: 0 } into MOVE — NOT abort + start grip-stretch.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 300 });
+    await wait(50);
+
+    // Post-condition: A moved by (5 - (-10), 0 - (-5)) = (15, 5). MOVE
+    // completed; activeToolId is null (NOT 'grip-stretch').
+    const lineAfterA = projectStore.getState().project!.primitives[idA] as {
+      p1: { x: number; y: number };
+    };
+    // Original A.p1 = (-10, -5); base = (-10, -5); destination = (5, 0); delta = (15, 5).
+    expect(lineAfterA.p1.x).toBeCloseTo(5, 6);
+    expect(lineAfterA.p1.y).toBeCloseTo(0, 6);
+    // No grip-stretch started (MOVE consumed the click).
+    expect(editorUiStore.getState().activeToolId).not.toBe('grip-stretch');
+  });
+
+  it('spacebar repeats last command', async () => {
+    // F6 — Activate L, commit a line, then press Space at canvas focus →
+    // draw-line activates again. SOLE integration: router.ts spacebar
+    // handler → EditorRoot.onRepeatLastCommand → activateToolById, with
+    // lastToolId captured by the runner's finally block.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate L, draw a line.
+    fireEvent.keyDown(window, { key: 'L' });
+    await wait(ACCUMULATOR_FLUSH_MS);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
+    await wait(50);
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    // lastToolId is captured by the runner.
+    expect(editorUiStore.getState().commandBar.lastToolId).toBe('draw-line');
+
+    // Press Space at canvas focus — should re-invoke draw-line.
+    fireEvent.keyDown(window, { key: ' ' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
   });
 
   it('hovered grip highlights on cursor proximity', async () => {

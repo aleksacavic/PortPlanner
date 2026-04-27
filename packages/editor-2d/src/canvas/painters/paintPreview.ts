@@ -19,7 +19,7 @@
 // names are intentionally omitted here.
 
 import type { SemanticTokens } from '@portplanner/design-system';
-import type { Point2D } from '@portplanner/domain';
+import type { Point2D, Primitive } from '@portplanner/domain';
 
 import type { PreviewShape } from '../../tools/types';
 import type { Viewport } from '../view-transform';
@@ -70,9 +70,100 @@ export function paintPreview(
     case 'xline':
       drawXlinePreview(ctx, shape, viewport);
       break;
+    case 'modified-entities':
+      drawModifiedEntitiesPreview(ctx, shape);
+      break;
   }
 
   ctx.restore();
+}
+
+// M1.3d-Remediation-3 F4 — translucent ghost of entities being moved /
+// copied. Iterates `shape.primitives`, applies `offsetMetric` translation,
+// strokes each outline with the same transient stroke + dash style as
+// the other arms. No labels. No fill. Per-kind dispatch mirrors the
+// outline shape painted by the entity-pass painter for each Primitive
+// kind, but unfilled and rendered through the transient path.
+function drawModifiedEntitiesPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { primitives: Primitive[]; offsetMetric: Point2D },
+): void {
+  const { offsetMetric, primitives } = shape;
+  for (const p of primitives) {
+    drawShiftedPrimitiveOutline(ctx, p, offsetMetric);
+  }
+}
+
+function drawShiftedPrimitiveOutline(
+  ctx: CanvasRenderingContext2D,
+  p: Primitive,
+  off: Point2D,
+): void {
+  switch (p.kind) {
+    case 'point': {
+      // 0-radius outline isn't visible; draw a small cross at the offset
+      // position so the ghost is at least perceptible.
+      const x = p.position.x + off.x;
+      const y = p.position.y + off.y;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      return;
+    }
+    case 'line': {
+      ctx.beginPath();
+      ctx.moveTo(p.p1.x + off.x, p.p1.y + off.y);
+      ctx.lineTo(p.p2.x + off.x, p.p2.y + off.y);
+      ctx.stroke();
+      return;
+    }
+    case 'polyline': {
+      if (p.vertices.length === 0) return;
+      ctx.beginPath();
+      const first = p.vertices[0]!;
+      ctx.moveTo(first.x + off.x, first.y + off.y);
+      for (let i = 1; i < p.vertices.length; i += 1) {
+        const v = p.vertices[i]!;
+        ctx.lineTo(v.x + off.x, v.y + off.y);
+      }
+      if (p.closed) ctx.closePath();
+      ctx.stroke();
+      return;
+    }
+    case 'rectangle': {
+      ctx.beginPath();
+      ctx.rect(p.origin.x + off.x, p.origin.y + off.y, p.width, p.height);
+      ctx.stroke();
+      return;
+    }
+    case 'circle': {
+      ctx.beginPath();
+      ctx.arc(p.center.x + off.x, p.center.y + off.y, p.radius, 0, Math.PI * 2);
+      ctx.stroke();
+      return;
+    }
+    case 'arc': {
+      ctx.beginPath();
+      ctx.arc(p.center.x + off.x, p.center.y + off.y, p.radius, p.startAngle, p.endAngle);
+      ctx.stroke();
+      return;
+    }
+    case 'xline': {
+      // xline has no finite extent; draw a long segment through the
+      // shifted pivot in its angle.
+      const cx = p.pivot.x + off.x;
+      const cy = p.pivot.y + off.y;
+      const ux = Math.cos(p.angle);
+      const uy = Math.sin(p.angle);
+      const extent = 1e6; // far past any plausible viewport
+      ctx.beginPath();
+      ctx.moveTo(cx - ux * extent, cy - uy * extent);
+      ctx.lineTo(cx + ux * extent, cy + uy * extent);
+      ctx.stroke();
+      return;
+    }
+  }
 }
 
 function drawLinePreview(

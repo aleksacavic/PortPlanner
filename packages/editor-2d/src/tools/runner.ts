@@ -21,6 +21,13 @@
 import { type EditorUiState, editorUiActions, editorUiStore } from '../ui-state/store';
 import type { Input, Prompt, ToolGenerator, ToolResult } from './types';
 
+// M1.3d-Remediation-3 F6 — modeless / system tools never user-invoked
+// via shortcut. Excluded from `lastToolId` tracking so spacebar's
+// repeat-last-command behaviour never replays them. `select-rect` and
+// `grip-stretch` are auto-started by canvas-host on pointer events;
+// `escape` is the abort sentinel.
+const EXCLUDED_FROM_LAST: ReadonlyArray<string> = ['select-rect', 'grip-stretch', 'escape'];
+
 export interface RunningTool {
   toolId: string;
   feedInput(input: Input): void;
@@ -104,6 +111,7 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           prompt.subOptions ?? [],
           prompt.defaultValue ?? null,
           prompt.acceptedInputKinds,
+          prompt.directDistanceFrom ?? null,
         );
         if (prompt.previewBuilder) {
           ensurePreviewSubscription();
@@ -131,6 +139,13 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
       editorUiActions.setActiveToolId(null);
       editorUiActions.setPrompt(null);
       teardownPreviewSubscription();
+      // M1.3d-Remediation-3 F6 — capture this tool as the
+      // "last invoked" for spacebar-repeat, unless it's a modeless /
+      // system tool. Both committed and aborted tools count — repeating
+      // a just-aborted tool is the standard AutoCAD muscle-memory.
+      if (!EXCLUDED_FROM_LAST.includes(toolId)) {
+        editorUiActions.setLastToolId(toolId);
+      }
     }
   })();
 
