@@ -420,13 +420,19 @@ Gate REM3-10: Workspace test suite passes
             uses ≥416 as a conservative human-review check).
 
 Gate REM3-SPEC: docs/operator-shortcuts.md updated for F6 (Rev-1 B1)
-  Commands:
-    (a) rg -n "^\*\*Version:\*\* 1\.0\.2" docs/operator-shortcuts.md
-        Expected: 1 match (header version bumped to 1.0.2)
-    (b) rg -n "^\| 1\.0\.2 " docs/operator-shortcuts.md
-        Expected: 1 match (changelog row for 1.0.2 present)
+  Commands (post-Codex-Round-1 governance correction: targets 1.1.0):
+    (a) rg -n "^\*\*Version:\*\* 1\.1\.0" docs/operator-shortcuts.md
+        Expected: 1 match (header version bumped to 1.1.0 per
+        registry's "minor for new shortcut" rule)
+    (b) rg -n "^\| 1\.1\.0 " docs/operator-shortcuts.md
+        Expected: 1 match (changelog row for 1.1.0 present)
     (c) rg -n "repeat-last-command" docs/operator-shortcuts.md
         Expected: ≥1 match (Space row present in the M1.3a section)
+  History: at execution time these gates targeted 1.0.2 (patch). The
+  Codex post-commit Round-1 audit flagged the bump as governance-drift
+  (additions should be minor per the registry preamble). Bumped to
+  1.1.0 in the post-commit remediation; gate definitions updated to
+  match the corrected target. See "Post-commit remediation" below.
 
 Gate REM3-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7)
   Same commands as M1.3d §9. Expected: 0 offenders each.
@@ -815,6 +821,33 @@ Both QG fixes landed in this same execution commit per user direction "fix durin
 **Bundle delta:** apps/web/dist/index.js was 441 kB raw / 127 kB gz at Rem-2 baseline; now 445 kB raw / 128.55 kB gz. Delta: +4 kB raw / +1.55 kB gz. Within the +5-10 kB raw / +2 kB gz estimate from §10 C3.7.
 
 **Procedure 03 §3.9 self-review loop:** after the execution commit lands, run Procedure 04 against the commit range and remediate any Blocker / High-risk findings before the §3.8 handoff. Quality-gap findings may be deferred but MUST be listed as residual risks.
+
+---
+
+## Post-commit remediation (Procedure 05)
+
+### Round 1 — 2026-04-27 — Codex post-commit Round-1 quality cleanup
+
+**Trigger:** Codex post-commit Round-1 audit on commit range `98e0915..359ab48` (rated 9.2/10, Go conditional). One quality gap, no Blocker / No High-risk.
+
+**Finding (Quality):** `docs/operator-shortcuts.md` versioning governance drift. The registry's own §Governance preamble states "Adding a new shortcut → minor version bump (e.g. 1.0.0 → 1.1.0)". The execution commit applied a patch bump (1.0.1 → 1.0.2) for adding `Space` → repeat-last-command. The Round-3 plan's §10 Revision-1 audit R1-C1 had flagged this as pre-existing drift (matching the prior 1.0.0 → 1.0.1 patch precedent for F7) and explicitly chose "match practice" rather than re-litigate the governance text — Codex's post-commit audit didn't accept that rationale and asked for the policy to be enforced.
+
+**Fix:** Bumped `docs/operator-shortcuts.md` 1.0.2 → **1.1.0**:
+- Header: `**Version:** 1.0.2` → `**Version:** 1.1.0` (line 3).
+- Changelog row: `| 1.0.2 | 2026-04-27 | ...` → `| 1.1.0 | 2026-04-27 | ...` with an inline note documenting the correction + acknowledging the historic 1.0.1 patch as pre-existing drift (recorded historically; not retroactively re-numbered).
+
+**Plan-side update (this commit):** Gate REM3-SPEC commands (a) and (b) updated from `1\.0\.2` to `1\.1\.0` so the gate definitions match the corrected file state. Per Procedure 05 §5.6: the plan file MUST always reflect the true final state.
+
+**Verification:**
+- `rg -n "^\*\*Version:\*\* 1\.1\.0" docs/operator-shortcuts.md` → 1 match (line 3).
+- `rg -n "^\| 1\.1\.0 " docs/operator-shortcuts.md` → 1 match (changelog row).
+- `rg -n "repeat-last-command" docs/operator-shortcuts.md` → ≥1 match (Space row + changelog mention).
+- `pnpm typecheck` → clean (docs-only change; no code touched).
+- `pnpm test` → 437/437 (no test depends on the version literal).
+
+**Binding-spec update applied in same commit per Procedure 05 §5.3 Phase 2.**
+
+**Residual risk:** none. The 1.0.1 patch row remains as a historical artifact — going forward all additions are minor per the governance rule.
 
 ### Paste to user for approval
 > Please review the plan at

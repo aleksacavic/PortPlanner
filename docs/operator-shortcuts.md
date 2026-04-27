@@ -1,6 +1,6 @@
 # Operator Shortcut Registry
 
-**Version:** 1.0.2
+**Version:** 1.1.0
 **Date:** 2026-04-27
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
 
@@ -105,6 +105,6 @@ is the snapshot at supersession; this file is the active registry.
 
 | Version | Date | Change |
 |---|---|---|
-| 1.0.2 | 2026-04-27 | Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active, else re-invokes most recently completed user-tool). M1.3d-Remediation-3 F6. |
-| 1.0.1 | 2026-04-26 | Add `F7` → toggle-crosshair (full-canvas / pickbox preset). M1.3d Phase 8. |
+| 1.1.0 | 2026-04-27 | Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active, else re-invokes most recently completed user-tool). M1.3d-Remediation-3 F6. **Note:** version corrected from initially-applied 1.0.2 (patch) to 1.1.0 (minor) per the registry's "adding a new shortcut → minor bump" governance rule (above §Governance). Codex post-commit Round-1 quality cleanup. |
+| 1.0.1 | 2026-04-26 | Add `F7` → toggle-crosshair (full-canvas / pickbox preset). M1.3d Phase 8. *(Pre-existing governance drift: should have been a minor bump per the rule above; recorded historically as patch. Going forward all additions are minor.)* |
 | 1.0.0 | 2026-04-25 | Initial registry. Seeded from ADR-023 shortcut map at supersession of ADR-022. M1.3a / M1.3b / M1.3c sections populated. |
