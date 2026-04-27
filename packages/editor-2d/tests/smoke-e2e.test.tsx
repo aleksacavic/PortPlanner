@@ -103,6 +103,12 @@ const SCENARIOS = [
   // 750 ms timeout). SOLE integration surface: keyboard router silently
   // holds the accumulator past any idle interval until Enter activates.
   'accumulator persists indefinitely (no idle timeout, AC parity)',
+  // M1.3d-Remediation-5 Codex-Round-1 post-commit fix — direct
+  // parser-boundary test for malformed comma-pair inputs at the
+  // handleCommandSubmit level (the Round-5 plan's draw-tools.test
+  // version was a tool-level abort proxy and did NOT exercise the
+  // parser boundary).
+  'rectangle Dimensions: parser rejects malformed comma-pairs at handleCommandSubmit boundary',
 ] as const;
 
 function makeProject(): Project {
@@ -966,6 +972,75 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     expect(r.height).toBe(40);
     // Buffer cleared after submit.
     expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+  });
+
+  it('rectangle Dimensions: parser rejects malformed comma-pairs at handleCommandSubmit boundary', async () => {
+    // Codex post-commit Round-1 H1 fix — the Round-5 plan called for
+    // direct parser-boundary coverage of `,40` / `30,` / `,` inputs;
+    // the originally-shipped draw-tools.test version was a tool-level
+    // abort proxy that didn't exercise the parser. This smoke fires
+    // raw malformed strings through the buffer + Enter pipeline and
+    // asserts NO numberPair is fed (no rectangle commits).
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate REC + Enter, click first corner, enter Dimensions sub-flow.
+    fireEvent.keyDown(window, { key: 'R' });
+    fireEvent.keyDown(window, { key: 'E' });
+    fireEvent.keyDown(window, { key: 'C' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 410, clientY: 280 });
+    await wait(20);
+    fireEvent.keyDown(window, { key: 'D' });
+    await wait(20);
+    expect(editorUiStore.getState().commandBar.acceptedInputKinds).toEqual(['numberPair']);
+
+    // Helper: type a buffer string + Enter, then assert no rectangle yet
+    // and the tool is still in numberPair-wait state.
+    const submitBufferAndAssertRejected = async (raw: string): Promise<void> => {
+      // Clear any prior buffer first.
+      editorUiActions.setInputBuffer('');
+      // Type each char via canvas-focus number/punct routing.
+      for (const ch of raw) {
+        fireEvent.keyDown(window, { key: ch });
+      }
+      expect(editorUiStore.getState().commandBar.inputBuffer).toBe(raw);
+      fireEvent.keyDown(window, { key: 'Enter' });
+      await wait(30);
+      // Buffer cleared by onSubmitBuffer regardless of parser outcome.
+      expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+      // No rectangle committed (parser rejected; tool not fed numberPair).
+      expect(
+        Object.values(projectStore.getState().project!.primitives).filter(
+          (p) => p.kind === 'rectangle',
+        ),
+      ).toHaveLength(0);
+      // Tool still in numberPair-wait state.
+      expect(editorUiStore.getState().commandBar.acceptedInputKinds).toEqual(['numberPair']);
+      expect(editorUiStore.getState().activeToolId).toBe('draw-rectangle');
+    };
+
+    // Parser-boundary rejections per A2/Step 2 trim-both-tokens guard.
+    await submitBufferAndAssertRejected(',');
+    await submitBufferAndAssertRejected(',40');
+    await submitBufferAndAssertRejected('30,');
+
+    // Sanity: a valid pair AFTER three rejections still works (no state
+    // corruption from the rejection path).
+    editorUiActions.setInputBuffer('');
+    for (const ch of '30,40') fireEvent.keyDown(window, { key: ch });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('30,40');
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(50);
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(1);
+    const r = rects[0] as { width: number; height: number };
+    expect(r.width).toBe(30);
+    expect(r.height).toBe(40);
   });
 
   it('accumulator persists indefinitely (no idle timeout, AC parity)', async () => {

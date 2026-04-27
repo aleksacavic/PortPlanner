@@ -271,14 +271,14 @@ Gate REM5-9: Targeted test files pass
 
 Gate REM5-10: Workspace test suite passes
   Command: pnpm test
-  Expected: all 6 packages pass; total ≥ 469 (post-Round-4 baseline 464
-            + ~5-8 net-new). Threshold updated during execution (Procedure
-            03 §3.7 in-place plan correction) from the original ≥470:
-            actual delivered net-new is +5 (see Post-execution notes for
-            the breakdown — H1 added 3 unit tests + 1 smoke = 4; H2 added
-            1 smoke; H3 + H4 are unit-only / no smoke per Lesson 7
-            because they're not user-facing wiring changes; the existing
-            two F3 Dimensions tests were migrated, not added).
+  Expected: all 6 packages pass; total ≥ 470 (post-Round-4 baseline 464
+            + 6 net-new after Codex post-commit Round-1 H1 fix added the
+            parser-boundary smoke). Threshold restored to the original
+            ≥470 — execution-time §3.7 correction lowered to ≥469 then
+            the post-commit remediation re-added one more test, hitting
+            the original threshold. See Post-execution notes + the
+            post-commit remediation entry for the unambiguous test
+            breakdown (Codex post-commit Round-1 Q1 clarification).
 
 Gate REM5-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7) — Rev-2 B1: commands inlined explicitly per "no policy without enforcement command" rule
   Commands:
@@ -328,7 +328,7 @@ Gate REM5-SPEC: docs/operator-shortcuts.md updated for H2 (Rev-1 B1 — 2.0.0 ma
 - [ ] **Binding spec doc updated (H2 only — Rev-1 B1)** — `docs/operator-shortcuts.md` MAJOR bumped 1.2.0 → 2.0.0 per registry's "Changing existing shortcut behaviour: major" rule, with timeout-removal note. (H1's comma-pair note is intentionally NOT in this doc — it's a tool prompt-sequence change, not a shortcut behavior.) Verified by Gate REM5-SPEC (a + b + c + d).
 - [ ] All Phase REM5-H1a..REM5-SPEC + REM5-9..REM5-12 gates pass.
 - [ ] Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 pass (parent §9). Verified by Gate REM5-11.
-- [ ] **Workspace test count** ≥ 469 (Procedure 03 §3.7 update — actual delivered: 464 baseline + 5 net-new). REM5-10 provides the threshold.
+- [ ] **Workspace test count** ≥ 470 (post-Round-4 baseline 464 + 6 net-new after Codex post-commit Round-1 H1 fix). REM5-10 provides the threshold.
 - [ ] `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build` all pass (Gate REM5-12).
 
 ## 9. Risks and Mitigations
@@ -536,10 +536,23 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The four Codex Ro
 2. **Gate REM5-SPEC (c) regex scoped.** Original gate expected zero matches of "750 ms silent stale-clear" in the entire spec doc; the historical 1.2.0 changelog row legitimately retains the phrase as narration of what 1.2.0 said. Updated gate filters out changelog rows (`rg -v "^[0-9]+:\| 1\."`) so only the active Behavior notes section is checked.
 3. **EditorRoot parser destructure pattern.** TypeScript with `noUncheckedIndexedAccess: true` flagged `parts[0]` and `parts[1]` as `string | undefined` even after `parts.length === 2` check (TS doesn't narrow array index access). Resolved by destructuring: `const [aStr, bStr] = parts;` then `aStr !== undefined && bStr !== undefined && ...`. Cleaner than non-null assertions.
 
-**Final test count vs estimate:**
+**Final test count vs estimate (Codex post-commit Round-1 Q1: clarified migrations vs additions):**
+
+The post-execution count is broken down here unambiguously to address Codex's clarity concern. Migrations (existing tests rewritten in place) are NOT counted as additions; only genuinely new test cases are.
+
 - §10 C2.8 estimate: ~6-8 net-new tests, threshold ≥470.
-- Actual: 469 (464 baseline + 5 net-new). Threshold updated to ≥469 with rationale (only user-facing wiring changes warrant smoke; H3/H4 are unit-only).
-- Per-package: editor-2d 347 → 352 (+5); domain / design-system / project-store / project-store-react / web unchanged.
+- **Net-new tests added (5 originally; 6 after Codex Round-1 H1 fix):**
+  - draw-tools.test.ts (H1): `'Dimensions sub-flow yields ONE prompt accepting numberPair'` (contract lock); `'Math.abs handles negative numberPair inputs'`; `'parser rejects empty first/second token via tool abort'` (proxy — see Codex Round-1 fix below)
+  - smoke-e2e.test.tsx (H1): `'rectangle Dimensions: typed "30,40" + Enter commits W=30 H=40'`
+  - smoke-e2e.test.tsx (H2): `'accumulator persists indefinitely (no idle timeout, AC parity)'`
+  - smoke-e2e.test.tsx (Codex Round-1 H1 post-commit fix): `'rectangle Dimensions: parser rejects malformed comma-pairs at handleCommandSubmit boundary'`
+- **Migrations (rewritten in place; net 0):**
+  - draw-tools.test.ts: `'Dimensions flow'` body changed to feed `numberPair` instead of two `'number'` inputs.
+  - draw-tools.test.ts: `'Dimensions abort path'` semantically valid post-migration.
+  - keyboard-router.test.ts: `'750 ms idle clears accumulator silently'` → `'accumulator persists across long idle periods'`.
+  - DynamicInputPill.test.tsx: offset assertion `(16, -24)` → `(16, +28)`.
+- **Final workspace count: 470 / 470** (Round-4 baseline 464 + 6 net-new). Threshold ≥470 hit.
+- Per-package: editor-2d 347 → 353 (+6); domain / design-system / project-store / project-store-react / web unchanged.
 
 **Bundle delta:** apps/web/dist/index.js was 446.75 kB raw / 128.90 kB gz at Round-4 baseline; now 446.88 kB raw / 128.98 kB gz. Delta: +0.13 kB raw / +0.08 kB gz. Tiny — well under §10 C3.4's +1 kB raw estimate.
 
@@ -552,3 +565,35 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The four Codex Ro
 5. **H4 placeholder fill** uses the agreed compromise: the Round-4 plan's post-execution notes now contain `2d8a468` (the actual hash), with a note that Round-5's H4 commit did the fill — non-self-referential because it's a separate commit.
 
 **Procedure 03 §3.9 self-review loop:** after the execution commit lands, run Procedure 04 against the commit range and remediate any Blocker / High-risk findings before the §3.8 handoff. Quality-gap findings may be deferred but MUST be listed as residual risks.
+
+---
+
+## Post-commit remediation (Procedure 05)
+
+### Round 1 — 2026-04-28 — Codex post-commit Round-1 fixes
+
+**Trigger:** Codex post-commit Round-1 audit on commit range `2d8a468..402ead1` (rated 9.1/10, No-Go). One High-risk + one Quality. No Blocker.
+
+**Finding (High-risk):** parser empty-token regression test was tool-level abort proxy, not a true parser-boundary test. Plan §11 had called for `'handleCommandSubmit: parser rejects empty first/second token (",40" / "30," / ",")'` — the originally-shipped `tests/draw-tools.test.ts` version fed `{kind:'commit'}` to a tool already in the Dimensions sub-flow and asserted the abort path; this DID NOT exercise the parser. If the parser regressed to accept malformed comma-pairs, the proxy test would still pass.
+
+**Fix (High-risk):** added a new SMOKE scenario `'rectangle Dimensions: parser rejects malformed comma-pairs at handleCommandSubmit boundary'` in `tests/smoke-e2e.test.tsx` that:
+- Mounts EditorRoot
+- Activates REC + Enter, clicks first corner, types `D` (sub-option fast-path) to enter the Dimensions sub-flow
+- For each malformed input `","`, `",40"`, `"30,"`: types the chars via canvas-focus number-key routing into `inputBuffer`, fires Enter, asserts `inputBuffer` is cleared AND no rectangle was committed AND tool is still in numberPair-wait state (parser correctly rejected; `acceptedInputKinds` still `['numberPair']`)
+- Sanity check: types `"30,40"` AFTER three rejections, asserts a rectangle DOES commit with `width=30, height=40` (no state corruption from the rejection path)
+
+This is the parser-boundary integration test the plan called for. Lesson 7 (mounted-EditorRoot smoke for user-facing wiring) is satisfied.
+
+**Finding (Quality):** post-execution-notes net-new arithmetic was muddy — said "5 net-new" while including "1 unit test migration for H2" in additive-sounding wording. Audit-trail clarity issue.
+
+**Fix (Quality):** rewrote the "Final test count vs estimate" subsection to enumerate net-new tests by file and feature explicitly, separately from migrations (which are net 0). Clear attribution: 5 originally + 1 added by this remediation = 6 net-new total. Threshold restored from the §3.7 lowered ≥469 back to the original plan's ≥470 (the remediation closed the gap).
+
+**Verification:**
+- `pnpm --filter @portplanner/editor-2d test tests/smoke-e2e` → 22 passed (was 21; +1 new scenario).
+- `pnpm test` → 470 / 470 passing (was 469; +1).
+- Per-package: editor-2d 352 → 353; all others unchanged.
+- No code changes; only test addition + plan-text updates.
+
+**Binding-spec impact:** none (no spec drift; this remediation closes a test-coverage gap, not a behavior gap).
+
+**Residual risk:** none. The parser-boundary is now directly exercised end-to-end through EditorRoot's onSubmitBuffer pipeline.
