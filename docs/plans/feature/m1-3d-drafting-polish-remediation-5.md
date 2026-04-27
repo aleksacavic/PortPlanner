@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-28
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan Revision-1 — Codex Round-1 fixes (1 Blocker + 1 High-risk + 2 Quality; all agreed)
+**Status:** Plan Revision-2 — Codex Round-2 fixes (1 Blocker + 1 High-risk + 1 Quality; all agreed)
 
 ---
 
@@ -14,6 +14,7 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
+| Rev-2 | 2026-04-28 | Codex Round-2 (No-Go on 1 Blocker + 1 High-risk + 1 Quality; all agreed) | **B1** (Blocker) — Gate REM5-11 violated the plan's own "no policy without enforcement command" rule by referencing "Same commands as M1.3d §9" instead of inlining the four DTP-T1/T2/T6/T7 commands. Fix: REM5-11 now spells out all four commands with explicit `rg` syntax + expected output (0 files / 0 matches each). **H1** (High-risk) — Stale `parts[1].length > 0` text remained in §4.1 EditorRoot row + §9 risk row + §10 C2.1/C2.2 audit narration despite Rev-1 strengthening the guard to `parts[0].trim().length > 0 && parts[1].trim().length > 0` in A2 + step 2. Fix: scrubbed all narrative references; §10 C2.1/C2.2 now reference the trim-form guard with parenthetical historical notes acknowledging the pre-Rev-1 form. **Q1** — Footer handoff status line still said "Plan authored — awaiting Codex Round-1 review" despite top-level Status being updated in Rev-1. Fix: footer status now reads "Plan Revision-2 — Codex Round-2 fixes applied; awaiting Codex Round-3 review" with explicit listing of the three findings closed. §10 gains a Revision-2 audit subsection per §1.16 step 13. **Procedural lesson refined:** when a revision strengthens a code-pattern guard, scan for the OLD pattern across ALL narrative sections (not just the canonical implementation steps); review-text + audit-text + risk-text are likely to retain the old pattern as historical reference and should be updated with parenthetical notes rather than left literal. |
 | Rev-1 | 2026-04-28 | Codex Round-1 (No-Go on 1 Blocker + 1 High-risk + 2 Quality; all agreed) | **B1** (Blocker) — spec governance mismatch: registry preamble says "Changing an existing shortcut behaviour: major bump"; Rev-0 proposed `1.2.0 → 1.2.1` patch for H2 (timeout removal). Fix: bump to **`2.0.0`** (major) per the literal governance rule. Also DROP the comma-pair (H1) mention from the spec doc — H1 is a TOOL prompt-sequence change (rectangle Dimensions), NOT a shortcut behavior; it doesn't belong in `docs/operator-shortcuts.md`. Spec patch is now H2-only. **H1** (High-risk) — comma-pair parser empty-token coercion: Rev-0 guard was `parts[1].length > 0` but not `parts[0].length > 0`; `Number('')` is `0` (finite), so `,40` would have produced `{a:0, b:40}`. Rectangle's `width=0` aborts so no real bug TODAY, but risky for future tools accepting `'numberPair'`. Fix: strengthen guard to `parts[0].trim().length > 0 && parts[1].trim().length > 0` (trim covers leading-whitespace cases too). Updated §3 A2 + §7 step 2. **Q1** — Gate REM5-H1b's `-A 12` window was brittle (parser-branch drift could false-fail). Replaced with a structure-agnostic gate: `rg -n "numberPair" packages/editor-2d/src/EditorRoot.tsx` ≥1 match. Combined with REM5-H1a + the new tests, end-to-end wiring is provable without a fragile window. **Q2** — §7 step 4 hardcoded "four" timer-clear sites; actual is three. Reworded count-agnostically: "Remove all `clearTimeout(accumulatorTimer)` and `accumulatorTimer = …` references; TypeScript will catch any stragglers." Gate REM5-H2a already enforces zero residual matches. §10 gains a Revision-1 audit subsection per §1.16 step 13, including a procedural note flagging that the registry's "Changing existing shortcut behaviour: major" rule is too coarse (covers both genuinely major changes like L meaning something different AND minor refinements like timer-removal); future rounds may want to refine the governance text. Out of scope here — comply with the literal rule for Round-5. |
 | Rev-0 | 2026-04-28 | Initial draft | Three behavior fixes + one doc-polish from manual user testing of M1.3d-Rem-4 at `2d8a468`: H1 G3 comma-pair input via new `'numberPair'` Input kind (replaces rectangle's two-prompt W/H sub-flow with one `Specify dimensions <width,height>` prompt); H2 remove the 750 ms idle accumulator timeout (true AC parity — accumulator waits indefinitely); H3 flip Dynamic Input pill below cursor (`dy: -24 → +28`) so it stops overlapping the bottom command line; H4 fill the execution-commit placeholder `2d8a468` in the Round-4 plan's post-execution notes (Codex Round-1 quality cleanup). §1.3 three-round audit. AC-style transient-label-integrated pills + Tab cycling explicitly deferred to Round-6 / post-M1 with its own plan + ADR. |
 
@@ -116,7 +117,7 @@ Three behavior issues from manual testing of M1.3d-Rem-4 at `2d8a468`, plus one 
 |---|---|
 | `packages/editor-2d/src/tools/types.ts` | (H1) Add `'numberPair'` to `AcceptedInputKind` union. Add `\| { kind: 'numberPair'; a: number; b: number }` arm to `Input` discriminated union. |
 | `packages/editor-2d/src/tools/draw/draw-rectangle.ts` | (H1) Replace the two-prompt Width/Height sub-flow with one prompt `Specify dimensions <width,height>` accepting `'numberPair'`. On `'numberPair'` input: commit rectangle with `width = Math.abs(input.a)`, `height = Math.abs(input.b)`, origin = corner1, localAxisAngle = 0. On any other kind: abort. |
-| `packages/editor-2d/src/EditorRoot.tsx` | (H1) `handleCommandSubmit` — new comma-pair branch BEFORE the F1 directDistanceFrom branch. Reads `commandBar.acceptedInputKinds`; when it includes `'numberPair'` AND `raw.includes(',')`, parses `a,b` and feeds `{kind:'numberPair', a, b}`. Edge guard: `parts.length === 2`, `parts[1].length > 0`, both numbers finite. Falls through on any failure. |
+| `packages/editor-2d/src/EditorRoot.tsx` | (H1) `handleCommandSubmit` — new comma-pair branch BEFORE the F1 directDistanceFrom branch. Reads `commandBar.acceptedInputKinds`; when it includes `'numberPair'` AND `raw.includes(',')`, parses `a,b` and feeds `{kind:'numberPair', a, b}`. Edge guard (Rev-1 H1 fix): `parts.length === 2 && parts[0].trim().length > 0 && parts[1].trim().length > 0`, both numbers finite. Falls through on any failure. |
 | `packages/editor-2d/src/keyboard/router.ts` | (H2) Remove 750 ms idle accumulator timeout entirely. Strip `accumulatorTimer` variable, ALL `clearTimeout(accumulatorTimer)` calls and `accumulatorTimer = …` assignments wherever they appear (current sites: `clearAccumulator`, `pumpAccumulator`, `cleanup`), the `setTimeout(clearAccumulator, ACCUMULATOR_TIMEOUT_MS)` call, and the `ACCUMULATOR_TIMEOUT_MS` constant. Net diff: ~10 lines removed. Gate REM5-H2a enforces zero residual matches; TypeScript / Biome catches any stragglers. Pill (G2) continues to render the accumulator as the user types — the visible feedback is the safety net. |
 | `packages/editor-2d/src/chrome/DynamicInputPill.tsx` | (H3) Change `PILL_OFFSET_Y_PX = -24` → `PILL_OFFSET_Y_PX = 28`. Always-below-cursor placement; clears the bottom command line area. |
 | `packages/editor-2d/tests/draw-tools.test.ts` | (H1) Migrate the two F3 Dimensions sub-option tests:<br>(a) `'Dimensions flow'` — feed `{kind:'numberPair', a:8, b:4}` instead of two `{kind:'number'}` inputs. Assertions unchanged.<br>(b) `'Dimensions abort path'` — assertion unchanged; tool guard now triggers on `dims.kind !== 'numberPair'`. (H1 new) Test: `'rectangle Dimensions sub-flow: numberPair input commits W,H'` (or refine the existing one). (H1 new) Test: `'rectangle Dimensions: subOption D yields ONE prompt accepting numberPair (not two prompts)'` to lock the contract. |
@@ -272,8 +273,21 @@ Gate REM5-10: Workspace test suite passes
   Command: pnpm test
   Expected: all 6 packages pass; total ≥ 470 (post-Round-4 baseline 464 + ~8 net-new; threshold conservative).
 
-Gate REM5-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7)
-  Same commands as M1.3d §9. Expected: 0 offenders each.
+Gate REM5-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7) — Rev-2 B1: commands inlined explicitly per "no policy without enforcement command" rule
+  Commands:
+    (a) DTP-T1 — no painter reads layer.color directly:
+        rg -l "layer\.color|effectiveColor.*layer" \
+          packages/editor-2d/src/canvas/painters/paint{Preview,SnapGlyph,Selection,SelectionRect,TransientLabel,HoverHighlight,Crosshair}.ts
+        Expected: 0 files match.
+    (b) DTP-T2 — no painter calls ctx.fillText / strokeText except paintTransientLabel + paintGrid:
+        rg -l "ctx\.fillText|ctx\.strokeText" packages/editor-2d/src/canvas/painters/*.ts | rg -v "paintTransientLabel\.ts$|paintGrid\.ts$"
+        Expected: 0 files match.
+    (c) DTP-T6 — paintPreview MUST NOT import @portplanner/project-store:
+        rg -n "from '@portplanner/project-store'" packages/editor-2d/src/canvas/painters/paintPreview.ts
+        Expected: 0 matches.
+    (d) DTP-T7 — canvas-host MUST NOT subscribe to editorUiStore / useEditorUi:
+        rg -n "editorUiStore|\buseEditorUi\(|from ['\"]\.\./chrome/use-editor-ui-store['\"]" packages/editor-2d/src/canvas/canvas-host.tsx
+        Expected: 0 matches.
 
 Gate REM5-12: Typecheck + Biome + build
   Commands: pnpm typecheck, pnpm check, pnpm build
@@ -310,7 +324,7 @@ Gate REM5-SPEC: docs/operator-shortcuts.md updated for H2 (Rev-1 B1 — 2.0.0 ma
 | Risk | Mitigation |
 |------|-----------|
 | **H1 — `'numberPair'` adds a discriminated-union arm; switch statements may become non-exhaustive.** | TypeScript exhaustiveness check catches at compile time. The only NEW consumer this round is draw-rectangle's Dimensions branch, which adds a guard `if (dims.kind !== 'numberPair') return aborted`. Existing tools that switch on `Input.kind` already have catch-all branches (e.g., `if (next.kind !== 'point') return aborted`) so they remain safe. Verified by `pnpm typecheck` (Gate REM5-12). |
-| **H1 edge cases in comma-pair parsing.** Inputs like `30,`, `,40`, `30,40,50`, `abc,40`, `30 40` (space instead of comma) — what happens? | Parser guards are explicit: `parts.length === 2 && parts[1].length > 0 && Number.isFinite(a) && Number.isFinite(b)`. All rejected forms fall through to the existing F1/number/commit logic. The tool then either consumes (F1 dest as 'point' if directDistanceFrom is set) or aborts (number not accepted, no anchor). For the rectangle Dimensions prompt specifically, `acceptedInputKinds: ['numberPair']` only — fall-through to 'number' is rejected by the tool (`dims.kind !== 'numberPair'` → abort). User retries. Documented in §3 A2. |
+| **H1 edge cases in comma-pair parsing.** Inputs like `30,`, `,40`, `30,40,50`, `abc,40`, `30 40` (space instead of comma) — what happens? | Parser guards (Rev-1 H1 fix — both-token trim check): `parts.length === 2 && parts[0].trim().length > 0 && parts[1].trim().length > 0 && Number.isFinite(a) && Number.isFinite(b)`. All rejected forms fall through to the existing F1/number/commit logic. The tool then either consumes (F1 dest as 'point' if directDistanceFrom is set) or aborts (number not accepted, no anchor). For the rectangle Dimensions prompt specifically, `acceptedInputKinds: ['numberPair']` only — fall-through to 'number' is rejected by the tool (`dims.kind !== 'numberPair'` → abort). User retries. Documented in §3 A2. |
 | **H1 user types `30,40` at a NON-numberPair prompt** (e.g. line's second prompt, which accepts `'point'` with directDistanceFrom). | Parser branch is gated on `cb.acceptedInputKinds.includes('numberPair')`. False at line's prompt → branch skipped → existing logic: F1 directDistanceFrom is set, but `Number("30,40") === NaN` → fall through → commit input fed → tool aborts. Same behavior as Round-4 (no regression). |
 | **H2 removing the timeout could leave accumulator non-empty if user types `L`, walks away, comes back hours later, types `R` — accumulator becomes `LR` → no shortcut → Enter does nothing.** | Same as AC behavior. The pill (G2) makes the accumulator visible at all times the user looks at the cursor. Esc clears. Acceptable per A1. The 750 ms safety net was overcautious. |
 | **H2 timer-cleanup paths in `cleanup()` referenced an `accumulatorTimer` — removing the variable might leave stale references.** | Step 4 mandates removing ALL `clearTimeout(accumulatorTimer)` and `accumulatorTimer = …` references count-agnostically (Rev-1 Q2 fix). Gate REM5-H2a enforces zero residual matches. TypeScript catches any leftover `accumulatorTimer` reference at compile time (Gate REM5-12). |
@@ -332,8 +346,8 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
 
 ### Round 2 — Sceptical Reader (what would Codex flag?)
 
-- **C2.1 — H1 edge: user types `"30,"` (trailing comma).** parts = `['30', '']`, parts[1].length === 0 → branch skipped → fall through → `Number("30,")` is `NaN` → return. Tool abort? Actually the prompt is `acceptedInputKinds: ['numberPair']` so the tool's guard `dims.kind !== 'numberPair'` triggers abort. User sees prompt remain (no commit, no advance). Acceptable; AC behavior is similar.
-- **C2.2 — H1 edge: user types `","` (just comma).** parts = `['', '']`, parts[1].length === 0 → branch skipped → fall through → `Number(",")` is NaN → return. Same fall-through as above. Acceptable.
+- **C2.1 — H1 edge: user types `"30,"` (trailing comma).** parts = `['30', '']`, `parts[1].trim().length === 0` → branch skipped (Rev-1 fix; pre-Rev-1 was `parts[1].length === 0` which produced the same skip) → fall through → `Number("30,")` is `NaN` → return. Tool abort? Actually the prompt is `acceptedInputKinds: ['numberPair']` so the tool's guard `dims.kind !== 'numberPair'` triggers abort. User sees prompt remain (no commit, no advance). Acceptable; AC behavior is similar.
+- **C2.2 — H1 edge: user types `","` (just comma).** parts = `['', '']`, `parts[0].trim().length === 0` → branch skipped (Rev-1 fix on parts[0] — pre-Rev-1 only checked parts[1]; this case happened to skip via parts[1] anyway, but Rev-1 makes the symmetric check explicit) → fall through → `Number(",")` is NaN → return. Same fall-through as above. Acceptable.
 - **C2.3 — H1 — does the parser need to strip whitespace?** User types `"30, 40"` (with space). parts = `['30', ' 40']`, both non-empty. `Number(' 40')` is `40` (Number coerces ignoring leading whitespace). Works. `"30 ,40"` → `['30 ', '40']`. `Number('30 ')` is `30`. Works. Whitespace tolerance is a JS-coercion freebie.
 - **C2.4 — H1 — what if the prompt accepts BOTH `'numberPair'` AND `'number'`?** Branch order: comma-pair check first (only fires if `includes('numberPair')` AND raw has comma). If raw lacks comma → falls through to `'number'` check → fed as `{kind:'number'}`. So a prompt accepting both gets the typed kind based on input format. Useful for hypothetical future tools (e.g., circle accepting either radius (`'number'`) or center,radius (`'numberPair'`)). No regression.
 - **C2.5 — H2 — does removing the timer affect any test that relies on idle behavior?** Round-4 added `'750 ms idle clears accumulator silently (no activation)'`. Step 7 explicitly migrates this. Other tests don't depend on idle timing.
@@ -381,6 +395,28 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The four Codex Ro
 - **R3-Cx — Procedural note: registry governance text is too coarse.** The rule "Changing an existing shortcut letter or behaviour: major bump" covers both genuinely major changes (e.g., `L` no longer means draw-line) and minor refinements (e.g., 750 ms timer removed). Codex enforced strictly; I complied. Future rounds may want to refine the governance text to distinguish "binding change" (major — breaks muscle memory) from "interaction-behavior refinement" (minor — ergonomics tweak). **Out of scope for Round-5. Recorded here so future planners don't re-litigate.** A separate follow-up plan could update `docs/operator-shortcuts.md` §Governance with the refinement; it would itself be a "behavior change" — so still major bump under the current rule. The recursion gets silly fast → strong argument for keeping the rule simple and accepting major bumps for any behavior tweak. Lesson recorded.
 
 **Verdict on Revision-1:** All four Codex findings addressed in plan text + gates. New edge-case test for parser empty-token rejection added to §11 (Rev-1 H1 follow-up). Section-consistency pass below. Ready for Codex Round-2.
+
+### Revision-2 audit (per §1.16 step 13 — three-round pass on the Rev-2 changes)
+
+**Round 1 — Chief Architect on the Rev-2 changes:**
+
+- **R1-C1 — REM5-11 inlining vs cross-doc reference: which is canonical?** Procedure 01 §1.8: "No policy without enforcement mechanism. … `rg -n "<pattern>" <path>` with expected match count." Implicit "in this plan" — the plan must be self-contained for execution. Cross-doc references break that rule when the referenced section moves or is renamed. Inlining is the SSOT-correct choice for completion gates. ✓
+- **R1-C2 — Stale guard text: were any other patterns also stale?** Audit: I grepped for `parts[1].length` and `parts[0].length` post-fix. Only the Rev-1 row (intentional historical narration) and a parenthetical in C2.1/C2.2 (now acknowledging the pre-Rev-1 form explicitly) retain the literal. Clean.
+- **R1-C3 — Footer status divergence from top Status: any structural reason?** Top Status is updated quickly during plan revision; footer status is in the Plan Review Handoff block (§1.11 Part A) which has a separate canonical form. Two surfaces, one truth — should mirror. The Rev-2 fix establishes the mirroring.
+
+**Round 2 — Sceptical Reader on the Rev-2 changes:**
+
+- **R2-C1 — DTP commands inlined verbatim: do they match the parent M1.3d plan's actual commands?** Cross-checked against the handover context (which earlier listed DTP-T1/T2/T6/T7 verbatim). All four commands match. The DTP-T1 brace-expansion `paint{Preview,...}.ts` works in bash but ripgrep handles it; verified during Round-3 / Round-4 executions where the same gates passed.
+- **R2-C2 — Footer handoff is now Rev-2-specific. Will Round-3 Codex be confused?** The "Paste to Codex for plan review" block now says "This is Round 3" + lists Round 2's findings explicitly. Codex Round-3 reads it knowing exactly what changed. ✓
+- **R2-C3 — H1 narrative scrub: did I update the test-strategy bullet too?** Checked §11 Test strategy: the test name `'parser rejects empty first/second token (",40" / "30," / ",")'` correctly references both empty-token cases (matches Rev-1's symmetric guard). No stale text in §11.
+
+**Round 3 — Blast Radius of the Rev-2 changes:**
+
+- **R3-C1 — REM5-11 inlining downstream.** The four DTP gate commands now live in two places: (a) THIS plan's §7, (b) the parent M1.3d plan's §9. If the parent plan ever changes a command (e.g., adds a new painter that should also be DTP-T1-checked), the duplicates drift. Mitigation: this is execution-time tooling; the parent plan is FROZEN (M1.3d shipped). Drift risk is low. Acceptable. Future plans should consider a single canonical "cross-cutting hard gates" registry — out of scope here.
+- **R3-C2 — Stale-guard scrub: any test code that needs corresponding update?** No code yet exists for this round (PLAN-ONLY mode). Tests will be written in execution per the Rev-1 trim-both-tokens guard. ✓
+- **R3-C3 — Footer status fix: any audit trail concern?** The footer now reads as a Rev-2 statement; historical readers can see the full revision chain in the Revision history table at the top. No audit concern.
+
+**Verdict on Revision-2:** All three Codex findings closed in plan text + gates. No new tests added (Rev-2 is pure plan-text consistency). Ready for Codex Round-3.
 
 ## 11. Test strategy
 
@@ -432,11 +468,16 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The four Codex Ro
 
 **Plan:** `docs/plans/feature/m1-3d-drafting-polish-remediation-5.md`
 **Branch:** `feature/m1-3d-drafting-polish` (atop `2d8a468`)
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-2 — Codex Round-2 fixes applied (1 Blocker REM5-11 inline + 1 High-risk stale-guard scrub + 1 Quality footer-status); awaiting Codex Round-3 review.
 
 ### Paste to Codex for plan review
 > Review this plan using `docs/procedures/Codex/02-plan-review.md`
-> (Procedure 02). Apply strict evidence mode. Start from Round 1.
+> (Procedure 02). Apply strict evidence mode. This is Round 3 — Round 2
+> returned No-Go on 1 Blocker (REM5-11 referenced parent doc instead of
+> inlining DTP commands), 1 High-risk (stale `parts[1].length > 0` text
+> in §10 audit narration), 1 Quality (footer handoff status stale).
+> Rev-2 changes documented in the Revision history table at the top of
+> the plan.
 >
 > Context: this is the FIFTH remediation pass on `feature/m1-3d-drafting-polish`,
 > covering three behavior fixes + one doc polish from manual user testing of
