@@ -6,9 +6,16 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-27
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-1 — Codex Round-1 fixes (1 Blocker + 2 High-risk; all agreed)
 
 ---
+
+## Revision history
+
+| Rev | Date | Driver | Changes |
+|-----|------|--------|---------|
+| Rev-1 | 2026-04-27 | Codex Round-1 (No-Go on 1 Blocker + 2 High-risk; all agreed) | **B1** (Blocker) — `docs/operator-shortcuts.md` declared in §5 spec impact for F6 but missing from §4.1 files-modified table AND no completion gate verified the version bump or new row. Fix: added the file to §4.1; added **Gate REM3-SPEC** with two commands (a) version-grep `1\.0\.2`, (b) row-grep `repeat-last-command`. **H1** (High-risk) — F2 shift lifecycle: §10 C2.2 + §11 test strategy both required a `window.blur` clear, but §7 step 8 only mentioned keydown/keyup AND no gate enforced it. Fix: §7 step 8 now explicitly mandates the `blur` listener calling `setShift(false)` with cleanup on unregister; added **Gate REM3-F2b** (`rg -n "blur" router.ts ≥1`). **H2** (High-risk) — A11 declared `TOOL_DISPLAY_NAMES: Record<ToolId, string>` while same paragraph + §4.1 row require `null` entries for internal tools. Fix: A11 type normalized to `Record<ToolId, string \| null>` (matches §4.1 row, which was already correct). §8 Done Criteria updated to cite the new gates (F2 row → REM3-F2b; F6 row → REM3-SPEC; new "spec doc updated" checkbox). §10 gains a Revision-1 audit subsection per §1.16 step 13. **Procedural lesson refined:** every binding-spec doc declared in §5 MUST also appear in §4.1's files-modified table AND be paired with a dedicated completion gate (version-grep + semantic row-grep). Same shape of gap as Rem-2 Rev-2 H2 (label_padding ownership), this time on a doc rather than a code path. |
+| Rev-0 | 2026-04-27 | Initial draft | All seven items (F1-F7) scoped + §1.3 three-round audit. Plan committed at `813614e`. |
 
 ## 1. Request summary
 
@@ -122,11 +129,13 @@ User-confirmed in chat 2026-04-27:
   focus types a literal space character — keyboard router does NOT
   intercept (existing per-focus letter routing pattern).
 - **A11 — F7 toolId-to-display-name map.** New constant `TOOL_DISPLAY_NAMES:
-  Record<ToolId, string>` in `keyboard/shortcuts.ts` (alongside the
+  Record<ToolId, string | null>` in `keyboard/shortcuts.ts` (alongside the
   existing ToolId union and shortcut maps — single SSOT for tool
   metadata). Examples: `'draw-line' → 'LINE'`, `'draw-circle' → 'CIRCLE'`,
   `'move' → 'MOVE'`, `'copy' → 'COPY'`. Internal tools
-  (`'select-rect'`, `'grip-stretch'`) get null and don't render a badge.
+  (`'select-rect'`, `'grip-stretch'`, `'escape'`) map to `null` and don't
+  render a badge. (Rev-1 H2: type widened to `string | null` to match the
+  null entries; §4.1 row was already correct on this point.)
 - **A12 — F7 badge styling.** Chrome element, NOT a canvas overlay —
   uses design-system semantic tokens via CSS vars: `var(--accent-primary)`
   background, `var(--surface-base)` or pure white text. Lives in
@@ -164,6 +173,7 @@ User-confirmed in chat 2026-04-27:
 | `packages/editor-2d/tests/draw-tools.test.ts` | (F2) Shift held during rectangle second click → square primitive committed. (F3) D sub-option flow → width/height prompts → rectangle committed with typed dimensions. |
 | `packages/editor-2d/tests/grip-stretch.test.ts` | (F5) Smoke regression: grip click while move tool is running → tool receives 'point' input at grip.position; no grip-stretch tool started. (Tool-level integration verifying the runner sees the 'point' input.) |
 | `packages/editor-2d/tests/smoke-e2e.test.tsx` | (SOLE integration validation surfaces) Add THREE new smoke scenarios: (a) `'direct distance entry'` — draw line, click p1, type `5` + Enter → line of length exactly 5 m along cursor heading. (b) `'grip click during running tool feeds point'` — F5 SOLE integration validation: activate move (or copy), click first base-point at grip, assert tool receives the grip's position; no grip-stretch starts. (c) `'spacebar repeats last command'` — activate L (line), commit, then press Space → draw-line activates again. |
+| `docs/operator-shortcuts.md` | (F6 — Rev-1 B1: declared in §5 but originally missing here.) Bump version `1.0.1` → `1.0.2`; add changelog row `\| 1.0.2 \| 2026-04-27 \| Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active). M1.3d Round-3 F6. \|`; add row to the M1.3a "Essential operators + draw tools" section: `\| `Space` \| repeat-last-command \| Canvas focus only; same handler shape as Enter — commits in-flight tool when active, else re-invokes last user-tool \|`. Implementation file `packages/editor-2d/src/keyboard/router.ts` MUST stay in sync per the registry's governance preamble. |
 
 ### 4.2 In scope — files created
 
@@ -278,7 +288,12 @@ Procedure-03 phases would be overhead. One phase covers all seven.
 8. **F2 — keyboard router shift listeners.** In `keyboard/router.ts`'s
    `registerKeyboardRouter`, add `keydown`/`keyup` handlers for
    `e.key === 'Shift'`: `editorUiActions.setShift(true / false)`.
-   Listeners cleared on unregister.
+   **Also add a `blur` listener on `window`** that calls
+   `editorUiActions.setShift(false)` — handles the alt-tab-out-with-
+   shift-held edge case where the keyup event fires outside our window
+   and our slice would otherwise stay stuck at `shift: true` (per §10
+   C2.2). All three listeners (keydown / keyup / blur) cleared on
+   unregister via the existing teardown function.
 9. **F2 — draw-rectangle reads shift.** previewBuilder + commit in
    `draw-rectangle.ts` read `editorUiStore.getState().modifiers.shift`.
    When shift held, side = `max(|dx|, |dy|)`; rectangle becomes square
@@ -347,7 +362,11 @@ Gate REM3-F1c: EditorRoot.handleCommandSubmit transforms numeric → point
 
 Gate REM3-F2: modifiers slice + shift listeners
   Command: rg -n "modifiers|setShift" packages/editor-2d/src/ui-state/store.ts packages/editor-2d/src/keyboard/router.ts
-  Expected: ≥4 matches (slice declaration + setShift action + keydown listener + keyup listener)
+  Expected: ≥5 matches (slice declaration + setShift action + keydown listener + keyup listener + blur listener — Rev-1 H1 added blur)
+
+Gate REM3-F2b: window.blur clears shift modifier (Rev-1 H1)
+  Command: rg -n "blur" packages/editor-2d/src/keyboard/router.ts
+  Expected: ≥1 match (blur listener registration; teardown via the listener variable counts toward the same site)
 
 Gate REM3-F3: draw-rectangle Dimensions sub-option
   Command: rg -n "Dimensions" packages/editor-2d/src/tools/draw/draw-rectangle.ts
@@ -397,6 +416,15 @@ Gate REM3-10: Workspace test suite passes
             + F6 ~3 + F7 ~2 + smoke ~3 = ~27 net-new; Done Criteria
             uses ≥416 as a conservative human-review check).
 
+Gate REM3-SPEC: docs/operator-shortcuts.md updated for F6 (Rev-1 B1)
+  Commands:
+    (a) rg -n "^\*\*Version:\*\* 1\.0\.2" docs/operator-shortcuts.md
+        Expected: 1 match (header version bumped to 1.0.2)
+    (b) rg -n "^\| 1\.0\.2 " docs/operator-shortcuts.md
+        Expected: 1 match (changelog row for 1.0.2 present)
+    (c) rg -n "repeat-last-command" docs/operator-shortcuts.md
+        Expected: ≥1 match (Space row present in the M1.3a section)
+
 Gate REM3-11: Cross-cutting hard gates clean (DTP-T1/T2/T6/T7)
   Same commands as M1.3d §9. Expected: 0 offenders each.
 
@@ -411,7 +439,9 @@ Gate REM3-12: Typecheck + Biome + build
   arc. Verified by Gate REM3-F1 + REM3-F1b + REM3-F1c + REM3-9 +
   REM3-9b ('direct distance entry' smoke scenario).
 - [ ] **F2** — Holding Shift while drawing rectangle's second corner
-  forces square. Verified by Gate REM3-F2 + REM3-9 (draw-tools test).
+  forces square. Verified by Gate REM3-F2 + REM3-F2b (Rev-1 H1 blur
+  cleanup) + REM3-9 (draw-tools + keyboard-router tests, including
+  blur-clear assertion).
 - [ ] **F3** — Typing D at rectangle's second prompt opens Width / Height
   numeric prompts; rectangle commits with typed dims. Verified by
   Gate REM3-F3 + REM3-9 (draw-tools test).
@@ -424,12 +454,18 @@ Gate REM3-12: Typecheck + Biome + build
   point' smoke scenario).
 - [ ] **F6** — Spacebar at canvas focus + no active tool + lastToolId
   set → re-invokes last command. Spacebar + active tool → commits.
-  Verified by Gate REM3-F6 + REM3-9 (keyboard-router tests) + REM3-9b
-  ('spacebar repeats last command' smoke scenario).
+  Verified by Gate REM3-F6 + REM3-SPEC (Rev-1 B1 binding-spec
+  enforcement: `docs/operator-shortcuts.md` 1.0.2 + Space row) +
+  REM3-9 (keyboard-router tests) + REM3-9b ('spacebar repeats last
+  command' smoke scenario).
 - [ ] **F7** — Command bar shows colored badge with current tool name
   when active; hides when no tool. Verified by Gate REM3-F7 + REM3-9
   (CommandBar test).
-- [ ] All Phase REM3-F1..REM3-F7 + REM3-9..REM3-12 gates pass.
+- [ ] **Binding spec doc updated (Rev-1 B1)** — `docs/operator-shortcuts.md`
+  bumped to 1.0.2 with the Space row added. Verified by Gate REM3-SPEC
+  (a + b + c).
+- [ ] All Phase REM3-F1..REM3-F7 + REM3-F2b + REM3-SPEC + REM3-9..REM3-12
+  gates pass.
 - [ ] Cross-cutting hard gates DTP-T1 / T2 / T6 / T7 pass (parent §9).
 - [ ] **Workspace test count** ≥ 416 (post-Round-2 baseline 391 + ≥25
   net-new). REM3-10 provides the threshold; behavioral correctness via
@@ -447,7 +483,7 @@ duplication. No retired-stub §11 in this plan — the lesson stuck.)
 | F1 zero-length direction: cursor exactly on the anchor (cursor.metric === anchor). `unit(cursor - anchor)` is undefined. | Fall through to existing 'number' input (tool will likely commit-fail or treat as a no-op). Documented in step 5. Edge case unreachable in practice — user has to click a point AND have cursor exactly there AND type a distance, all without moving. |
 | F2 shift state leaks across draws: user holds shift, releases AFTER clicking → rectangle commit reads stale shift state. | Both previewBuilder AND commit read shift state at the time of evaluation. PreviewBuilder runs on cursor change; commit runs on click. If user releases shift between cursor change and click, the click sees the released state. Acceptable — matches AutoCAD's observed behavior. |
 | F2 Shift conflicts with text-input shift (e.g., shift + arrow key in command bar). | Shift state is global but only consumed by draw-rectangle. Text inputs receive shift through their normal browser handling regardless of our slice. No conflict. |
-| F3 sub-option D collides with existing `D` shortcut for some other tool. | Per `docs/operator-shortcuts.md` 1.0.1, no top-level `D` shortcut exists; the multi-letter sub-option fast-path runs only when an active tool's `subOptions` includes a shortcut letter (per M1.3a keyboard-router design). |
+| F3 sub-option D collides with existing `D` shortcut for some other tool. | Per `docs/operator-shortcuts.md` (the active registry — true at both 1.0.1 baseline and 1.0.2 post-F6), no top-level `D` shortcut exists; the multi-letter sub-option fast-path runs only when an active tool's `subOptions` includes a shortcut letter (per M1.3a keyboard-router design). |
 | F4 ghost rendering with many selected entities is expensive. | drawModifiedEntitiesPreview iterates `shape.primitives` and strokes each. For typical M1.3d workloads (selection ≤ a few entities), cost is negligible. If profiling later shows hotspots, can clip to viewport frustum first. |
 | F4 PreviewShape arm makes paintPreview's switch non-exhaustive if a future arm is added without dispatch. | TypeScript's discriminated-union exhaustiveness check catches this at compile time. Existing arms already use the pattern. |
 | F5 fix changes existing grip-stretch behavior — may break the existing 'grip stretch updates primitive' smoke scenario from Rem-1. | Existing scenario fires mousedown on a grip with NO active tool. Per the new branch, that path stays unchanged (selection-mode grip-stretch). Tests still green. |
@@ -554,6 +590,99 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
   delta: +5-10kB raw / ~+2kB gz. Well under the 350kB-raw / 130kB-gz
   practical budget.
 
+### Revision-1 audit (per §1.16 step 13 — three-round pass on the Rev-1 changes)
+
+Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The three
+Codex Round-1 fixes are small but each has its own risk surface; this
+section is the real adversarial pass on the *revised* text, not a
+restatement of why the original findings were valid.
+
+**Round 1 — Chief Architect on the Rev-1 changes:**
+
+- **R1-C1 — operator-shortcuts.md row addition path.** The doc is governed
+  by ADR-023 supersession + its own preamble (§Governance). Adding a
+  Space row to the M1.3a section + a 1.0.2 changelog entry follows the
+  same pattern as the F7 row that was added at 1.0.1. Pre-existing
+  drift exists between the preamble's "minor for new shortcut" rule and
+  actual practice (1.0.0 → 1.0.1 was a patch); this revision matches
+  practice (1.0.1 → 1.0.2) rather than re-litigate the governance text.
+  Out of scope to fix the preamble here; called out so the next reader
+  doesn't think we missed it.
+- **R1-C2 — Gate REM3-SPEC enforcement shape.** Three-command gate
+  (header version + changelog row + Space-row semantic) mirrors the
+  enforcement shape used for `docs/design-tokens.md` in Rem-2 (R6 token
+  bumps gated by version-grep + value-grep). Established pattern.
+- **R1-C3 — Window.blur listener architecture.** Same `addEventListener`
+  / cleanup pair as the existing keydown / keyup handlers in
+  `registerKeyboardRouter`. Step 8 explicitly requires teardown via
+  the existing teardown function — implementer must hold the listener
+  reference (functions, not arrow inlines passed straight in). No new
+  abstraction; one more line in the existing handler set.
+- **R1-C4 — A11 type widening to `string | null`.** Pure type-side
+  change; the §4.1 row was already correct on this point (Rev-1 only
+  fixed the contradicting prose in §3 A11). CommandBar.tsx's consumer
+  per A12 already null-checks before rendering.
+
+**Round 2 — Sceptical reader on the Rev-1 changes:**
+
+- **R2-C1 — Gate REM3-F2b false-positive risk.** Verified router.ts
+  currently has zero `blur` references (`rg -n "blur"
+  packages/editor-2d/src/keyboard/router.ts` → no matches). After the
+  edit, the listener registration site contains the literal string
+  `'blur'`. Gate ≥1 will land on exactly 1 match for the intended site;
+  no false positives possible from pre-existing text.
+- **R2-C2 — Gate REM3-F2 count update from ≥4 to ≥5.** Audit math:
+  slice declaration `modifiers: { shift: boolean }` (1 match —
+  contains `modifiers`), `setShift` action declaration in store (1),
+  keydown handler calling `setShift(true)` (1), keyup handler calling
+  `setShift(false)` (1), blur handler calling `setShift(false)` (1) =
+  5 matches. ≥5 is exact-tight; if the implementer factors the keyup +
+  blur into a shared helper, the count could drop. Acceptable
+  implementation freedom — the per-site Gate REM3-F2b independently
+  verifies the blur listener exists, so factoring doesn't bypass the
+  invariant.
+- **R2-C3 — Gate REM3-SPEC (a) regex specificity.** Pattern
+  `^\*\*Version:\*\* 1\.0\.2` matches the line-leading header form
+  exactly (anchored to start-of-line, escaped asterisks + dot). Will
+  not match changelog row text. Will match the unique header line
+  after bump.
+- **R2-C4 — Gate REM3-SPEC (b) regex specificity.** Pattern
+  `^\| 1\.0\.2 ` (note trailing space) matches the changelog row
+  format `| 1.0.2 | 2026-04-27 | ...` exactly; the trailing space
+  prevents accidentally matching e.g. `| 1.0.20 |` if such a future
+  bump existed.
+- **R2-C5 — A11 vs §4.1 self-consistency.** Both now read
+  `Record<ToolId, string | null>`. §10's existing C2.x audit notes
+  remain valid (none referenced the type signature directly).
+
+**Round 3 — Blast radius of the Rev-1 changes:**
+
+- **R3-C1 — `docs/operator-shortcuts.md` 1.0.2 bump downstream.** No
+  code reads the version number. Files in
+  `packages/editor-2d/src/keyboard/shortcuts.ts` MUST stay in sync per
+  the registry's own preamble — the F6 implementation already touches
+  shortcuts.ts via TOOL_DISPLAY_NAMES (F7) and the keyboard-router
+  spacebar handler (F6 step 16); the registry row is the doc-side
+  partner of those code edits. No additional code change beyond what
+  was already planned.
+- **R3-C2 — Window-level `blur` listener interactions.** No other
+  editor-2d listener registers on `window.blur` today (verified
+  separately — clean baseline). Adding one is additive; teardown
+  symmetry preserved per Step 8's explicit cleanup requirement.
+- **R3-C3 — A11 type widening downstream.** TypeScript narrows on
+  `value !== null` at the consumer site (CommandBar.tsx per A12).
+  Existing exhaustiveness checks across other consumers of
+  `TOOL_DISPLAY_NAMES`: there are none — this is a brand-new constant
+  introduced in this plan, so no cascade.
+- **R3-C4 — §8 Done Criteria additions.** Three new bullet/citation
+  edits. Pure documentation enrichment; no semantics change to
+  pass/fail evaluation. The new "spec doc updated" checkbox is the
+  human-readable mirror of Gate REM3-SPEC.
+
+**Verdict on Revision-1:** Fixes address the Codex findings as stated;
+no fresh deviations introduced; gates added are objectively
+verifiable; section-consistency pass (§1.16 step 12) follows below.
+
 ## 11. Test strategy
 
 **Tests existing before:** baseline at commit `98e0915` is 391 / 391
@@ -632,11 +761,15 @@ placeholder tokens.)
 
 **Plan:** `docs/plans/feature/m1-3d-drafting-polish-remediation-3.md`
 **Branch:** `feature/m1-3d-drafting-polish` (atop `98e0915`)
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-1 — Codex Round-1 fixes applied; awaiting Codex Round-2 review.
 
 ### Paste to Codex for plan review
 > Review this plan using `docs/procedures/Codex/02-plan-review.md`
-> (Procedure 02). Apply strict evidence mode. Start from Round 1.
+> (Procedure 02). Apply strict evidence mode. This is Round 2 — Round 1
+> returned No-Go on 1 Blocker (operator-shortcuts.md missing from §4.1
+> + no enforcement gate) + 2 High-risk (F2 blur clear not propagated to
+> step-list / gates; A11 type contradiction). Rev-1 changes are
+> documented in the Revision history table at the top of the plan.
 >
 > Context: this is the THIRD remediation pass on `feature/m1-3d-drafting-polish`,
 > bundling seven items (F1-F7) per user-side testing. Round-1 (R1/R2a/R2b/R4
