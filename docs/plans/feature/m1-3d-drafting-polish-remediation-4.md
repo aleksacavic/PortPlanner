@@ -613,7 +613,7 @@ Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The five Codex Ro
 
 ## Post-execution notes (Procedure 03 §3.7)
 
-**Execution commit:** to be filled by `git log` after the execution commit lands; per Rev-1 footer convention no self-referential placeholder token.
+**Execution commit:** `2d8a468` (Round-4 G1 + G2 implementation; Codex post-commit Round-1 9.4/10 Go). Filled in M1.3d-Remediation-5 H4 (commit `<this round>`); the self-referential-hash convention from Rem-1 Rev-5 doesn't apply because the fill happens in a separate commit.
 
 **Codex Round-2 quality cleanups bundled per Lesson 10 ("fix during execution"):**
 - **§4.1 EditorRoot row** — added explicit reference to the Rev-1 history-append behavior (call sites mention `editorUiActions.appendHistory({...})` BEFORE delegating to `handleCommandSubmit`).

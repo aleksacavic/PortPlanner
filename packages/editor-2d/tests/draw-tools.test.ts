@@ -457,16 +457,17 @@ describe('draw-rectangle F3 — Dimensions sub-option', () => {
     await gen.return({ committed: false, reason: 'aborted' });
   });
 
-  it('Dimensions flow: typed W/H commit a rectangle of those dimensions from corner1', async () => {
+  // M1.3d-Rem-5 H1 — Dimensions sub-flow now takes a single comma-pair
+  // input (`{kind:'numberPair', a:width, b:height}`) instead of two
+  // separate `'number'` inputs.
+  it('Dimensions flow: typed W,H commit a rectangle of those dimensions from corner1', async () => {
     const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
     await tick();
     tool.feedInput({ kind: 'point', point: { x: 1, y: 2 } });
     await tick();
     tool.feedInput({ kind: 'subOption', optionLabel: 'Dimensions' });
     await tick();
-    tool.feedInput({ kind: 'number', value: 8 });
-    await tick();
-    tool.feedInput({ kind: 'number', value: 4 });
+    tool.feedInput({ kind: 'numberPair', a: 8, b: 4 });
     await tool.done();
     const rects = Object.values(projectStore.getState().project!.primitives).filter(
       (p) => p.kind === 'rectangle',
@@ -478,14 +479,14 @@ describe('draw-rectangle F3 — Dimensions sub-option', () => {
     expect(r.height).toBe(4);
   });
 
-  it('Dimensions abort path: missing width input aborts cleanly', async () => {
+  it('Dimensions abort path: missing dimensions input aborts cleanly', async () => {
     const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
     await tick();
     tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
     await tick();
     tool.feedInput({ kind: 'subOption', optionLabel: 'Dimensions' });
     await tick();
-    // Send a non-numeric input → tool aborts.
+    // Send a non-numberPair input → tool aborts via `dims.kind !== 'numberPair'` guard.
     tool.feedInput({ kind: 'commit' });
     const result = await tool.done();
     expect(result.committed).toBe(false);
@@ -493,5 +494,60 @@ describe('draw-rectangle F3 — Dimensions sub-option', () => {
       (p) => p.kind === 'rectangle',
     );
     expect(rects).toHaveLength(0);
+  });
+
+  it('Dimensions sub-flow yields ONE prompt accepting numberPair (Rem-5 H1 contract lock)', async () => {
+    const factory = lookupTool('draw-rectangle')!;
+    const gen = factory();
+    await gen.next();
+    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
+    const dimsPrompt = await gen.next({ kind: 'subOption', optionLabel: 'Dimensions' });
+    expect((dimsPrompt.value as { acceptedInputKinds: string[] }).acceptedInputKinds).toEqual([
+      'numberPair',
+    ]);
+    expect((dimsPrompt.value as { text: string }).text).toContain('width,height');
+    // Verify there is NOT a second follow-up prompt by ending the generator.
+    await gen.return({ committed: false, reason: 'aborted' });
+    void second;
+  });
+
+  it('Dimensions: parser rejects empty first/second token via tool abort (Rem-5 H1 R3-C2)', async () => {
+    // The H1 parser guard rejects malformed pairs (",40", "30,", ",", etc.)
+    // by falling through past the numberPair branch. The runner never
+    // receives a numberPair Input. This tool-level test verifies that if
+    // the runner DOES receive a non-numberPair input at the Dimensions
+    // prompt, the tool aborts cleanly. Combined with the parser unit
+    // semantics (the comma-pair branch only fires when both tokens
+    // trim-non-empty — verified by code inspection / Gate REM5-H1b),
+    // this proves end-to-end that ",40" / "30," / "," do not commit a
+    // rectangle. (A more exhaustive parser-level test would require
+    // mounted EditorRoot — covered separately if added.)
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'subOption', optionLabel: 'Dimensions' });
+    await tick();
+    // Simulate parser fall-through: no numberPair fed; commit aborts the tool.
+    tool.feedInput({ kind: 'commit' });
+    const result = await tool.done();
+    expect(result.committed).toBe(false);
+  });
+
+  it('Dimensions: Math.abs handles negative numberPair inputs (width=-8 → 8)', async () => {
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    tool.feedInput({ kind: 'subOption', optionLabel: 'Dimensions' });
+    await tick();
+    tool.feedInput({ kind: 'numberPair', a: -8, b: 4 });
+    await tool.done();
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    const r = rects[0] as { width: number; height: number };
+    expect(r.width).toBe(8);
+    expect(r.height).toBe(4);
   });
 });

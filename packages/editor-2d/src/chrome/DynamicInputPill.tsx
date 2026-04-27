@@ -13,9 +13,10 @@
 // canonical history surface; this pill is an alternate visual mirror
 // of the same in-flight buffer/accumulator. See plan §3 A13.
 //
-// Position: absolute, anchored at `cursor.screen + {dx: 16, dy: -24}`
-// so it sits up-and-to-the-right of the cursor (out of the way of
-// drawn geometry but close enough to feel attached). pointer-events
+// Position: absolute, anchored at `cursor.screen + {dx: 16, dy: +28}`
+// so it sits below-and-to-the-right of the cursor (M1.3d-Rem-5 H3 —
+// flipped from the original `dy: -24` to clear the bottom command
+// line area when the cursor is near the canvas bottom). pointer-events
 // none so it never intercepts clicks.
 
 import type { ReactElement } from 'react';
@@ -24,7 +25,7 @@ import styles from './DynamicInputPill.module.css';
 import { useEditorUi } from './use-editor-ui-store';
 
 const PILL_OFFSET_X_PX = 16;
-const PILL_OFFSET_Y_PX = -24;
+const PILL_OFFSET_Y_PX = 28;
 
 export function DynamicInputPill(): ReactElement | null {
   const cursor = useEditorUi((s) => s.overlay.cursor);

@@ -40,14 +40,19 @@ export async function* drawRectangleTool(): ToolGenerator {
     },
   };
 
-  // F3: Dimensions sub-option — switch to typed W/H prompts.
+  // F3 + M1.3d-Rem-5 H1: Dimensions sub-option — single comma-pair
+  // prompt (was two prompts in M1.3d-Rem-3 / pre-Rem-5). User types
+  // "30,40" + Enter at the bottom command line OR via the Dynamic
+  // Input pill at canvas focus; EditorRoot.handleCommandSubmit parses
+  // and feeds {kind:'numberPair', a, b}. AC parity for muscle-memory.
   if (c1.kind === 'subOption' && c1.optionLabel === 'Dimensions') {
-    const w = yield { text: 'Specify width', acceptedInputKinds: ['number'] };
-    if (w.kind !== 'number') return { committed: false, reason: 'aborted' };
-    const h = yield { text: 'Specify height', acceptedInputKinds: ['number'] };
-    if (h.kind !== 'number') return { committed: false, reason: 'aborted' };
-    const width = Math.abs(w.value);
-    const height = Math.abs(h.value);
+    const dims = yield {
+      text: 'Specify dimensions <width,height>',
+      acceptedInputKinds: ['numberPair'],
+    };
+    if (dims.kind !== 'numberPair') return { committed: false, reason: 'aborted' };
+    const width = Math.abs(dims.a);
+    const height = Math.abs(dims.b);
     if (width === 0 || height === 0) return { committed: false, reason: 'aborted' };
 
     const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;

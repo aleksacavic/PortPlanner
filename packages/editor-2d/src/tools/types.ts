@@ -10,7 +10,14 @@ export interface SubOption {
   shortcut: string;
 }
 
-export type AcceptedInputKind = 'point' | 'number' | 'angle' | 'distance' | 'entity' | 'subOption';
+export type AcceptedInputKind =
+  | 'point'
+  | 'number'
+  | 'numberPair'
+  | 'angle'
+  | 'distance'
+  | 'entity'
+  | 'subOption';
 
 /**
  * In-flight visualisation a tool yields alongside a Prompt. The tool
@@ -91,6 +98,13 @@ export interface Prompt {
 export type Input =
   | { kind: 'point'; point: Point2D }
   | { kind: 'number'; value: number }
+  // M1.3d-Remediation-5 H1 — comma-pair numeric input. Sub-prompts that
+  // semantically take TWO numbers in one shot (e.g. rectangle's
+  // Dimensions sub-flow `<width,height>`) opt in by setting
+  // `acceptedInputKinds: ['numberPair']`. EditorRoot.handleCommandSubmit
+  // parses raw `"a,b"` (with trim-both-tokens guard) and feeds this
+  // Input arm. AC parity for muscle-memory typing.
+  | { kind: 'numberPair'; a: number; b: number }
   | { kind: 'angle'; radians: number }
   | { kind: 'distance'; metres: number }
   | { kind: 'entity'; entityId: string; entityKind: TargetKind }

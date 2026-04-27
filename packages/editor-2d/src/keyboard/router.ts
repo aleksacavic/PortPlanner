@@ -5,10 +5,12 @@
 // focus holders (I-32). Letter keys route to canvas (tool activation
 // via accumulator) or bar (input accumulation) per focus holder.
 //
-// M1.3d-Remediation-4 G1 — AC-mode accumulator. Letters at canvas
-// focus accumulate silently; Enter or Space activates the accumulated
-// command. Escape clears. A 750 ms idle timeout silently clears the
-// accumulator without activating (no stale state).
+// M1.3d-Remediation-4 G1 + Rem-5 H2 — AC-mode accumulator. Letters at
+// canvas focus accumulate silently; Enter or Space activates the
+// accumulated command. Escape clears. Accumulator persists indefinitely
+// (no idle timeout — Rem-5 H2 removed the 750 ms stale-clear; AC parity).
+// The Dynamic Input pill (G2) is the visible safety net — the user
+// always sees the in-progress accumulator next to the cursor.
 //
 // M1.3d-Remediation-4 G2 — Numeric / punctuation / Backspace at canvas
 // focus route into `commandBar.inputBuffer` so the Dynamic Input pill
@@ -52,7 +54,6 @@ export interface KeyboardRouterCallbacks {
   onSubmitBuffer: (raw: string) => void;
 }
 
-const ACCUMULATOR_TIMEOUT_MS = 750;
 // M1.3d-Rem-4 G2 — keys that route into `commandBar.inputBuffer` at
 // canvas focus. Explicit `0-9` form (NOT `\d`) per Gate REM4-G2b(a).
 const INPUT_BUFFER_KEY_RE = /^[0-9.,\-]$/;
@@ -71,18 +72,15 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
   registered = true;
 
   let accumulator = '';
-  let accumulatorTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // M1.3d-Rem-4 G1 — clear the accumulator silently (no activation).
-  // Used by the 750 ms idle timeout, by Escape, and at the tail of
+  // M1.3d-Rem-4 G1 + Rem-5 H2 — clear the accumulator silently (no
+  // activation). Used by Escape and at the tail of
   // `flushAccumulatorAndActivate`. Mirrors the cleared state into the
   // store so the Dynamic Input pill (G2) reflects the empty buffer.
+  // Rem-5 H2 removed the 750 ms idle timer — accumulator persists
+  // indefinitely until Enter / Space / Escape (AC parity).
   function clearAccumulator(): void {
     accumulator = '';
-    if (accumulatorTimer !== null) {
-      clearTimeout(accumulatorTimer);
-      accumulatorTimer = null;
-    }
     editorUiActions.setAccumulator('');
   }
 
@@ -103,12 +101,10 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
   function pumpAccumulator(letter: string): void {
     accumulator += letter.toUpperCase();
     editorUiActions.setAccumulator(accumulator);
-    if (accumulatorTimer !== null) clearTimeout(accumulatorTimer);
-    // Silent stale-clear: 750 ms of inactivity clears the accumulator
-    // without activating. AC parity — the user must hit Enter / Space
-    // to activate. (Pre-Rem-4 this fired `flushAccumulator` which
-    // auto-activated; the new policy never auto-activates.)
-    accumulatorTimer = setTimeout(clearAccumulator, ACCUMULATOR_TIMEOUT_MS);
+    // M1.3d-Rem-5 H2 — no idle timeout. Accumulator persists until
+    // Enter / Space activates it OR Escape clears it. AC parity. The
+    // Dynamic Input pill (G2) makes the in-progress accumulator
+    // visible at the cursor as the user types.
   }
 
   // M1.3d-Rem-4 G2 — append a key char to `commandBar.inputBuffer`.
@@ -310,7 +306,6 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     window.removeEventListener('keydown', shiftKeydown);
     window.removeEventListener('keyup', shiftKeyup);
     window.removeEventListener('blur', windowBlur);
-    if (accumulatorTimer !== null) clearTimeout(accumulatorTimer);
     registered = false;
     cleanup = null;
   };

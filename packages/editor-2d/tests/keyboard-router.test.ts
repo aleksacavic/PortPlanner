@@ -286,12 +286,22 @@ describe('keyboard router — G1 AC-mode accumulator', () => {
     expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
   });
 
-  it('750 ms idle clears accumulator silently (no activation)', async () => {
+  // M1.3d-Rem-5 H2 — accumulator persists indefinitely (no idle
+  // timeout). User: "if i type L it should wait for me indefinitely,
+  // this is how AC works." The Dynamic Input pill (G2) is the visible
+  // safety net.
+  it('accumulator persists across long idle periods (no timeout in AC mode)', async () => {
     editorUiActions.setFocusHolder('canvas');
     pressKey('L');
-    // Wait past the 750 ms idle timeout.
-    await new Promise((r) => setTimeout(r, 800));
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('L');
+    // Wait well past the OLD 750 ms timeout window — the accumulator
+    // MUST still hold 'L' and no activation must have fired.
+    await new Promise((r) => setTimeout(r, 1100));
     expect(mocks.onActivateTool).not.toHaveBeenCalled();
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('L');
+    // Now Enter activates — confirming the accumulator was still live.
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('draw-line');
     expect(editorUiStore.getState().commandBar.accumulator).toBe('');
   });
 });

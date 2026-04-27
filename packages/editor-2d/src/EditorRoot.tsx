@@ -450,6 +450,35 @@ export function EditorRoot(): ReactElement {
       runningToolRef.current?.feedInput({ kind: 'commit' });
       return;
     }
+    // M1.3d-Remediation-5 H1 — comma-pair input for sub-prompts that
+    // semantically take TWO numbers in one shot (e.g. rectangle's
+    // Dimensions sub-flow `<width,height>`). Branch fires BEFORE the
+    // F1 directDistanceFrom branch so a typed "30,40" at a numberPair-
+    // accepting prompt feeds the pair instead of falling through to
+    // single-number / point parsing. Both-token trim guard rejects
+    // `,40`, `30,`, `,`, ` , ` (Number('') would coerce to 0 finite —
+    // the trim().length > 0 check prevents that footgun).
+    const cb0 = editorUiStore.getState().commandBar;
+    if (cb0.acceptedInputKinds.includes('numberPair') && raw.includes(',')) {
+      const parts = raw.split(',');
+      const [aStr, bStr] = parts;
+      if (
+        parts.length === 2 &&
+        aStr !== undefined &&
+        bStr !== undefined &&
+        aStr.trim().length > 0 &&
+        bStr.trim().length > 0
+      ) {
+        const a = Number(aStr);
+        const b = Number(bStr);
+        if (Number.isFinite(a) && Number.isFinite(b)) {
+          runningToolRef.current?.feedInput({ kind: 'numberPair', a, b });
+          return;
+        }
+      }
+      // Malformed pair — fall through to single-number / commit logic.
+    }
+
     const num = Number(raw);
     if (!Number.isFinite(num)) return;
 

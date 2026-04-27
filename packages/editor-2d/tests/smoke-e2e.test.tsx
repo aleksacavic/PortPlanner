@@ -95,6 +95,14 @@ const SCENARIOS = [
   // M1.3d-Remediation-4 G2 — click-eat. SOLE integration surface for
   // the click-eat path (handleCanvasClick guard on inputBuffer).
   'click is eaten while inputBuffer non-empty (AC parity)',
+  // M1.3d-Remediation-5 H1 — rectangle Dimensions comma-pair input.
+  // SOLE integration surface: EditorRoot.handleCommandSubmit's
+  // numberPair branch + draw-rectangle's single-prompt sub-flow.
+  'rectangle Dimensions: typed "30,40" + Enter commits W=30 H=40',
+  // M1.3d-Remediation-5 H2 — accumulator persists indefinitely (no
+  // 750 ms timeout). SOLE integration surface: keyboard router silently
+  // holds the accumulator past any idle interval until Enter activates.
+  'accumulator persists indefinitely (no idle timeout, AC parity)',
 ] as const;
 
 function makeProject(): Project {
@@ -904,6 +912,82 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     ).toBe(0);
     // Buffer still pending.
     expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+  });
+
+  it('rectangle Dimensions: typed "30,40" + Enter commits W=30 H=40', async () => {
+    // M1.3d-Rem-5 H1 — SOLE integration validation. Activate REC + Enter,
+    // click first corner, click [Dimensions] sub-option (or type D + Enter),
+    // type "30,40" via canvas-focus number-keys (router routes into
+    // inputBuffer), Enter submits. EditorRoot's handleCommandSubmit
+    // numberPair branch parses + feeds; rectangle commits with W=30, H=40.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // Activate REC: R+E+C+Enter (AC mode).
+    fireEvent.keyDown(window, { key: 'R' });
+    fireEvent.keyDown(window, { key: 'E' });
+    fireEvent.keyDown(window, { key: 'C' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-rectangle');
+
+    // Click first corner at metric (1, 2) → screen (410, 280) at zoom=10.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 410, clientY: 280 });
+    await wait(20);
+
+    // Type D — sub-option fast-path fires immediately (no Enter needed
+    // because the active tool's subOptions include 'd' for Dimensions).
+    fireEvent.keyDown(window, { key: 'D' });
+    await wait(20);
+
+    // Buffer should now be empty + prompt should accept numberPair.
+    expect(editorUiStore.getState().commandBar.acceptedInputKinds).toEqual(['numberPair']);
+
+    // Type "30,40" via canvas-focus numeric routing.
+    fireEvent.keyDown(window, { key: '3' });
+    fireEvent.keyDown(window, { key: '0' });
+    fireEvent.keyDown(window, { key: ',' });
+    fireEvent.keyDown(window, { key: '4' });
+    fireEvent.keyDown(window, { key: '0' });
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('30,40');
+
+    // Enter submits — handleCommandSubmit parses comma-pair, tool commits.
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(50);
+
+    const rects = Object.values(projectStore.getState().project!.primitives).filter(
+      (p) => p.kind === 'rectangle',
+    );
+    expect(rects).toHaveLength(1);
+    const r = rects[0] as { origin: { x: number; y: number }; width: number; height: number };
+    expect(r.origin).toEqual({ x: 1, y: 2 });
+    expect(r.width).toBe(30);
+    expect(r.height).toBe(40);
+    // Buffer cleared after submit.
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+  });
+
+  it('accumulator persists indefinitely (no idle timeout, AC parity)', async () => {
+    // M1.3d-Rem-5 H2 — SOLE integration validation. Type L (silent
+    // accumulator under G1), wait WELL past the OLD 750 ms timeout
+    // window, verify accumulator is STILL 'L' and no tool activated.
+    // Then Enter activates — confirms the accumulator was live the
+    // whole time. AC parity (no idle stale-clear).
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    void getCanvasOrThrow(container);
+
+    fireEvent.keyDown(window, { key: 'L' });
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('L');
+    // Wait 1100 ms — well past the (now-removed) 750 ms timeout window.
+    await wait(1100);
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    expect(editorUiStore.getState().commandBar.accumulator).toBe('L');
+    // Enter activates.
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('draw-line');
   });
 
   it('spacebar repeats last command', async () => {

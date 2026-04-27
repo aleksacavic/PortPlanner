@@ -76,13 +76,15 @@ describe('DynamicInputPill — content priority (inputBuffer > accumulator > act
 });
 
 describe('DynamicInputPill — cursor-anchored positioning', () => {
-  it('anchors at cursor.screen + offset (16, -24)', () => {
+  it('anchors at cursor.screen + offset (16, +28) — below cursor (Rem-5 H3)', () => {
     setCursor(); // screen = (100, 200)
     editorUiActions.setInputBuffer('5');
     const { container } = render(<DynamicInputPill />);
     const pill = container.querySelector<HTMLDivElement>('[data-component="dynamic-input-pill"]');
     expect(pill).not.toBeNull();
-    // transform: translate(116px, 176px) — offset {dx: 16, dy: -24}.
-    expect(pill!.style.transform).toContain('translate(116px, 176px)');
+    // transform: translate(116px, 228px) — offset {dx: 16, dy: +28}.
+    // M1.3d-Rem-5 H3 flipped from -24 to +28 so the pill sits BELOW the
+    // cursor and clears the bottom command line area.
+    expect(pill!.style.transform).toContain('translate(116px, 228px)');
   });
 });

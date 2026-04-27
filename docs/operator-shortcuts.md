@@ -1,7 +1,7 @@
 # Operator Shortcut Registry
 
-**Version:** 1.2.0
-**Date:** 2026-04-27
+**Version:** 2.0.0
+**Date:** 2026-04-28
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
 
 This registry is the going-forward source of truth for keyboard
@@ -103,14 +103,18 @@ is the snapshot at supersession; this file is the active registry.
 
 ## Behavior notes
 
-**AC-mode letter activation (M1.3d-Remediation-4 G1 / 1.2.0):** letter
-shortcuts at canvas focus accumulate silently. Enter or Space activates
-the accumulated command. Escape clears the accumulator. A 750 ms idle
-timeout silently clears the accumulator without activating. Pre-Rem-4
-the accumulator auto-activated on exact-match-no-extension (the
-heuristic was fragile — it blocked `MI` for Mirror, `MA` for Match-
-Properties, etc., as soon as `M` matched alone). The new policy
-matches AutoCAD parity.
+**AC-mode letter activation (M1.3d-Remediation-4 G1 / Remediation-5 H2 / 2.0.0):**
+letter shortcuts at canvas focus accumulate silently. Enter or Space
+activates the accumulated command. Escape clears the accumulator.
+**Accumulator persists indefinitely; clear via Escape, Enter, or Space.**
+(Pre-Rem-5 the accumulator was silently cleared after a 750 ms idle
+timeout; M1.3d-Rem-5 H2 removed the timeout for true AC parity — AC
+itself has no such timer. The Dynamic Input pill is the visible safety
+net, showing the in-progress accumulator at the cursor as the user
+types.) Pre-Rem-4 the accumulator auto-activated on
+exact-match-no-extension (the heuristic was fragile — it blocked `MI`
+for Mirror, `MA` for Match-Properties, etc., as soon as `M` matched
+alone). The new policy matches AutoCAD parity.
 
 **Dynamic Input pill (M1.3d-Remediation-4 G2 / 1.2.0):** numeric and
 punctuation keys (digits 0-9, `.`, `-`, `,`, Backspace) at canvas
@@ -128,6 +132,7 @@ until the user commits with Enter or aborts with Esc).
 
 | Version | Date | Change |
 |---|---|---|
+| 2.0.0 | 2026-04-28 | Letter accumulator behavior change: 750 ms idle stale-clear removed; accumulator persists indefinitely until Enter, Space, or Escape (true AC parity). M1.3d-Remediation-5 H2. **Major bump** per registry governance ("Changing an existing shortcut behaviour: major version bump") — first MAJOR application of the rule. The earlier `1.2.0 → 1.2.1` patch proposal was rejected by Codex Round-1 review as governance-non-compliant. |
 | 1.2.0 | 2026-04-27 | AC-mode letter activation (Enter or Space required; Escape clears; 750 ms silent stale-clear). Dynamic Input pill at the cursor (numeric / punctuation routes into `inputBuffer`; F12 toggles visibility; Enter submits buffer through the same path as the bottom command line; click eaten while buffer non-empty). M1.3d-Remediation-4 G1 + G2. Behavior change; minor bump per registry governance. |
 | 1.1.0 | 2026-04-27 | Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active, else re-invokes most recently completed user-tool). M1.3d-Remediation-3 F6. **Note:** version corrected from initially-applied 1.0.2 (patch) to 1.1.0 (minor) per the registry's "adding a new shortcut → minor bump" governance rule (above §Governance). Codex post-commit Round-1 quality cleanup. |
 | 1.0.1 | 2026-04-26 | Add `F7` → toggle-crosshair (full-canvas / pickbox preset). M1.3d Phase 8. *(Pre-existing governance drift: should have been a minor bump per the rule above; recorded historically as patch. Going forward all additions are minor.)* |
