@@ -6,7 +6,7 @@
 **Author:** Claude (Opus 4.7, 1M context)
 **Date:** 2026-04-27
 **Operating mode:** Procedure 01 (PLAN-ONLY) → Procedure 03 (EXECUTION) after Codex review
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-1 — Codex Round-1 fixes (1 Blocker + 2 High-risk + 2 Quality; all agreed)
 
 ---
 
@@ -14,7 +14,8 @@
 
 | Rev | Date | Driver | Changes |
 |-----|------|--------|---------|
-| Rev-0 | 2026-04-27 | Initial draft | G1 (AC-mode keyboard accumulator) + G2 (Dynamic Input pill at cursor + non-letter input routing + click-eat). G3 (W,H comma-separated) deferred per user agreement (becomes obsolete once G2 lands and the existing two-prompt W/H flow is usable). §1.3 three-round audit. |
+| Rev-1 | 2026-04-27 | Codex Round-1 (No-Go on 1 Blocker + 2 High-risk + 2 Quality; all agreed) | **B1** (Blocker) — history append parity contradiction. §10 R2-C7 had said "Action: update step 8" but Step 8 was never updated; §9 risk row contradicted R2-C7 by claiming "history is recorded uniformly". Fix: Step 8 now explicitly includes `editorUiActions.appendHistory({...})` in the onSubmitBuffer impl; §9 risk row corrected; new **Gate REM4-G2g** asserts `appendHistory` is referenced from EditorRoot's onSubmitBuffer (so the pill submit path matches the bar form's submit path). **H1** (High-risk) — Enter/Space precedence drift: A10 listed inputBuffer-submit first; Step 3 + Step 4 listed accumulator-first. Fix: Step 3 + 4 swapped to inputBuffer-first to match A10 (the AC-correct policy — a typed value answers the active prompt; activation can wait). New **A10b** locks the precedence policy explicitly. New keyboard-router test `'both buffers non-empty: Enter prefers inputBuffer over accumulator'`. **H2** (High-risk) — Backspace empty-buffer fallthrough was a browser back-navigation footgun. Fix: Step 6 now mandates `preventDefault` ALWAYS at canvas focus (regardless of buffer state); on empty buffer it's a benign no-op but suppresses browser default. New keyboard-router test `'Backspace at canvas focus always preventDefaults (suppresses browser back-navigation)'`. **Q1** — Gate REM4-G1b regex tightened to `(function \|const )(clearAccumulator\|flushAccumulatorAndActivate)` with strict ≥2 expectation. **Q2** — Gate REM4-G2b split into two strict gates: (a) digit-class regex pattern in router source, (b) setInputBuffer call from keyboard handler (multiline). **Q3** — Footer notes that architecture authority is split across `docs/procedures/Codex/00-architecture-contract.md` + ADR set (no root-level `architecture.md`). §10 gains a Revision-1 audit subsection per §1.16 step 13. **Procedural lesson refined:** when a §1.3 self-audit identifies a "Action: update step X" finding, the corresponding step MUST be updated in the SAME revision, NOT deferred. Treat the audit as the highest-priority pre-emit consistency gate. Same shape of gap as Rem-1 Rev-3 sub-action drift, this time on a self-audit cross-reference. |
+| Rev-0 | 2026-04-27 | Initial draft | G1 (AC-mode keyboard accumulator) + G2 (Dynamic Input pill at cursor + non-letter input routing + click-eat). G3 (W,H comma-separated) deferred per user agreement (becomes obsolete once G2 lands and the existing two-prompt W/H flow is usable). §1.3 three-round audit. Plan committed at `7d39d12`. |
 
 ## 1. Request summary
 
@@ -92,6 +93,10 @@ User-confirmed in chat 2026-04-27:
   - tool active → existing `onCommitCurrentTool` (M1.3d-Rem-3 F6).
   - no tool + `lastToolId` set → existing `onRepeatLastCommand` (M1.3d-Rem-3 F6).
 
+- **A10b — Precedence policy when both `inputBuffer` and `accumulator` are non-empty (Rev-1 H1 fix).** This state is degenerate under normal use because the router enforces stream separation (letters → accumulator only; digits/punct → inputBuffer only). It can occur if the user typed in the bar-form input (filling inputBuffer) and then moved focus to canvas and typed a letter (filling accumulator). When this state exists at Enter / Space time, **inputBuffer-submit wins**.
+  - Rationale: inputBuffer represents a deliberate value the user typed to answer an active tool's prompt. Submitting it advances the tool. The accumulator (a tool-activation staging buffer) can be re-driven by the user typing the letter again — minimal friction. Conversely, activating a new tool first would silently discard the user's typed value, which is surprising.
+  - Enforcement: Step 3 + 4 list the branches in priority order (1) inputBuffer-submit, (2) accumulator-flush. Tested by `'both buffers non-empty: Enter prefers inputBuffer over accumulator'` in §11.
+
 - **A11 — Escape semantics.** Existing: Escape calls `flushAccumulator` (which currently activates if exact match) + `onAbortCurrentTool` + sets focus to canvas. Under G1, `flushAccumulator` becomes `clearAccumulator` (no activation). Escape also clears `inputBuffer` (new — under G2, Esc cancels both staging surfaces). Refresh: Escape = "abort everything in flight" (tool, accumulator, inputBuffer).
 
 - **A12 — Pill DOM placement.** New `DynamicInputPill.tsx` mounts inside the canvas-area div (sibling of `<CanvasHost />`), positioned absolutely. Anchor uses `transform: translate(${x}px, ${y}px)` for fast updates. CSS module file `DynamicInputPill.module.css`.
@@ -107,13 +112,13 @@ User-confirmed in chat 2026-04-27:
 | Path | Change |
 |---|---|
 | `packages/editor-2d/src/ui-state/store.ts` | Add `commandBar.accumulator: string` (default `''`) + `setAccumulator(value: string)` action. No other slice changes. |
-| `packages/editor-2d/src/keyboard/router.ts` | (G1) Remove auto-activation in `pumpAccumulator` (the `if (exact && !couldExtend) flushAccumulator(); return;` heuristic goes away). Rename `flushAccumulator` → `clearAccumulator` (no activation; just clear + cancel timer + write `setAccumulator('')`). Add `flushAccumulatorAndActivate` for Enter/Space-driven flush. (G1) Enter handler: branch on `accumulator` non-empty → `flushAccumulatorAndActivate`; else existing `onCommitCurrentTool`. (G1) Space handler: branch the same way (chained with the existing F6 spacebar branches: input buffer first, then accumulator, then active-tool commit, then last-tool repeat). (G1) Escape clears `inputBuffer` too via new `editorUiActions.setInputBuffer('')`. (G2) Capture digits / `.` / `-` / `,` / Backspace at canvas focus → write to `inputBuffer` (append for printables; pop last char for Backspace). (G2) Publish accumulator on every mutation via `editorUiActions.setAccumulator`. |
+| `packages/editor-2d/src/keyboard/router.ts` | (G1) Remove auto-activation in `pumpAccumulator` (the `if (exact && !couldExtend) flushAccumulator(); return;` heuristic goes away). Rename `flushAccumulator` → `clearAccumulator` (no activation; just clear + cancel timer + write `setAccumulator('')`). Add `flushAccumulatorAndActivate` for Enter/Space-driven flush. (G1+G2 — Rev-1 H1) Enter and Space handlers branch in this exact order: (1) inputBuffer non-empty + tool active → `onSubmitBuffer`; (2) accumulator non-empty → `flushAccumulatorAndActivate`; (3) inputBuffer non-empty + no tool → clear silently; (4) tool active → `onCommitCurrentTool`; (5, Space only) no tool + lastToolId → `onRepeatLastCommand`. See A10b for the precedence rationale and Step 3 + 4 for the canonical branch list. (G1) Escape clears `inputBuffer` too via new `editorUiActions.setInputBuffer('')`. (G2 — Rev-1 H2) Backspace at canvas focus ALWAYS `preventDefault`; pop last char from `inputBuffer` when non-empty, else benign no-op. (G2) Capture digits / `.` / `-` / `,` at canvas focus matching `/^[0-9.,\-]$/` → write to `inputBuffer`. (G2) Publish accumulator on every mutation via `editorUiActions.setAccumulator`. |
 | `packages/editor-2d/src/EditorRoot.tsx` | (G2 click-eat) `handleCanvasClick`, `handleSelectRectStart`, `handleGripDown` early-return when `editorUiStore.getState().commandBar.inputBuffer.length > 0`. (G1+G2 submit wiring) Add `onSubmitBuffer: (raw: string) => void` callback to keyboard router callbacks; impl reads `inputBuffer` and feeds through existing `handleCommandSubmit` path (the same routing — direct-distance transform, number, etc.). After submit, clear `inputBuffer`. |
 | `packages/editor-2d/src/chrome/DynamicInputPill.tsx` | NEW. Reads `overlay.cursor`, `commandBar.inputBuffer`, `commandBar.accumulator`, `commandBar.activePrompt`, `toggles.dynamicInput` via `useEditorUi`. Renders absolute-positioned pill at `cursor.screen + {dx: 16, dy: -24}` when visibility predicate holds (per A3). Hides otherwise (returns null). Single React component, ~50-70 LOC. |
 | `packages/editor-2d/src/chrome/DynamicInputPill.module.css` | NEW. `.pill` class: absolute positioned, dotted border, monospace, small padding, semi-transparent background using `var(--surface-overlay)` + `var(--text-primary)` semantic tokens. ~25-40 LOC. |
 | `packages/editor-2d/src/chrome/CommandBar.tsx` | No change. Bottom command line continues to render the same buffer; pill is an alternate surface for the same SSOT. |
 | `packages/editor-2d/src/keyboard/shortcuts.ts` | No change. |
-| `packages/editor-2d/tests/keyboard-router.test.ts` | (G1 migration) Update existing tests `'single-letter "L" with canvas focus activates draw-line'`, `'multi-letter "P" then "L" within timeout activates draw-polyline'`, `'"L" without further input falls back to single-letter draw-line'` — they currently `await new Promise(r => setTimeout(r, 800))` for the auto-flush. Under G1, these must press Enter or Space and assert activation happens immediately. (G1 new) Test: `'letter alone does NOT activate without Enter or Space'`. (G1 new) Test: `'Enter at canvas focus + accumulator non-empty → activates the accumulated tool'`. (G1 new) Test: `'Space at canvas focus + accumulator non-empty → activates the accumulated tool'`. (G1 new) Test: `'Escape clears accumulator without activating'`. (G2 new) Test: `'digit at canvas focus appends to inputBuffer'`. (G2 new) Test: `'comma + minus + dot at canvas focus append to inputBuffer'`. (G2 new) Test: `'Backspace at canvas focus pops the last char from inputBuffer'`. (G2 new) Test: `'Enter at canvas focus + inputBuffer non-empty + tool active → onSubmitBuffer fires with buffer contents'`. (G2 new) Test: `'Escape clears inputBuffer'`. |
+| `packages/editor-2d/tests/keyboard-router.test.ts` | (G1 migration) Update existing tests `'single-letter "L" with canvas focus activates draw-line'`, `'multi-letter "P" then "L" within timeout activates draw-polyline'`, `'"L" without further input falls back to single-letter draw-line'` — they currently `await new Promise(r => setTimeout(r, 800))` for the auto-flush. Under G1, these must press Enter or Space and assert activation happens immediately. (G1 new) Test: `'letter alone does NOT activate without Enter or Space'`. (G1 new) Test: `'Enter at canvas focus + accumulator non-empty → activates the accumulated tool'`. (G1 new) Test: `'Space at canvas focus + accumulator non-empty → activates the accumulated tool'`. (G1 new) Test: `'Escape clears accumulator without activating'`. (G1 new) Test: `'750 ms idle clears accumulator silently (no activation)'`. (G2 new) Test: `'digit at canvas focus appends to inputBuffer'`. (G2 new) Test: `'comma + minus + dot at canvas focus append to inputBuffer'`. (G2 new) Test: `'Backspace at canvas focus pops the last char from inputBuffer'`. (G2 new) Test: `'Enter at canvas focus + inputBuffer non-empty + tool active → onSubmitBuffer fires with buffer contents'`. (G2 new) Test: `'Escape clears inputBuffer'`. (Rev-1 H1) Test: `'both buffers non-empty: Enter prefers inputBuffer over accumulator'`. (Rev-1 H1 R2-C2) Test: `'Enter at canvas focus + inputBuffer non-empty + no tool active → buffer cleared silently'`. (Rev-1 H2) Test: `'Backspace at canvas focus always preventDefaults (suppresses browser back-navigation)'`. (Rev-1 H2) Test: `'Backspace at canvas focus when inputBuffer empty is a benign no-op but still preventDefaults'`. |
 | `packages/editor-2d/tests/ui-state.test.ts` | (G1) Add tests for `commandBar.accumulator` default + `setAccumulator` mutator. |
 | `packages/editor-2d/tests/CommandBar.test.tsx` | No change. |
 | `packages/editor-2d/tests/DynamicInputPill.test.tsx` | NEW. (G2) Tests: `'pill renders inputBuffer when buffer non-empty'`, `'pill renders accumulator when buffer empty + accumulator non-empty'`, `'pill renders activePrompt when both buffers empty + prompt active'`, `'pill hides when toggles.dynamicInput is false'`, `'pill hides when nothing to render and no active prompt'`, `'pill anchors at cursor.screen + offset'`. |
@@ -170,31 +175,31 @@ The G1 + G2 changes are interdependent (G1's accumulator publication is consumed
    - In `pumpAccumulator`: still appends to the local accumulator + writes to store via `setAccumulator`. **REMOVE** the `if (exact && !couldExtend) flushAccumulator(); return;` block — letters never auto-activate.
    - Keep the 750 ms timeout, but its action is now `clearAccumulator` (silent). Stale state goes away after 750 ms of inactivity; nothing activates.
 
-3. **G1: Enter handler updated.** `if (key === 'Enter' && focus === 'canvas')` block branches on:
-   - `accumulator.length > 0` → `flushAccumulatorAndActivate()`. Return.
-   - `inputBuffer.length > 0` AND tool active → `callbacks.onSubmitBuffer(inputBuffer)`. Return. (G2 path; covered in step 6.)
-   - Else → existing `callbacks.onCommitCurrentTool()`.
+3. **G1: Enter handler updated.** Per A10 + A10b (Rev-1 H1 fix: inputBuffer-first precedence). `if (key === 'Enter' && focus === 'canvas')` block branches **in this exact order**:
+   - **(1)** `inputBuffer.length > 0` AND tool active → `callbacks.onSubmitBuffer(inputBuffer)`. Return.
+   - **(2)** `accumulator.length > 0` → `flushAccumulatorAndActivate()`. Return.
+   - **(3)** `inputBuffer.length > 0` AND no tool active → degenerate state; clear inputBuffer silently and return (no tool to consume).
+   - **(4)** Else → existing `callbacks.onCommitCurrentTool()`.
 
-4. **G1: Space handler updated.** Same branch order as Enter, plus the existing F6 spacebar logic preserved at the bottom:
-   - `accumulator.length > 0` → `flushAccumulatorAndActivate()`.
-   - `inputBuffer.length > 0` AND tool active → `callbacks.onSubmitBuffer(inputBuffer)`.
-   - tool active → `callbacks.onCommitCurrentTool()` (existing F6).
-   - no tool + `lastToolId` set → `callbacks.onRepeatLastCommand()` (existing F6).
+4. **G1: Space handler updated.** Same branch order as Enter, with the existing F6 spacebar logic preserved at the bottom (Rev-1 H1 fix: inputBuffer-first):
+   - **(1)** `inputBuffer.length > 0` AND tool active → `callbacks.onSubmitBuffer(inputBuffer)`. Return.
+   - **(2)** `accumulator.length > 0` → `flushAccumulatorAndActivate()`. Return.
+   - **(3)** `inputBuffer.length > 0` AND no tool active → clear inputBuffer silently and return.
+   - **(4)** tool active → `callbacks.onCommitCurrentTool()` (existing F6).
+   - **(5)** no tool + `lastToolId` set → `callbacks.onRepeatLastCommand()` (existing F6).
 
 5. **G1: Escape extended.** Existing Escape handler calls `flushAccumulator` + `onAbortCurrentTool` + `setFocusHolder('canvas')`. Update to `clearAccumulator` (no activation) + clear `inputBuffer` (`editorUiActions.setInputBuffer('')`) + existing abort + focus set.
 
-6. **G2: Numeric routing.** Add a key-class branch in the keyboard router handler: at canvas focus, when the key is a printable non-letter that we capture (digits 0-9, `.`, `-`, `,`):
+6. **G2: Numeric routing.** Add a key-class branch in the keyboard router handler: at canvas focus, when the key matches the regex literal `/^[0-9.,\-]$/` (digits 0-9, `.`, `-`, `,` — note the explicit `0-9` form, NOT `\d`, so Gate REM4-G2b(a) matches):
    - `e.preventDefault()`.
    - Read `editorUiStore.getState().commandBar.inputBuffer`.
    - Append the key char.
    - `editorUiActions.setInputBuffer(newBuffer)`.
 
-   Backspace at canvas focus when `inputBuffer.length > 0`:
-   - `e.preventDefault()`.
-   - Pop the last char.
-   - `setInputBuffer(newBuffer)`.
-
-   Backspace when `inputBuffer.length === 0` → fall through (no-op or let browser handle, which is fine — there's nothing to delete and no useful default action).
+   Backspace at canvas focus — **Rev-1 H2 fix: always `preventDefault`** (regardless of buffer state) to suppress browser default behavior (some browsers historically navigated back on Backspace at body level; modern Chrome/Firefox no longer do, but the suppression is a future-proof safety net):
+   - **Always:** `e.preventDefault()` at canvas focus.
+   - When `inputBuffer.length > 0`: pop the last char, `setInputBuffer(newBuffer)`.
+   - When `inputBuffer.length === 0`: no buffer mutation (benign no-op effect on app state); the preventDefault still fires.
 
 7. **G2: `onSubmitBuffer` callback in router callbacks type.** Add to `KeyboardRouterCallbacks`:
    ```ts
@@ -208,9 +213,20 @@ The G1 + G2 changes are interdependent (G1's accumulator publication is consumed
 
    Wired in router's Enter and Space branches (steps 3 and 4).
 
-8. **G2: EditorRoot wires `onSubmitBuffer`.** New callback in the `registerKeyboardRouter` arg block:
+8. **G2: EditorRoot wires `onSubmitBuffer`.** New callback in the `registerKeyboardRouter` arg block. **Per Rev-1 B1 fix: explicitly mirrors the bar form's submit-side append** so the pill submit path produces the same history scrollback parity as the bottom command line:
    ```ts
    onSubmitBuffer: (raw) => {
+     // History append parity with CommandBar's form onSubmit (CommandBar.tsx
+     // writes the same shape on bar-form submit; the pill submit path MUST
+     // match so history is consistent across both submission surfaces).
+     // Rev-1 B1 fix — Codex Round-1 caught the missing append.
+     if (raw.length > 0) {
+       editorUiActions.appendHistory({
+         role: 'input',
+         text: raw,
+         timestamp: new Date().toISOString(),
+       });
+     }
      handleCommandSubmit(raw);  // existing handler — does the F1 transform
      editorUiActions.setInputBuffer('');  // clear after dispatch
    },
@@ -317,9 +333,11 @@ Gate REM4-G1a: pumpAccumulator no longer auto-activates
   Command: rg -n "if \(exact && !couldExtend\)" packages/editor-2d/src/keyboard/router.ts
   Expected: 0 matches (the heuristic is removed)
 
-Gate REM4-G1b: clearAccumulator and flushAccumulatorAndActivate exist as distinct functions
-  Command: rg -n "function clearAccumulator|function flushAccumulatorAndActivate" packages/editor-2d/src/keyboard/router.ts
-  Expected: ≥2 matches (one per declaration; closure-style `const` declarations also count if the regex matches `(const|function) clearAccumulator`)
+Gate REM4-G1b: clearAccumulator and flushAccumulatorAndActivate exist as distinct declarations (Rev-1 Q1 — tightened to actually accept `const` or `function`)
+  Command: rg -n "(function |const )(clearAccumulator|flushAccumulatorAndActivate)" packages/editor-2d/src/keyboard/router.ts
+  Expected: ≥2 matches (one declaration per name — the regex now strictly
+            anchors on the declaration form, accepting either `function`
+            or `const` style)
 
 Gate REM4-G1c: Enter handler branches on accumulator
   Command: rg -A 8 -n "key === 'Enter' && focus === 'canvas'" packages/editor-2d/src/keyboard/router.ts | rg "accumulator|flushAccumulatorAndActivate"
@@ -333,9 +351,20 @@ Gate REM4-G2a: commandBar.accumulator field on store
   Command: rg -n "accumulator" packages/editor-2d/src/ui-state/store.ts
   Expected: ≥3 matches (slice declaration + default + setter)
 
-Gate REM4-G2b: Numeric / punctuation routing in keyboard router
-  Command: rg -n "0-9|setInputBuffer\(" packages/editor-2d/src/keyboard/router.ts
-  Expected: ≥2 matches (regex character class for digits + setInputBuffer call site)
+Gate REM4-G2b: Numeric / punctuation routing in keyboard router (Rev-1 Q2 — split into two strict gates)
+  Commands:
+    (a) Digit-class regex pattern present in the router source:
+        rg -n "/\^\[0-9\.,\-\]" packages/editor-2d/src/keyboard/router.ts
+        Expected: ≥1 match (the regex character class anchored to the
+        captured key set — proves the test is matching numeric/punct
+        keys specifically, not arbitrary characters).
+    (b) setInputBuffer called from the keyboard handler scope:
+        rg -B 2 -n "editorUiActions\.setInputBuffer" packages/editor-2d/src/keyboard/router.ts | rg "key|focus === 'canvas'"
+        Expected: ≥1 match (proves the setInputBuffer call sits inside
+        a key-handler context, not somewhere unrelated). If
+        implementation factors the call into a helper, the helper itself
+        gets called from a key-handler branch — adjust the upstream rg
+        accordingly during execution.
 
 Gate REM4-G2c: DynamicInputPill component file exists + mounted in EditorRoot
   Commands:
@@ -356,6 +385,13 @@ Gate REM4-G2f: onSubmitBuffer callback wired
   Commands:
     (a) rg -n "onSubmitBuffer" packages/editor-2d/src/keyboard/router.ts packages/editor-2d/src/EditorRoot.tsx
         Expected: ≥3 matches (callback type + router call site + EditorRoot impl)
+
+Gate REM4-G2g: onSubmitBuffer impl appends to history (Rev-1 B1 parity)
+  Command: rg -A 12 -n "onSubmitBuffer:" packages/editor-2d/src/EditorRoot.tsx | rg "appendHistory"
+  Expected: ≥1 match (explicit appendHistory call inside the onSubmitBuffer
+            arrow function body — proves the pill submit path is parity
+            with CommandBar.tsx's bar-form onSubmit which also calls
+            appendHistory)
 
 Gate REM4-9: Targeted test files pass
   Command: pnpm --filter @portplanner/editor-2d test -- tests/keyboard-router tests/ui-state tests/CommandBar tests/DynamicInputPill tests/smoke-e2e
@@ -409,7 +445,7 @@ Gate REM4-SPEC: docs/operator-shortcuts.md updated for AC-mode (G1 behavior chan
 | G2 click-eat surprises users who don't realize they have a buffer pending. | Pill (G2) makes the buffer visible. Pre-existing buffer pending → click no-op → pill is the visual cue that something's there. AC parity. Documented in §3 A6. |
 | G2 pill positioning during canvas pan/zoom. Cursor coords might lag the actual pointer position briefly during high-frequency pan. | Pill anchors via `cursor.screen` which is updated by canvas-host's mousemove handler (rAF-coalesced). Same lag as the existing crosshair / snap glyph. Acceptable. |
 | G2 DOM render at 60 Hz. Pill re-renders on every cursor change. | Pure render with no useEffect; React's reconciliation just updates the `transform` style. Cheap. The existing `data-component="cursor-readout"` chip already does this. |
-| G2 pill vs CommandBar history append on submit. When Enter submits the buffer, does history record the input? | EditorRoot's `handleCommandSubmit` already appends to history when called via the form's onSubmit. The new `onSubmitBuffer` path goes through the same `handleCommandSubmit`, so history is recorded uniformly. SSOT preserved. |
+| G2 pill vs CommandBar history append on submit. When Enter submits the buffer, does history record the input? | **Rev-1 B1 fix:** `handleCommandSubmit` itself does NOT append to history — that's done in CommandBar.tsx's onSubmit prop wrapper for the bar-form path. The pill submit path goes through `onSubmitBuffer` which would have bypassed the append. Step 8's `onSubmitBuffer` impl now explicitly calls `editorUiActions.appendHistory({...})` BEFORE `handleCommandSubmit` so both paths produce identical history scrollback. SSOT (the slice's `commandBar.history` array) has two writers (bar form + pill submit), both writing the same shape; not a concern because they're mutually exclusive at any given moment (only one submission surface fires per Enter). Verified by new Gate REM4-G2g. |
 | G2 pill stylesheet collision. New `.pill` class might collide with anything? | CSS modules scope class names per-file; `.pill` resolves to a unique generated name. No collision risk. |
 | G1 + Escape semantics. Escape currently calls `flushAccumulator` which under the OLD code might have activated. Now Escape calls `clearAccumulator` which doesn't activate AND clears `inputBuffer`. Behavior change to verify. | New test in §4.1 `'Escape clears accumulator without activating'` + `'Escape clears inputBuffer'` covers both. Existing `'Escape aborts current tool and returns focus to canvas'` test still passes (the abort + focus parts are unchanged). |
 | `setAccumulator` writes on every keystroke. Could thrash store. | Single string field; setState is cheap. The pill is the only consumer; it re-renders the same way the existing readout components do. |
@@ -434,8 +470,8 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
 - **C2.3 — Numeric routing at bar focus.** When the user has the bottom command line input focused (focusHolder='bar'), they type numbers — the bar input handles those natively (controlled input). Router doesn't intercept. The pill should ideally STILL show the buffer because both surfaces mirror the same `commandBar.inputBuffer`. But wait — at bar focus, the input's onChange writes to the inputBuffer via `setInputBuffer`. The pill reads inputBuffer. So the pill DOES show the buffer in real time even when typing in the bar. Cross-surface mirror works. ✓
 - **C2.4 — Pill at bar focus.** When user focuses the bar input, focus transitions to 'bar'. The pill renders if buffer/accumulator/prompt non-empty AND `dynamicInput === true` AND cursor is on canvas. If cursor leaves the canvas (which happens when user moves to focus the bar), `overlay.cursor` is set to null by canvas-host's mouseLeave (need to verify) — pill returns null. Actually checking: canvas-host's mousemove-leave behavior... this needs the implementation to verify. If `cursor` stays non-null after pointer leaves, the pill might render at a stale position. Mitigation: pill explicitly checks `if (!cursor) return null;` (already in step 10). For users who just type without ever moving the cursor on canvas first, `cursor === null` → pill hidden. They use the bottom command line in that case. Acceptable.
 - **C2.5 — `setInputBuffer` is the ONLY mutator for buffer.** Currently the bottom command line input uses `setInputBuffer` via onChange, AND now the keyboard router uses it for numeric capture. Two writers. Order matters: which writes "win" if both fire on the same tick? In practice they don't fire concurrently — focus is either canvas or bar, not both. Single-writer-at-a-time invariant via focus exclusivity. ✓
-- **C2.6 — Backspace at canvas focus when buffer is empty.** Step 6 says "fall through". That means the keyboard router doesn't preventDefault, and the browser's default Backspace behavior fires — which on most pages is "go back in history". On a canvas-focused page, Backspace usually does nothing (no input element to delete from). Verify: jsdom doesn't implement go-back; production browsers might. Acceptable: the user can configure browser shortcuts; we don't actively suppress Backspace because that's annoying. Defensive: the router's existing pattern is to only preventDefault when we ACTIVELY handle a key. ✓
-- **C2.7 — Pill and command line history append.** When Enter at canvas focus submits the buffer via `onSubmitBuffer`, EditorRoot calls `handleCommandSubmit(raw)`. Looking at the current `handleCommandSubmit` — it does NOT append to history (history append is in CommandBar.tsx's onSubmit wrapper). So the pill submit path bypasses history append. Need to fix: either add history append to `handleCommandSubmit` itself, or to the new `onSubmitBuffer` impl in EditorRoot. Cleaner: add to `onSubmitBuffer` impl with the same history append shape as CommandBar.tsx (`editorUiActions.appendHistory({ role: 'input', text: raw, timestamp: ... })`). **Action: update step 8 to include this.**
+- **C2.6 — Backspace at canvas focus when buffer is empty.** *(Rev-0 analysis — superseded by Rev-1 H2 fix.)* Original Rev-0 conclusion was "fall through" (no preventDefault) on the assumption that production browsers no longer navigate back on Backspace. Codex Round-1 H2 flagged this as a footgun: even though modern browsers don't, older configs / extensions / non-standard pages can. **Superseded:** Step 6 now mandates `preventDefault` ALWAYS at canvas focus regardless of buffer state. The empty-buffer no-op is benign; the preventDefault forecloses any browser default. Tests in §4.1 cover both empty and non-empty cases.
+- **C2.7 — Pill and command line history append.** *(Rev-0 analysis — Rev-1 B1 acted on this.)* The pill submit path via `onSubmitBuffer` would have bypassed history append (which lives in CommandBar.tsx's onSubmit wrapper, not in `handleCommandSubmit`). **Acted on:** Step 8's `onSubmitBuffer` impl now explicitly calls `editorUiActions.appendHistory({...})` BEFORE delegating to `handleCommandSubmit`. New Gate REM4-G2g enforces the call site. §9 risk row corrected accordingly.
 - **C2.8 — Test count math.** Net-new estimate ≈ 23 (G1 router ×6 + G2 router ×5 + ui-state ×2 + DynamicInputPill ×6 + smoke ×2 = ~21; conservative ≥460 = baseline 437 + 23). Migrated existing tests stay in the count (they're not new, they're updates). ✓
 
 ### Round 3 — Blast Radius (what could break elsewhere?)
@@ -448,6 +484,35 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
 - **C3.6 — F12 toggle: did anything depend on `dynamicInput` being unwired?** Searching… no — `toggles.dynamicInput` is set/read but no rendering branch consumed it. Wiring it as the pill visibility gate is purely additive. F12 was already a user-facing toggle (M1.3a).
 - **C3.7 — Click-eat in EditorRoot: does it break the existing 'grip stretch updates primitive' smoke scenario?** That scenario fires mousedown on a grip with NO active tool AND empty buffer. The new guard is `inputBuffer.length > 0` → return. Empty buffer → guard passes through → existing path (start grip-stretch). Unchanged behavior for empty buffer. ✓
 - **C3.8 — Click-eat and the F5 smoke scenario `'grip click during running tool feeds point'`.** That scenario activates MOVE (via 'M' keyDown), clicks base point, etc. Under G1 + G2, the M activation now requires Enter — test must add `fireEvent.keyDown(window, {key: 'Enter'})` after the M. Then base-point click — buffer is empty, click passes through. Then second click on a grip — same. No regression beyond the test migration. ✓
+
+### Revision-1 audit (per §1.16 step 13 — three-round pass on the Rev-1 changes)
+
+Per Procedure 01 §1.16 step 13, every revision re-runs §1.3. The five Codex Round-1 fixes (B1 + 2 High-risk + 2 Quality + 1 Q3 footnote) are each small but interact with the existing plan text; this section is the real adversarial pass on the *revised* sections.
+
+**Round 1 — Chief Architect on the Rev-1 changes:**
+
+- **R1-C1 — B1 history append parity: where should the append actually live?** Three candidates: (a) inside `handleCommandSubmit` (called by both bar form and pill submit), (b) inside `onSubmitBuffer` only (mirroring CommandBar.tsx's existing wrapper), (c) factored into a shared `submitInput(raw)` helper. Decision: (b) — match the existing CommandBar.tsx pattern. Reasons: (1) CommandBar.tsx already has the wrapper; moving append into `handleCommandSubmit` would force removing it from CommandBar.tsx (more diff), (2) two writers of the same shape on different events is acceptable under SSOT (the slice's `commandBar.history` array is the sole storage; both writers produce the same shape), (3) the (c) helper would require its own location decision and adds a function for a 3-line concern. (b) is the minimum-diff fix.
+- **R1-C2 — H1 precedence policy (inputBuffer-first): is this the AC-correct choice?** AC's actual behavior is hard to test for this edge case (typing a number into the dynamic input pill, then pressing a letter, then Enter). My read: AC clears the inputBuffer when a letter starts a new command (avoiding the both-non-empty state). My A10b documents that the router enforces stream separation by default, and the both-non-empty case is degenerate. Locking inputBuffer-first is a minor-diff safety net — the user's last-typed value is preserved on the rare occasion the state occurs.
+- **R1-C3 — H2 Backspace preventDefault always: does this break any user flow?** Backspace is unused at canvas focus today (the router doesn't intercept it). Adding a preventDefault is purely additive — suppresses any browser default that might fire (some old browsers navigated back). No flow that depended on Backspace doing nothing is affected; no flow that depended on browser default exists either.
+- **R1-C4 — Gate REM4-G1b regex tightening: does the new pattern cover both `function` and `const` declarations?** Yes: `(function |const )(clearAccumulator|flushAccumulatorAndActivate)` matches `function clearAccumulator(...)`, `const clearAccumulator = ...`, `function flushAccumulatorAndActivate(...)`, `const flushAccumulatorAndActivate = ...`. ≥2 expected.
+- **R1-C5 — Gate REM4-G2b split into two: do both gates cover the actual implementation?** (a) digit-class regex pattern — implementer must use a regex like `/^[0-9.,\-]/` or `/^[\d.,\-]/` to match the captured key set. The gate searches for `^[0-9.,-]` literally; if implementer uses `\d` instead of `0-9`, the gate fails. Adjust prose to allow both forms, OR make the implementer use the explicit form. Decision: state in the gate prose that `0-9` and `\d` are both acceptable; gate (a) becomes `rg -n "\[0-9|\\\\d\]" router.ts` — actually that's awkward. Simpler: pick one form and require it. Going with `0-9` form for explicit-readability; implementer matches the gate. (b) multiline grep ensures the call sits in a key-handler scope.
+
+**Round 2 — Sceptical reader on the Rev-1 changes:**
+
+- **R2-C1 — B1 fix: is `appendHistory` in `onSubmitBuffer` the only place needing this?** Verified: bar form's onSubmit wrapper in CommandBar.tsx already appends. Pill submit via `onSubmitBuffer` is a separate event path; explicit append there gives parity. No third path exists (canvas-focus Enter without buffer goes to `onCommitCurrentTool` which feeds `'commit'` not raw input — no history entry needed for that flow because it's not "user typed something to submit").
+- **R2-C2 — H1 fix: degenerate state (both buffers non-empty + no tool active).** My Step 3 branch (3) handles this: clear inputBuffer silently. Step 4 has the same branch (3). Test covers branch (1) (inputBuffer-first when tool active). What about branch (3)? Add an additional test: `'Enter at canvas focus + inputBuffer non-empty + no tool active → buffer cleared silently'`. (Decision: add to §4.1's test list.)
+- **R2-C3 — H2 fix: Backspace test asserting preventDefault.** Test approach: dispatch a KeyboardEvent on window with `cancelable: true`, then check `evt.defaultPrevented === true` after dispatch. The router's `e.preventDefault()` call should set this. Standard jsdom-compatible assertion.
+- **R2-C4 — Q1 fix: gate command quoting.** The regex `(function |const )(clearAccumulator|flushAccumulatorAndActivate)` contains parentheses. ripgrep treats them as regex grouping by default; this is intended. Gate command runs without escaping — matches both forms. ✓
+- **R2-C5 — Q2 fix gate (a) regex specificity.** `rg -n "/\^\[0-9\.,\-\]" router.ts` — the gate looks for a regex literal beginning with `/^[0-9.,-]`. The implementer is expected to use this exact form in the test for "is this a numeric/punct key". If they use `[\d.,\-]` instead, the gate fails. Decision: prescribe `0-9` form in the implementation prose (Step 6 already uses "digits 0-9, ., -, ,"); add a parenthetical to Step 6 noting the regex should be the explicit `[0-9.,-]` form so Gate REM4-G2b(a) passes. Alternatively: leave gate (a) flexible with `rg -n "0-9.*setInputBuffer|\\\\d.*setInputBuffer" router.ts`. Going with the explicit prescription — cleaner gate.
+
+**Round 3 — Blast radius of the Rev-1 changes:**
+
+- **R3-C1 — B1 fix downstream.** `onSubmitBuffer` becomes the second writer to `commandBar.history`. Existing readers (CommandHistoryList in CommandBar.tsx) read the slice; they don't care which event fired the write. No regression.
+- **R3-C2 — H1 fix downstream.** Step 3 + 4 branch ordering change is internal to router.ts. No other consumer depends on the ordering. The new `'both buffers non-empty: Enter prefers inputBuffer over accumulator'` test exercises the new path; existing tests don't conflict.
+- **R3-C3 — H2 fix downstream.** Backspace preventDefault is additive — no existing flow consumes Backspace at canvas focus.
+- **R3-C4 — Q1 / Q2 / Q3 gate text changes downstream.** These are gate definitions; they don't affect implementation. Tighter gates would FAIL at execution time if the implementer drifts from the prescription — that's the desired behavior (drift caught early).
+
+**Verdict on Revision-1:** All five Codex findings addressed in plan text + gates. New tests enumerated for H1 + H2. Section-consistency pass below. Ready for Codex Round-2 review.
 
 ## 11. Test strategy
 
@@ -490,9 +555,11 @@ Per parent plans' §1 lesson (real adversarial pass, not a tabulated stand-in).
 
 (Footer convention per Round-1 Rev-5 lesson: revision-history table at the top of this file is the SSOT for the hash chain; the footer points at the table rather than inlining self-referential hashes.)
 
+**Architecture authority note (Rev-1 Q3):** there is no root-level `architecture.md` in this repository. The architecture authority is split across `docs/procedures/Codex/00-architecture-contract.md` (Codex's binding contract) + `docs/procedures/Claude/00-architecture-contract.md` (Claude's mirror) + the ADR set under `docs/adr/` (specifically ADR-023 "Tool state machine and command bar" for this round's surface). Reviewers searching for a single architecture doc will not find one; treat the contract + ADR set as the authoritative pair. This note is here so future review rounds don't re-flag the absence.
+
 **Plan:** `docs/plans/feature/m1-3d-drafting-polish-remediation-4.md`
 **Branch:** `feature/m1-3d-drafting-polish` (atop `63380bb`)
-**Status:** Plan authored — awaiting Codex Round-1 review
+**Status:** Plan Revision-1 — Codex Round-1 fixes applied; awaiting Codex Round-2 review
 
 ### Paste to Codex for plan review
 > Review this plan using `docs/procedures/Codex/02-plan-review.md`
