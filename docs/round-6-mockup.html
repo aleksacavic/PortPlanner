@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Round 6 — Dynamic Input mockup (Rectangle + Line)</title>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --panel-bg: #111;
+      --panel-border: #2a2a2a;
+      --grid: #1a1a1a;
+      --geom: #cfd2d6;          /* rubber-band stroke */
+      --crosshair: #cfd2d6;
+      --pill-bg: #2870ed;       /* AC accent blue */
+      --pill-bg-dim: rgba(40, 112, 237, 0.55);
+      --pill-fg: #fff;
+      --pill-focus: #ffe066;    /* focused pill glow */
+      --witness: #6a8db8;       /* AC light blue for dim lines */
+      --annot: #f0a040;
+      --polar: #4a4a4a;
+    }
+    body {
+      background: var(--bg);
+      color: #eee;
+      font-family: ui-monospace, monospace;
+      padding: 24px;
+      margin: 0;
+    }
+    h1 { font-family: system-ui, sans-serif; margin: 0 0 8px; font-size: 18px; }
+    p.lede { font-family: system-ui, sans-serif; color: #aaa; max-width: 900px; margin: 0 0 24px; font-size: 13px; line-height: 1.5; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      max-width: 1400px;
+    }
+    .demo {
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .demo h2 {
+      margin: 0;
+      padding: 10px 16px;
+      font-family: system-ui, sans-serif;
+      font-size: 13px;
+      font-weight: 600;
+      background: #181818;
+      border-bottom: 1px solid var(--panel-border);
+    }
+    .demo h2 .tag {
+      display: inline-block;
+      background: #333;
+      color: #ccc;
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    .canvas {
+      background: var(--bg);
+      height: 360px;
+      position: relative;
+      overflow: hidden;
+    }
+    .canvas svg { display: block; width: 100%; height: 100%; }
+    .pill {
+      position: absolute;
+      background: var(--pill-bg);
+      color: var(--pill-fg);
+      padding: 3px 9px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      white-space: nowrap;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      letter-spacing: 0.02em;
+    }
+    .pill.dimmed {
+      background: var(--pill-bg-dim);
+      color: rgba(255, 255, 255, 0.85);
+    }
+    .pill.focused {
+      box-shadow: 0 0 0 2px var(--pill-focus);
+    }
+    .pill .label {
+      opacity: 0.75;
+      margin-right: 4px;
+      font-size: 10px;
+    }
+    .pill .caret {
+      display: inline-block;
+      width: 1px;
+      height: 12px;
+      background: white;
+      vertical-align: middle;
+      margin-left: 1px;
+      animation: caret 1s step-end infinite;
+    }
+    @keyframes caret {
+      50% { opacity: 0; }
+    }
+    .annot {
+      position: absolute;
+      color: var(--annot);
+      font-size: 10px;
+      font-family: system-ui, sans-serif;
+      font-style: italic;
+      pointer-events: none;
+      max-width: 200px;
+      line-height: 1.3;
+    }
+    .annot::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 1px;
+      background: var(--annot);
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    footer {
+      margin-top: 32px;
+      padding: 16px 0;
+      font-family: system-ui, sans-serif;
+      color: #888;
+      font-size: 12px;
+      max-width: 900px;
+      line-height: 1.5;
+    }
+    footer code { background: #222; padding: 1px 5px; border-radius: 3px; color: #ddd; }
+    .legend {
+      display: inline-flex;
+      gap: 16px;
+      margin-bottom: 16px;
+      font-size: 11px;
+      color: #aaa;
+      font-family: system-ui, sans-serif;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .legend .swatch { width: 12px; height: 12px; border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <h1>Round 6 — Dynamic Input pill mockup</h1>
+  <p class="lede">
+    Two options for how multi-field input feels in M1.3 onward. Each demo shows the canvas state during an
+    active prompt: rubber-band geometry already drawn, awaiting the user to type values OR click the cursor
+    position. <strong>Yellow glow</strong> = focused pill (Tab cycles focus). Pills carry the values the user is editing.
+    Hover annotations explain the elements.
+  </p>
+  <div class="legend">
+    <span><span class="swatch" style="background: var(--geom)"></span>rubber-band geometry</span>
+    <span><span class="swatch" style="background: var(--witness)"></span>dimension / witness line</span>
+    <span><span class="swatch" style="background: var(--pill-bg)"></span>active pill</span>
+    <span><span class="swatch" style="background: var(--pill-focus); border: 1px solid #aaa"></span>Tab focus</span>
+  </div>
+
+  <div class="grid">
+
+    <!-- ============ RECTANGLE — MINIMAL ============ -->
+    <div class="demo">
+      <h2>Rectangle — minimal <span class="tag">2 pills · no dim lines</span></h2>
+      <div class="canvas">
+        <svg viewBox="0 0 600 360">
+          <!-- subtle grid -->
+          <pattern id="g1" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="0.6" fill="#1f1f1f" />
+          </pattern>
+          <rect width="600" height="360" fill="url(#g1)" />
+
+          <!-- first-corner anchor marker -->
+          <rect x="96" y="76" width="8" height="8" fill="none" stroke="#888" stroke-width="1" />
+
+          <!-- rubber-band rectangle -->
+          <rect x="100" y="80" width="280" height="180"
+                fill="none" stroke="#cfd2d6" stroke-width="1"
+                stroke-dasharray="4 3" />
+
+          <!-- second-corner crosshair (cursor position) -->
+          <line x1="370" y1="260" x2="390" y2="260" stroke="#cfd2d6" stroke-width="1" />
+          <line x1="380" y1="250" x2="380" y2="270" stroke="#cfd2d6" stroke-width="1" />
+        </svg>
+
+        <!-- W pill: centered below bottom edge, 28px below midpoint -->
+        <div class="pill focused" style="left: 240px; top: 296px;">
+          <span class="label">W:</span>6.7505<span class="caret"></span>
+        </div>
+        <!-- H pill: centered right of right edge, 28px right -->
+        <div class="pill dimmed" style="left: 410px; top: 170px;">
+          <span class="label">H:</span>4.0152
+        </div>
+
+        <!-- annotations -->
+        <div class="annot" style="left: 168px; top: 322px; max-width: 160px;">
+          W pill anchored at midpoint of bottom edge + screen-offset
+        </div>
+        <div class="annot" style="left: 432px; top: 196px; max-width: 140px;">
+          H pill anchored at midpoint of right edge + screen-offset
+        </div>
+        <div class="annot" style="left: 12px; top: 8px;">
+          rubber-band rectangle (existing live preview)
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ RECTANGLE — FULL ============ -->
+    <div class="demo">
+      <h2>Rectangle — full AC fidelity <span class="tag">+ witness + dim lines</span></h2>
+      <div class="canvas">
+        <svg viewBox="0 0 600 360">
+          <pattern id="g2" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="0.6" fill="#1f1f1f" />
+          </pattern>
+          <rect width="600" height="360" fill="url(#g2)" />
+
+          <rect x="96" y="76" width="8" height="8" fill="none" stroke="#888" stroke-width="1" />
+
+          <!-- rubber-band rectangle -->
+          <rect x="100" y="80" width="280" height="180"
+                fill="none" stroke="#cfd2d6" stroke-width="1"
+                stroke-dasharray="4 3" />
+
+          <!-- crosshair -->
+          <line x1="370" y1="260" x2="390" y2="260" stroke="#cfd2d6" stroke-width="1" />
+          <line x1="380" y1="250" x2="380" y2="270" stroke="#cfd2d6" stroke-width="1" />
+
+          <!-- WIDTH dimension: witness lines from corners going DOWN, dim line + arrow ticks -->
+          <!-- left witness -->
+          <line x1="100" y1="262" x2="100" y2="298" stroke="#6a8db8" stroke-width="1" />
+          <!-- right witness -->
+          <line x1="380" y1="262" x2="380" y2="298" stroke="#6a8db8" stroke-width="1" />
+          <!-- dim line -->
+          <line x1="100" y1="295" x2="380" y2="295" stroke="#6a8db8" stroke-width="1" />
+          <!-- arrow ticks (small inward triangles) -->
+          <polygon points="100,295 106,292 106,298" fill="#6a8db8" />
+          <polygon points="380,295 374,292 374,298" fill="#6a8db8" />
+
+          <!-- HEIGHT dimension: witness from right corners going RIGHT, dim line vertical -->
+          <line x1="382" y1="80" x2="418" y2="80" stroke="#6a8db8" stroke-width="1" />
+          <line x1="382" y1="260" x2="418" y2="260" stroke="#6a8db8" stroke-width="1" />
+          <line x1="415" y1="80" x2="415" y2="260" stroke="#6a8db8" stroke-width="1" />
+          <polygon points="415,80 412,86 418,86" fill="#6a8db8" />
+          <polygon points="415,260 412,254 418,254" fill="#6a8db8" />
+        </svg>
+
+        <!-- W pill ON the dim line midpoint -->
+        <div class="pill focused" style="left: 240px; top: 295px;">
+          <span class="label">W:</span>6.7505<span class="caret"></span>
+        </div>
+        <!-- H pill ON the dim line midpoint -->
+        <div class="pill dimmed" style="left: 415px; top: 170px;">
+          <span class="label">H:</span>4.0152
+        </div>
+
+        <div class="annot" style="left: 12px; top: 304px; max-width: 80px;">
+          witness lines from corners
+        </div>
+        <div class="annot" style="left: 460px; top: 86px; max-width: 130px;">
+          dim line + ticks; pill anchored at midpoint
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LINE — MINIMAL ============ -->
+    <div class="demo">
+      <h2>Line — minimal <span class="tag">distance + angle pills</span></h2>
+      <div class="canvas">
+        <svg viewBox="0 0 600 360">
+          <pattern id="g3" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="0.6" fill="#1f1f1f" />
+          </pattern>
+          <rect width="600" height="360" fill="url(#g3)" />
+
+          <!-- p1 marker -->
+          <rect x="76" y="246" width="8" height="8" fill="none" stroke="#888" stroke-width="1" />
+
+          <!-- rubber-band line -->
+          <line x1="80" y1="250" x2="430" y2="100"
+                stroke="#cfd2d6" stroke-width="1" stroke-dasharray="4 3" />
+
+          <!-- crosshair at cursor -->
+          <line x1="420" y1="100" x2="440" y2="100" stroke="#cfd2d6" stroke-width="1" />
+          <line x1="430" y1="90" x2="430" y2="110" stroke="#cfd2d6" stroke-width="1" />
+        </svg>
+
+        <!-- distance pill on midpoint of line, offset perpendicular (above/left of line) -->
+        <div class="pill focused" style="left: 222px; top: 152px;">
+          <span class="label">distance:</span>5.234<span class="caret"></span>
+        </div>
+        <!-- angle pill near cursor, slightly upper-right -->
+        <div class="pill dimmed" style="left: 470px; top: 80px;">
+          <span class="label">angle:</span>34°
+        </div>
+
+        <div class="annot" style="left: 12px; top: 8px;">
+          rubber-band line (existing)
+        </div>
+        <div class="annot" style="left: 280px; top: 178px; max-width: 140px;">
+          distance pill anchored at line midpoint + perpendicular offset
+        </div>
+        <div class="annot" style="left: 432px; top: 50px; max-width: 130px;">
+          angle pill anchored at cursor + screen-offset
+        </div>
+      </div>
+    </div>
+
+    <!-- ============ LINE — FULL ============ -->
+    <div class="demo">
+      <h2>Line — full AC fidelity <span class="tag">+ angle arc</span></h2>
+      <div class="canvas">
+        <svg viewBox="0 0 600 360">
+          <pattern id="g4" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="0.6" fill="#1f1f1f" />
+          </pattern>
+          <rect width="600" height="360" fill="url(#g4)" />
+
+          <rect x="76" y="246" width="8" height="8" fill="none" stroke="#888" stroke-width="1" />
+
+          <!-- polar reference (faint horizontal from p1) -->
+          <line x1="80" y1="250" x2="180" y2="250"
+                stroke="#4a4a4a" stroke-width="1" stroke-dasharray="2 3" />
+
+          <!-- rubber-band line -->
+          <line x1="80" y1="250" x2="430" y2="100"
+                stroke="#cfd2d6" stroke-width="1" stroke-dasharray="4 3" />
+
+          <!-- angle arc near p1 (radius 50, from 0deg horizontal to ~23deg above horizontal in screen coords = ~-23deg metric) -->
+          <path d="M 130 250 A 50 50 0 0 0 126 230"
+                fill="none" stroke="#6a8db8" stroke-width="1" />
+
+          <!-- distance dim ticks at endpoints (small perpendicular ticks on the line) -->
+          <!-- Line direction is (350, -150); unit ≈ (0.92, -0.39); perp ≈ (0.39, 0.92). 6px tick each side -->
+          <line x1="78" y1="247" x2="82" y2="253" stroke="#6a8db8" stroke-width="1" />
+          <line x1="428" y1="97" x2="432" y2="103" stroke="#6a8db8" stroke-width="1" />
+
+          <!-- crosshair -->
+          <line x1="420" y1="100" x2="440" y2="100" stroke="#cfd2d6" stroke-width="1" />
+          <line x1="430" y1="90" x2="430" y2="110" stroke="#cfd2d6" stroke-width="1" />
+        </svg>
+
+        <!-- distance pill ON the line midpoint -->
+        <div class="pill focused" style="left: 255px; top: 175px;">
+          <span class="label">distance:</span>5.234<span class="caret"></span>
+        </div>
+        <!-- angle pill on the arc midpoint (~radius 60, ~halfway through arc) -->
+        <div class="pill dimmed" style="left: 168px; top: 230px;">
+          <span class="label">angle:</span>34°
+        </div>
+
+        <div class="annot" style="left: 12px; top: 268px; max-width: 80px;">
+          polar reference (horizontal from p1)
+        </div>
+        <div class="annot" style="left: 200px; top: 214px; max-width: 130px;">
+          angle arc + pill anchored at arc midpoint
+        </div>
+        <div class="annot" style="left: 320px; top: 198px; max-width: 130px;">
+          distance pill anchored at line midpoint
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <strong>How to read this:</strong> the focused pill (yellow glow) is where typed digits go.
+    <code>Tab</code> cycles focus to the next pill; type → cursor caret advances; <code>Enter</code> commits all
+    fields atomically.
+    <br><br>
+    <strong>Both options share:</strong> multi-field input, Tab cycling, per-field labels, anchored at meaningful geometric points,
+    pills stay constant size as you zoom (chrome layer).
+    <br><br>
+    <strong>Full adds:</strong> witness lines (from corners to dim line), the dim line itself with arrow ticks,
+    the angle arc + polar reference. These are painted on the canvas overlay (metric-anchored,
+    line strokes constant px), giving the AC-style measured-dimension feel. About 30-40% more implementation work.
+    <br><br>
+    Open this file in your browser. To preview at the right scale on your dev server, drop into
+    <code>apps/web/public/round-6-mockup.html</code> and visit <code>http://localhost:7000/round-6-mockup.html</code>.
+  </footer>
+</body>
+</html>
