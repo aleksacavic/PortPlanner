@@ -47,6 +47,7 @@ All files in `docs/adr/` are binding.
 | 020 | Project Sync and Offline Model v2 | `docs/adr/020-project-sync.md` |
 | 021 | 2D Rendering Pipeline v2 | `docs/adr/021-2d-rendering-pipeline.md` |
 | 023 | Tool State Machine and Command Bar (v2) | `docs/adr/023-tool-state-machine-and-command-bar.md` |
+| 024 | Dynamic Input Manifest | `docs/adr/024-dynamic-input-manifest.md` |
 
 > Previously bound ADRs 002, 010, 013, and 022 have been superseded by
 > ADR-019, ADR-020, ADR-021, and ADR-023 respectively (latest

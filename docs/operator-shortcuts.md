@@ -1,8 +1,8 @@
 # Operator Shortcut Registry
 
-**Version:** 2.0.0
-**Date:** 2026-04-28
-**Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
+**Version:** 2.1.0
+**Date:** 2026-04-29
+**Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`); extended by ADR-024 (`docs/adr/024-dynamic-input-manifest.md`) for the multi-field Dynamic Input behaviour described under §M1.3 below.
 
 This registry is the going-forward source of truth for keyboard
 shortcuts in PortPlanner. It is edited in place with a version bump
@@ -49,6 +49,8 @@ is the snapshot at supersession; this file is the active registry.
 | `F9` | GSNAP toggle | |
 | `F12` | Dynamic Input / command bar toggle | |
 | `F7` | toggle-crosshair | Toggle crosshair size between full-canvas and pickbox preset (M1.3d) |
+| `Tab` | DI cycle next field | Canvas / bar focus when DI manifest active (`commandBar.dynamicInput !== null`) AND `manifest.fields.length > 1`. Cycles `activeFieldIdx` modulo field count. Pass-through to native browser behaviour when no DI is active OR single-field manifest (preserves keyboard accessibility for chrome regions). M1.3 Round 6. |
+| `Shift+Tab` | DI cycle previous field | Same context as Tab; cycles `activeFieldIdx` backward. M1.3 Round 6. |
 | `PT` | Point (draw) | M1.3a primitive |
 | `L` | Line (draw) | M1.3a primitive |
 | `PL` | Polyline (draw) | M1.3a primitive (bulges deferred to M1.3c) |
@@ -132,6 +134,7 @@ until the user commits with Enter or aborts with Esc).
 
 | Version | Date | Change |
 |---|---|---|
+| 2.1.0 | 2026-04-29 | Add `Tab` / `Shift+Tab` → DI cycle next/previous field (canvas / bar focus when `commandBar.dynamicInput.manifest !== null` AND `manifest.fields.length > 1`; pass-through otherwise to preserve keyboard accessibility for chrome regions). M1.3 Round 6 multi-field Dynamic Input — see ADR-024 for the manifest contract. **Minor bump** per registry governance ("Adding a new shortcut: minor version bump"). |
 | 2.0.0 | 2026-04-28 | Letter accumulator behavior change: 750 ms idle stale-clear removed; accumulator persists indefinitely until Enter, Space, or Escape (true AC parity). M1.3d-Remediation-5 H2. **Major bump** per registry governance ("Changing an existing shortcut behaviour: major version bump") — first MAJOR application of the rule. The earlier `1.2.0 → 1.2.1` patch proposal was rejected by Codex Round-1 review as governance-non-compliant. |
 | 1.2.0 | 2026-04-27 | AC-mode letter activation (Enter or Space required; Escape clears; 750 ms silent stale-clear). Dynamic Input pill at the cursor (numeric / punctuation routes into `inputBuffer`; F12 toggles visibility; Enter submits buffer through the same path as the bottom command line; click eaten while buffer non-empty). M1.3d-Remediation-4 G1 + G2. Behavior change; minor bump per registry governance. |
 | 1.1.0 | 2026-04-27 | Add `Space` → repeat-last-command (canvas focus only; commits in-flight tool when one is active, else re-invokes most recently completed user-tool). M1.3d-Remediation-3 F6. **Note:** version corrected from initially-applied 1.0.2 (patch) to 1.1.0 (minor) per the registry's "adding a new shortcut → minor bump" governance rule (above §Governance). Codex post-commit Round-1 quality cleanup. |
