@@ -37,6 +37,16 @@ const WITNESS_ENDCAP_CSS = 4;
 // Polar reference baseline: default fallback length when the
 // angle-arc guide doesn't carry an explicit polarRefLengthMetric.
 const POLAR_REF_DEFAULT_CSS = 100;
+// Minimum polar baseline length (CSS-px) regardless of zoom. The
+// guide may pass a metric value (e.g. abs(cursor.x - pivot.x)) that
+// at low zoom maps to only a few device pixels — clamp upward so the
+// baseline is always visually substantial. AC parity (the polar
+// guide is a CSS-screen visual cue, not a metric measurement).
+const POLAR_REF_MIN_CSS = 100;
+// Minimum polar baseline length CAP — prevents extreme zoom-in cases
+// from drawing a baseline that overshoots the canvas. 400 CSS-px is
+// substantial enough to be readable on any reasonable canvas.
+const POLAR_REF_MAX_CSS = 400;
 // Dash pattern for witness + dim lines (AC dotted look).
 const DASHED_PATTERN_CSS: [number, number] = [2, 3];
 
@@ -277,14 +287,22 @@ function paintAngleArc(
   const endAngleRad = baseAngleRad + sweepAngleRad;
   const counterclockwise = sweepAngleRad < 0;
 
-  // Polar reference baseline. When the tool supplies polarRefLengthMetric
-  // (e.g. abs(cursor.x - p1.x) so the baseline visually spans toward
-  // the line end), use that. Otherwise fall back to the fixed CSS-px
-  // default. Drawn DOTTED matching AC's "0° guide" look.
-  const polarRefLenMetric =
+  // Polar reference baseline length resolution:
+  //   1. Tool-supplied metric value (e.g. abs(cursor.x - p1.x)) maps
+  //      naturally to "spans the horizontal projection of the line"
+  //      at HIGH zoom — but at LOW zoom that metric distance maps to
+  //      only a few CSS-px and the baseline becomes invisible.
+  //   2. Clamp to [POLAR_REF_MIN_CSS, POLAR_REF_MAX_CSS] in CSS pixels
+  //      so the baseline is always visually substantial regardless of
+  //      zoom. AC's polar baseline is fundamentally a CHROME visual
+  //      cue, not a metric measurement.
+  const requestedMetric =
     polarRefLengthMetric !== undefined && polarRefLengthMetric > 0
       ? polarRefLengthMetric
       : POLAR_REF_DEFAULT_CSS / metricToPx;
+  const requestedCss = requestedMetric * metricToPx;
+  const clampedCss = Math.max(POLAR_REF_MIN_CSS, Math.min(POLAR_REF_MAX_CSS, requestedCss));
+  const polarRefLenMetric = clampedCss / metricToPx;
   const polarEndX = pivot.x + Math.cos(baseAngleRad) * polarRefLenMetric;
   const polarEndY = pivot.y + Math.sin(baseAngleRad) * polarRefLenMetric;
   ctx.save();
