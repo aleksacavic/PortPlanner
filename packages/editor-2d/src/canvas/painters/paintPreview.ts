@@ -52,14 +52,17 @@ export function paintPreview(
   if (shape.kind === 'selection-rect') return;
 
   const transient = tokens.canvas.transient;
-  const dash = parseDashPattern(transient.preview_dash);
   const lineWidthMetric = STROKE_WIDTH_CSS / (viewport.zoom * viewport.dpr);
 
   ctx.save();
   ctx.strokeStyle = transient.preview_stroke;
   ctx.fillStyle = transient.preview_fill;
   ctx.lineWidth = lineWidthMetric;
-  ctx.setLineDash(dash.map((n) => n / (viewport.zoom * viewport.dpr)));
+  // M1.3 Round 6 visual contract — rubber-band preview is SOLID (per
+  // AC behaviour; supersedes the prior dashed look from
+  // canvas.transient.preview_dash). Dimension guides + witness lines
+  // are the dashed elements (paintDimensionGuides handles those).
+  ctx.setLineDash([]);
 
   switch (shape.kind) {
     case 'line':
@@ -396,15 +399,6 @@ function drawXlinePreview(
   ctx.moveTo(x1, y1);
   ctx.lineTo(x2, y2);
   ctx.stroke();
-}
-
-function parseDashPattern(token: string): number[] {
-  const trimmed = token.trim();
-  if (trimmed === '' || trimmed === 'solid') return [];
-  return trimmed
-    .split(/\s+/)
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n));
 }
 
 function circumcircle(

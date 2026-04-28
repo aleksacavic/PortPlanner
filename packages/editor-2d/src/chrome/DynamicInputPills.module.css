@@ -4,44 +4,47 @@
    the active-field glow ring; .pillCaret renders the animated text
    caret on the focused field. pointer-events none so canvas clicks
    pass through. */
+/* M1.3 Round 6 — Dynamic Input pill chrome.
+   AC-style: SUBTLE neutral background (gray for unfocused, slight blue
+   tint for focused), NO border-radius, no rounded corners. The pill is
+   a low-key value chip, not a vivid badge — the user reading the value
+   should focus on the digit, not on the pill chrome.
+   Local-only styles; no shared design tokens (per user instruction —
+   tokens are reserved for shared UI surfaces). */
 .pill {
   position: absolute;
   top: 0;
   left: 0;
   pointer-events: none;
-  background: var(--surface-overlay, rgba(17, 17, 17, 0.92));
-  color: var(--text-primary, #eee);
+  background: rgba(64, 70, 78, 0.92); /* AC-neutral gray, opaque-ish */
+  color: #f0f0f0;
   font-family: ui-monospace, monospace;
   font-size: 12px;
-  padding: 2px 8px;
-  border: 1px dotted var(--surface-border, #555);
-  border-radius: 4px;
+  padding: 2px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 0;
   white-space: nowrap;
   z-index: 10;
 }
 /* Multi-pill DI mode: pill is centered on the dim-line midpoint via
-   the 50%/50% offset. Inline tx in the React component is the screen
-   position of the anchor; the CSS translate(-50%, -50%) centers the
-   pill rectangle on that point. AC parity per docs/round-6-mockup.html. */
+   the 50%/50% offset. */
 .pillCentered {
   transform: translate(-50%, -50%);
 }
-/* AC accent blue background for the FOCUSED multi-pill (matches mockup
-   --pill-bg #2870ed). Fallback single-pill keeps the dotted-border
-   look from M1.3d-Rem-4 G2. */
+/* FOCUSED multi-pill — subtle blue tint over the neutral gray; NOT
+   the vivid #2870ed from the mockup. AC accent is a low-saturation
+   slate-blue suggesting "active field" without dominating the canvas. */
 .pillFocused {
-  background: #2870ed;
-  color: #fff;
-  border-style: solid;
-  border-color: rgba(255, 255, 255, 0.2);
-}
-/* DIMMED: the non-focused multi-pill — same bg as focused but at
-   lower opacity (matches mockup --pill-bg-dim 55%). */
-.pillDimmed {
-  background: rgba(40, 112, 237, 0.55);
-  color: #fff;
-  border-style: solid;
+  background: rgba(48, 84, 132, 0.92);
+  color: #ffffff;
   border-color: rgba(255, 255, 255, 0.15);
+}
+/* DIMMED: the non-focused multi-pill — slightly lower-contrast neutral
+   gray. Visually de-emphasizes against the focused pill. */
+.pillDimmed {
+  background: rgba(64, 70, 78, 0.85);
+  color: #c8c8c8;
+  border-color: rgba(255, 255, 255, 0.06);
 }
 .pillCaret {
   display: inline-block;

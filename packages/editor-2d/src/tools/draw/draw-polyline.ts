@@ -62,15 +62,22 @@ export async function* drawPolylineTool(): ToolGenerator {
       // per cursor-tick. Per-loop yield resets buffers (Rev-1 R2-A5).
       dynamicInput: POLYLINE_DI_MANIFEST,
       dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-        // Same shape as draw-line: full-witness distance (18px offset)
-        // + 80px angle arc at last committed vertex.
-        { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: 18 },
+        // Same shape as draw-line: both-side witness tube + 120px arc
+        // + line-length-proportional polar reference baseline.
+        {
+          kind: 'linear-dim',
+          anchorA: lastVertex,
+          anchorB: cursor,
+          offsetCssPx: 14,
+          mirrorWitness: true,
+        },
         {
           kind: 'angle-arc',
           pivot: lastVertex,
           baseAngleRad: 0,
           sweepAngleRad: Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x),
-          radiusCssPx: 80,
+          radiusCssPx: 120,
+          polarRefLengthMetric: Math.abs(cursor.x - lastVertex.x),
         },
       ],
     };

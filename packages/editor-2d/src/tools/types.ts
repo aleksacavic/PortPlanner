@@ -49,6 +49,13 @@ export type DimensionGuide =
       anchorA: Point2D;
       anchorB: Point2D;
       offsetCssPx: number;
+      /**
+       * When true, paint witness + dim lines on BOTH perpendicular sides
+       * of the segment (AC-style parallelogram "tube" around the line).
+       * Used by line/polyline distance. Rectangle W/H uses the default
+       * single-side witness pointing outward.
+       */
+      mirrorWitness?: boolean;
     }
   | {
       kind: 'angle-arc';
@@ -56,6 +63,14 @@ export type DimensionGuide =
       baseAngleRad: number;
       sweepAngleRad: number;
       radiusCssPx: number;
+      /**
+       * Optional metric length for the polar reference baseline (the
+       * dotted "0° guide" extending from pivot in baseAngleRad
+       * direction). When unset the painter uses a fixed CSS-px default.
+       * Tools set this to e.g. abs(cursor.x - pivot.x) so the polar
+       * baseline visually spans toward the line end (AC behaviour).
+       */
+      polarRefLengthMetric?: number;
     }
   | {
       kind: 'radius-line';

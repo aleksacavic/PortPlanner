@@ -28,12 +28,17 @@ import type { Viewport } from '../view-transform';
 
 const STROKE_WIDTH_CSS = 1;
 const ARROW_TICK_CSS = 6;
-// Witness lines extend 3 CSS-px PAST the dim line (mockup-measured AC
-// look — witness goes from corner to (offsetCssPx + WITNESS_OVERSHOOT_CSS)).
+// Witness lines extend 3 CSS-px PAST the dim line.
 const WITNESS_OVERSHOOT_CSS = 3;
-// Polar reference: faint horizontal "0° baseline" extending from the
-// angle-arc pivot. Mockup uses 100 CSS-px length, dotted gray.
-const POLAR_REF_LENGTH_CSS = 100;
+// Witness end-cap: small filled square at the witness endpoint
+// (away from the anchor). AC shows this consistently — see user
+// rectangle screenshot. Square is centered on the witness end.
+const WITNESS_ENDCAP_CSS = 4;
+// Polar reference baseline: default fallback length when the
+// angle-arc guide doesn't carry an explicit polarRefLengthMetric.
+const POLAR_REF_DEFAULT_CSS = 100;
+// Dash pattern for witness + dim lines (AC dotted look).
+const DASHED_PATTERN_CSS: [number, number] = [2, 3];
 
 export function paintDimensionGuides(
   ctx: CanvasRenderingContext2D,
@@ -92,21 +97,24 @@ function paintLinearDim(
     anchorA: { x: number; y: number };
     anchorB: { x: number; y: number };
     offsetCssPx: number;
+    mirrorWitness?: boolean;
   },
   metricToPx: number,
 ): void {
-  const { anchorA, anchorB, offsetCssPx } = guide;
+  const { anchorA, anchorB, offsetCssPx, mirrorWitness = false } = guide;
   const dx = anchorB.x - anchorA.x;
   const dy = anchorB.y - anchorA.y;
   const len = Math.hypot(dx, dy);
   if (len === 0) return;
 
-  // Perpendicular unit vector (rotated 90° CCW from segment direction).
-  // Note paint.ts applies a Y-flip in the metric transform; perpendicular
-  // direction is consistent within the metric-space transform we're in.
   const perpX = -dy / len;
   const perpY = dx / len;
   const tickMetric = ARROW_TICK_CSS / metricToPx;
+  const dashMetric: [number, number] = [
+    DASHED_PATTERN_CSS[0] / metricToPx,
+    DASHED_PATTERN_CSS[1] / metricToPx,
+  ];
+  const endcapMetric = WITNESS_ENDCAP_CSS / metricToPx;
 
   if (offsetCssPx === 0) {
     // INLINE mode — perpendicular ticks at each endpoint of the segment.
@@ -120,7 +128,61 @@ function paintLinearDim(
     return;
   }
 
-  // FULL mode — witness extends past dim line; separate dim line; ticks.
+  // FULL mode — paint primary side; if mirrorWitness, also paint mirror side.
+  paintWitnessSide(
+    ctx,
+    anchorA,
+    anchorB,
+    perpX,
+    perpY,
+    offsetCssPx,
+    dx,
+    dy,
+    len,
+    metricToPx,
+    tickMetric,
+    dashMetric,
+    endcapMetric,
+  );
+  if (mirrorWitness) {
+    paintWitnessSide(
+      ctx,
+      anchorA,
+      anchorB,
+      -perpX,
+      -perpY,
+      offsetCssPx,
+      dx,
+      dy,
+      len,
+      metricToPx,
+      tickMetric,
+      dashMetric,
+      endcapMetric,
+    );
+  }
+}
+
+/**
+ * Paint a single side of witness + dim line + ticks + end-cap squares.
+ * Called once for single-sided rectangles, twice for both-side line
+ * tubes (with negated perpendicular for the mirror call).
+ */
+function paintWitnessSide(
+  ctx: CanvasRenderingContext2D,
+  anchorA: { x: number; y: number },
+  anchorB: { x: number; y: number },
+  perpX: number,
+  perpY: number,
+  offsetCssPx: number,
+  dx: number,
+  dy: number,
+  len: number,
+  metricToPx: number,
+  tickMetric: number,
+  dashMetric: [number, number],
+  endcapMetric: number,
+): void {
   const dimOffsetMetric = offsetCssPx / metricToPx;
   const witnessOffsetMetric = (offsetCssPx + WITNESS_OVERSHOOT_CSS) / metricToPx;
   const dimAx = anchorA.x + perpX * dimOffsetMetric;
@@ -132,21 +194,26 @@ function paintLinearDim(
   const witBx = anchorB.x + perpX * witnessOffsetMetric;
   const witBy = anchorB.y + perpY * witnessOffsetMetric;
 
-  // Witness lines: from each anchor to its witness endpoint (3 px past dim line).
+  // Witness + dim lines drawn DOTTED (AC look).
+  ctx.save();
+  ctx.setLineDash(dashMetric);
   ctx.beginPath();
   ctx.moveTo(anchorA.x, anchorA.y);
   ctx.lineTo(witAx, witAy);
   ctx.moveTo(anchorB.x, anchorB.y);
   ctx.lineTo(witBx, witBy);
-  ctx.stroke();
-
-  // Dim line: between the two witness mid-points (at the dim offset, not the witness end).
-  ctx.beginPath();
   ctx.moveTo(dimAx, dimAy);
   ctx.lineTo(dimBx, dimBy);
   ctx.stroke();
+  ctx.restore();
+
+  // Small filled-square end-caps at the witness endpoints (AC parity).
+  const endcapHalf = endcapMetric * 0.5;
+  ctx.fillRect(witAx - endcapHalf, witAy - endcapHalf, endcapMetric, endcapMetric);
+  ctx.fillRect(witBx - endcapHalf, witBy - endcapHalf, endcapMetric, endcapMetric);
 
   // Arrow ticks at each dim-line endpoint (45° marks pointing inward).
+  // Drawn solid (not dashed) — they're tick marks not line segments.
   const segUnitX = dx / len;
   const segUnitY = dy / len;
   paintTickAt(ctx, dimAx, dimAy, segUnitX, segUnitY, tickMetric);
@@ -201,32 +268,36 @@ function paintAngleArc(
     baseAngleRad: number;
     sweepAngleRad: number;
     radiusCssPx: number;
+    polarRefLengthMetric?: number;
   },
   metricToPx: number,
 ): void {
-  const { pivot, baseAngleRad, sweepAngleRad, radiusCssPx } = guide;
+  const { pivot, baseAngleRad, sweepAngleRad, radiusCssPx, polarRefLengthMetric } = guide;
   const radiusMetric = radiusCssPx / metricToPx;
   const endAngleRad = baseAngleRad + sweepAngleRad;
   const counterclockwise = sweepAngleRad < 0;
 
-  // Polar reference baseline: faint dotted line from pivot extending
-  // POLAR_REF_LENGTH_CSS in the baseAngleRad direction. Mockup uses
-  // ~100 px length; dashed pattern matches AC's "0° guide" look.
-  const polarRefLenMetric = POLAR_REF_LENGTH_CSS / metricToPx;
+  // Polar reference baseline. When the tool supplies polarRefLengthMetric
+  // (e.g. abs(cursor.x - p1.x) so the baseline visually spans toward
+  // the line end), use that. Otherwise fall back to the fixed CSS-px
+  // default. Drawn DOTTED matching AC's "0° guide" look.
+  const polarRefLenMetric =
+    polarRefLengthMetric !== undefined && polarRefLengthMetric > 0
+      ? polarRefLengthMetric
+      : POLAR_REF_DEFAULT_CSS / metricToPx;
   const polarEndX = pivot.x + Math.cos(baseAngleRad) * polarRefLenMetric;
   const polarEndY = pivot.y + Math.sin(baseAngleRad) * polarRefLenMetric;
   ctx.save();
-  ctx.setLineDash([2 / metricToPx, 3 / metricToPx]);
+  ctx.setLineDash([DASHED_PATTERN_CSS[0] / metricToPx, DASHED_PATTERN_CSS[1] / metricToPx]);
   ctx.beginPath();
   ctx.moveTo(pivot.x, pivot.y);
   ctx.lineTo(polarEndX, polarEndY);
   ctx.stroke();
-  ctx.restore();
-
-  // The arc itself.
+  // The arc itself, also dotted.
   ctx.beginPath();
   ctx.arc(pivot.x, pivot.y, radiusMetric, baseAngleRad, endAngleRad, counterclockwise);
   ctx.stroke();
+  ctx.restore();
 }
 
 /**
