@@ -140,16 +140,27 @@ function derivePillScreenAnchor(guide: DimensionGuide, viewport: Viewport): Poin
       if (guide.offsetCssPx === 0) {
         return { x: midX, y: midY };
       }
-      // Perpendicular in screen space (rotated 90° CCW from segment).
-      const dx = bscr.x - ascr.x;
-      const dy = bscr.y - ascr.y;
-      const len = Math.hypot(dx, dy);
+      // Compute perpendicular in METRIC space (matches painter's
+      // direction), then project to screen coords with the Y-flip.
+      // Bug pre-fix: computing perp from screen deltas directly gave
+      // the OPPOSITE direction (rectangle W/H pills landed INSIDE the
+      // rectangle instead of on the dim line outside it). Painter
+      // operates in metric space where +Y is up; screen has +Y down,
+      // so the metric perp's Y component must be negated for screen.
+      const a = guide.anchorA;
+      const b = guide.anchorB;
+      const metricDx = b.x - a.x;
+      const metricDy = b.y - a.y;
+      const len = Math.hypot(metricDx, metricDy);
       if (len === 0) return { x: midX, y: midY };
-      const perpX = -dy / len;
-      const perpY = dx / len;
+      const metricPerpX = -metricDy / len;
+      const metricPerpY = metricDx / len;
+      // Y-flip when projecting metric → screen.
+      const screenPerpX = metricPerpX;
+      const screenPerpY = -metricPerpY;
       return {
-        x: midX + perpX * guide.offsetCssPx,
-        y: midY + perpY * guide.offsetCssPx,
+        x: midX + screenPerpX * guide.offsetCssPx,
+        y: midY + screenPerpY * guide.offsetCssPx,
       };
     }
     case 'angle-arc': {

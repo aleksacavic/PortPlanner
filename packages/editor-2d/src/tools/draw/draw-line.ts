@@ -33,20 +33,22 @@ export async function* drawLineTool(): ToolGenerator {
     // right with sweep = atan2(cursor-p1) (angle pill).
     dynamicInput: LINE_DI_MANIFEST,
     dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-      // Distance: AC-style INLINE dim — pill on line midpoint, perpendicular
-      // ticks at endpoints, no witness lines, no separate dim line. The
-      // line itself IS the dim reference. offsetCssPx: 0 selects this
-      // mode (mockup line-full panel + plan §3 A2).
-      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: 0 },
-      // Angle arc at p1 from horizontal-right baseline. Mockup uses
-      // 50 CSS-px radius. Pill anchors at arc midpoint (computed in
-      // DynamicInputPills.derivePillAnchorMetric for angle-arc kind).
+      // Distance: AC-style FULL-witness — parallel dotted "tube" of
+      // witness lines on both sides of the rubber-band line, with the
+      // dim line + ticks 18 CSS-px above the segment, pill on the dim
+      // line midpoint. Matches the AC reference image (a parallelogram
+      // of dotted lines AROUND the line); the mockup's inline-ticks
+      // variant was a simplification that didn't match AC behaviour.
+      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: 18 },
+      // Angle arc at p1 from horizontal-right baseline. AC's arc radius
+      // is substantial (≈ 80 CSS-px) so the angle is clearly readable
+      // even on short lines.
       {
         kind: 'angle-arc',
         pivot: p1,
         baseAngleRad: 0,
         sweepAngleRad: Math.atan2(cursor.y - p1.y, cursor.x - p1.x),
-        radiusCssPx: 50,
+        radiusCssPx: 80,
       },
     ],
   };
