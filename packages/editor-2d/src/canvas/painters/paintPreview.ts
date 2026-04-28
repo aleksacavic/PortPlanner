@@ -27,11 +27,24 @@ import { paintTransientLabel } from './paintTransientLabel';
 
 const STROKE_WIDTH_CSS = 1;
 
+/**
+ * Paint a live preview shape.
+ *
+ * M1.3 Round 6 — `suppressEmbeddedLabels` (default false): when true,
+ * the per-arm preview helpers skip their embedded paintTransientLabel
+ * calls (line length, rectangle W×H, circle radius, arc radius). Used
+ * by paint.ts when a Dynamic Input manifest is active — the multi-pill
+ * DI chrome (DynamicInputPills) replaces the embedded labels, so they
+ * would otherwise render as duplicate-label noise alongside the DI
+ * pills + dimension guides. The rubber-band geometry stroke + dash
+ * still render unchanged.
+ */
 export function paintPreview(
   ctx: CanvasRenderingContext2D,
   shape: PreviewShape,
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels = false,
 ): void {
   // The 'selection-rect' arm has its own dedicated painter (Phase 7);
   // paint.ts routes by kind so this painter never sees it. Defensive
@@ -50,22 +63,22 @@ export function paintPreview(
 
   switch (shape.kind) {
     case 'line':
-      drawLinePreview(ctx, shape, viewport, tokens);
+      drawLinePreview(ctx, shape, viewport, tokens, suppressEmbeddedLabels);
       break;
     case 'polyline':
-      drawPolylinePreview(ctx, shape, viewport, tokens);
+      drawPolylinePreview(ctx, shape, viewport, tokens, suppressEmbeddedLabels);
       break;
     case 'rectangle':
-      drawRectanglePreview(ctx, shape, viewport, tokens);
+      drawRectanglePreview(ctx, shape, viewport, tokens, suppressEmbeddedLabels);
       break;
     case 'circle':
-      drawCirclePreview(ctx, shape, viewport, tokens);
+      drawCirclePreview(ctx, shape, viewport, tokens, suppressEmbeddedLabels);
       break;
     case 'arc-2pt':
-      drawArc2ptPreview(ctx, shape, viewport, tokens);
+      drawArc2ptPreview(ctx, shape, viewport, tokens, suppressEmbeddedLabels);
       break;
     case 'arc-3pt':
-      drawArc3ptPreview(ctx, shape, viewport, tokens);
+      drawArc3ptPreview(ctx, shape, viewport, tokens, suppressEmbeddedLabels);
       break;
     case 'xline':
       drawXlinePreview(ctx, shape, viewport);
@@ -171,11 +184,13 @@ function drawLinePreview(
   shape: { p1: Point2D; cursor: Point2D },
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels: boolean,
 ): void {
   ctx.beginPath();
   ctx.moveTo(shape.p1.x, shape.p1.y);
   ctx.lineTo(shape.cursor.x, shape.cursor.y);
   ctx.stroke();
+  if (suppressEmbeddedLabels) return;
   const length = Math.hypot(shape.cursor.x - shape.p1.x, shape.cursor.y - shape.p1.y);
   const mid: Point2D = {
     x: (shape.p1.x + shape.cursor.x) / 2,
@@ -200,6 +215,7 @@ function drawPolylinePreview(
   shape: { vertices: Point2D[]; cursor: Point2D; closed: boolean },
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels: boolean,
 ): void {
   if (shape.vertices.length === 0) return;
   ctx.beginPath();
@@ -212,6 +228,7 @@ function drawPolylinePreview(
   ctx.lineTo(shape.cursor.x, shape.cursor.y);
   if (shape.closed) ctx.closePath();
   ctx.stroke();
+  if (suppressEmbeddedLabels) return;
   const last = shape.vertices[shape.vertices.length - 1]!;
   const length = Math.hypot(shape.cursor.x - last.x, shape.cursor.y - last.y);
   const mid: Point2D = {
@@ -235,6 +252,7 @@ function drawRectanglePreview(
   shape: { corner1: Point2D; cursor: Point2D },
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels: boolean,
 ): void {
   const x = Math.min(shape.corner1.x, shape.cursor.x);
   const y = Math.min(shape.corner1.y, shape.cursor.y);
@@ -243,6 +261,7 @@ function drawRectanglePreview(
   ctx.beginPath();
   ctx.rect(x, y, w, h);
   ctx.stroke();
+  if (suppressEmbeddedLabels) return;
   paintTransientLabel(
     ctx,
     { metric: shape.cursor, screenOffset: { dx: 8, dy: -8 } },
@@ -257,6 +276,7 @@ function drawCirclePreview(
   shape: { center: Point2D; cursor: Point2D },
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels: boolean,
 ): void {
   const radius = Math.hypot(shape.cursor.x - shape.center.x, shape.cursor.y - shape.center.y);
   ctx.beginPath();
@@ -267,6 +287,7 @@ function drawCirclePreview(
   ctx.moveTo(shape.center.x, shape.center.y);
   ctx.lineTo(shape.cursor.x, shape.cursor.y);
   ctx.stroke();
+  if (suppressEmbeddedLabels) return;
   const mid: Point2D = {
     x: (shape.center.x + shape.cursor.x) / 2,
     y: (shape.center.y + shape.cursor.y) / 2,
@@ -288,12 +309,14 @@ function drawArc2ptPreview(
   shape: { p1: Point2D; cursor: Point2D },
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels: boolean,
 ): void {
   // No arc shape known yet — only the first leg as a guide.
   ctx.beginPath();
   ctx.moveTo(shape.p1.x, shape.p1.y);
   ctx.lineTo(shape.cursor.x, shape.cursor.y);
   ctx.stroke();
+  if (suppressEmbeddedLabels) return;
   const length = Math.hypot(shape.cursor.x - shape.p1.x, shape.cursor.y - shape.p1.y);
   const mid: Point2D = {
     x: (shape.p1.x + shape.cursor.x) / 2,
@@ -316,6 +339,7 @@ function drawArc3ptPreview(
   shape: { p1: Point2D; p2: Point2D; cursor: Point2D },
   viewport: Viewport,
   tokens: SemanticTokens,
+  suppressEmbeddedLabels: boolean,
 ): void {
   const cc = circumcircle(shape.p1, shape.p2, shape.cursor);
   if (!cc) {
@@ -339,6 +363,7 @@ function drawArc3ptPreview(
   ctx.beginPath();
   ctx.arc(cc.cx, cc.cy, cc.r, start, end);
   ctx.stroke();
+  if (suppressEmbeddedLabels) return;
   paintTransientLabel(
     ctx,
     { metric: shape.cursor, screenOffset: { dx: 8, dy: -8 } },

@@ -117,7 +117,14 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     // the metric transform after paintPreview's restore in case the
     // painter's save/restore left ctx in identity.
     if (overlay.previewShape && overlay.previewShape.kind !== 'selection-rect') {
-      paintPreview(ctx, overlay.previewShape, viewport, dark);
+      // M1.3 Round 6 — when DI manifest is active (signaled by
+      // dimensionGuides being non-null), suppress paintPreview's
+      // embedded labels (line length, rectangle W×H, circle radius,
+      // arc radius). DI pills replace them; otherwise both render and
+      // produce duplicate-label noise.
+      const suppressEmbeddedLabels =
+        overlay.dimensionGuides !== null && overlay.dimensionGuides.length > 0;
+      paintPreview(ctx, overlay.previewShape, viewport, dark, suppressEmbeddedLabels);
       applyToCanvasContext(ctx, viewport);
     }
     // M1.3 Round 6 — dimension guides (linear-dim / angle-arc /

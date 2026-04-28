@@ -91,7 +91,7 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     expect(end).toBeCloseTo(Math.PI / 6, 6);
   });
 
-  it("'radius-line' emits a perpendicular tick at the segment midpoint", () => {
+  it("'radius-line' is a visual no-op (AC parity — paintPreview's circle arm draws the radius line; pill sits on its midpoint)", () => {
     const guide: DimensionGuide = {
       kind: 'radius-line',
       pivot: { x: 0, y: 0 },
@@ -99,12 +99,12 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     };
     const { ctx, calls } = makeCtxRecorder();
     paintDimensionGuides(ctx, [guide], viewport, dark);
-    // Expect at least one moveTo + lineTo for the tick stroke.
-    const moveTos = calls.filter((c) => c.method === 'moveTo');
-    const lineTos = calls.filter((c) => c.method === 'lineTo');
-    expect(moveTos.length).toBeGreaterThanOrEqual(1);
-    expect(lineTos.length).toBeGreaterThanOrEqual(1);
-    expect(calls.find((c) => c.method === 'stroke')).toBeDefined();
+    // Painter draws ONLY the ctx.save/setLineDash/setStroke setup (from
+    // the outer paintDimensionGuides scope) — no moveTo/lineTo/arc from
+    // the radius-line case. Plan §3 A2 explicitly allowed the no-op.
+    expect(calls.filter((c) => c.method === 'moveTo')).toHaveLength(0);
+    expect(calls.filter((c) => c.method === 'lineTo')).toHaveLength(0);
+    expect(calls.filter((c) => c.method === 'arc')).toHaveLength(0);
   });
 
   it('empty guide array is a no-op (no save/restore noise)', () => {

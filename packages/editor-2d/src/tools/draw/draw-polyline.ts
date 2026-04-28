@@ -62,13 +62,14 @@ export async function* drawPolylineTool(): ToolGenerator {
       // per cursor-tick. Per-loop yield resets buffers (Rev-1 R2-A5).
       dynamicInput: POLYLINE_DI_MANIFEST,
       dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-        { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: 10 },
+        // Same shape as draw-line: inline distance + 50px angle arc at last vertex.
+        { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: 0 },
         {
           kind: 'angle-arc',
           pivot: lastVertex,
           baseAngleRad: 0,
           sweepAngleRad: Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x),
-          radiusCssPx: 40,
+          radiusCssPx: 50,
         },
       ],
     };

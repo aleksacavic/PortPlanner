@@ -19,10 +19,29 @@
   white-space: nowrap;
   z-index: 10;
 }
+/* Multi-pill DI mode: pill is centered on the dim-line midpoint via
+   the 50%/50% offset. Inline tx in the React component is the screen
+   position of the anchor; the CSS translate(-50%, -50%) centers the
+   pill rectangle on that point. AC parity per docs/round-6-mockup.html. */
+.pillCentered {
+  transform: translate(-50%, -50%);
+}
+/* AC accent blue background for the FOCUSED multi-pill (matches mockup
+   --pill-bg #2870ed). Fallback single-pill keeps the dotted-border
+   look from M1.3d-Rem-4 G2. */
 .pillFocused {
+  background: #2870ed;
+  color: #fff;
   border-style: solid;
-  border-color: var(--text-primary, #eee);
-  box-shadow: 0 0 0 1px rgba(255, 200, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+/* DIMMED: the non-focused multi-pill — same bg as focused but at
+   lower opacity (matches mockup --pill-bg-dim 55%). */
+.pillDimmed {
+  background: rgba(40, 112, 237, 0.55);
+  color: #fff;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.15);
 }
 .pillCaret {
   display: inline-block;

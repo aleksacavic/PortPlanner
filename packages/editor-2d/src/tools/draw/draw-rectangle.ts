@@ -65,10 +65,12 @@ export async function* drawRectangleTool(): ToolGenerator {
       // Bottom-right corner of the rectangle preview = (effective.x, corner1.y).
       const bottomRight = { x: effective.x, y: corner1.y };
       return [
-        // W: along bottom edge from corner1 → bottomRight.
-        { kind: 'linear-dim', anchorA: corner1, anchorB: bottomRight, offsetCssPx: 10 },
+        // W: along bottom edge from corner1 → bottomRight. AC-style
+        // perpendicular dim line offset 35 CSS-px outside the rectangle
+        // (mockup-measured value, plan §3 A2 + docs/round-6-mockup.html).
+        { kind: 'linear-dim', anchorA: corner1, anchorB: bottomRight, offsetCssPx: 35 },
         // H: along right edge from bottomRight → effective (top-right cursor).
-        { kind: 'linear-dim', anchorA: bottomRight, anchorB: effective, offsetCssPx: 10 },
+        { kind: 'linear-dim', anchorA: bottomRight, anchorB: effective, offsetCssPx: 35 },
       ];
     },
   };

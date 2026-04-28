@@ -28,6 +28,12 @@ import type { Viewport } from '../view-transform';
 
 const STROKE_WIDTH_CSS = 1;
 const ARROW_TICK_CSS = 6;
+// Witness lines extend 3 CSS-px PAST the dim line (mockup-measured AC
+// look — witness goes from corner to (offsetCssPx + WITNESS_OVERSHOOT_CSS)).
+const WITNESS_OVERSHOOT_CSS = 3;
+// Polar reference: faint horizontal "0° baseline" extending from the
+// angle-arc pivot. Mockup uses 100 CSS-px length, dotted gray.
+const POLAR_REF_LENGTH_CSS = 100;
 
 export function paintDimensionGuides(
   ctx: CanvasRenderingContext2D,
@@ -64,10 +70,20 @@ export function paintDimensionGuides(
 }
 
 /**
- * Linear dimension: two witness lines perpendicular to (anchorB-anchorA)
- * extending outward by `offsetCssPx`, plus a dim line parallel to the
- * segment at the same perpendicular offset, plus arrow ticks at each
- * end of the dim line.
+ * Linear dimension. Two render modes selected by `offsetCssPx`:
+ *
+ *   offsetCssPx > 0 — full AC-style measured-dim look (rectangle W/H):
+ *     - Witness lines from each anchor extending PAST the dim line by
+ *       WITNESS_OVERSHOOT_CSS (mockup-measured 3 CSS-px overshoot).
+ *     - Dim line parallel to segment at offsetCssPx perpendicular.
+ *     - Arrow ticks at each end of the dim line.
+ *     - Pill consumer (DynamicInputPills) anchors on dim-line midpoint.
+ *
+ *   offsetCssPx === 0 — inline mode (line/polyline distance):
+ *     - No witness lines, no separate dim line. The rubber-band line
+ *       itself IS the dim reference.
+ *     - Small perpendicular ticks at each segment endpoint.
+ *     - Pill consumer anchors on segment midpoint.
  */
 function paintLinearDim(
   ctx: CanvasRenderingContext2D,
@@ -90,30 +106,47 @@ function paintLinearDim(
   // direction is consistent within the metric-space transform we're in.
   const perpX = -dy / len;
   const perpY = dx / len;
-  const offsetMetric = offsetCssPx / metricToPx;
-  const perpOffsetX = perpX * offsetMetric;
-  const perpOffsetY = perpY * offsetMetric;
+  const tickMetric = ARROW_TICK_CSS / metricToPx;
 
-  // Witness lines: short stubs from each anchor outward to the dim line.
+  if (offsetCssPx === 0) {
+    // INLINE mode — perpendicular ticks at each endpoint of the segment.
+    const halfTick = tickMetric * 0.5;
+    ctx.beginPath();
+    ctx.moveTo(anchorA.x + perpX * halfTick, anchorA.y + perpY * halfTick);
+    ctx.lineTo(anchorA.x - perpX * halfTick, anchorA.y - perpY * halfTick);
+    ctx.moveTo(anchorB.x + perpX * halfTick, anchorB.y + perpY * halfTick);
+    ctx.lineTo(anchorB.x - perpX * halfTick, anchorB.y - perpY * halfTick);
+    ctx.stroke();
+    return;
+  }
+
+  // FULL mode — witness extends past dim line; separate dim line; ticks.
+  const dimOffsetMetric = offsetCssPx / metricToPx;
+  const witnessOffsetMetric = (offsetCssPx + WITNESS_OVERSHOOT_CSS) / metricToPx;
+  const dimAx = anchorA.x + perpX * dimOffsetMetric;
+  const dimAy = anchorA.y + perpY * dimOffsetMetric;
+  const dimBx = anchorB.x + perpX * dimOffsetMetric;
+  const dimBy = anchorB.y + perpY * dimOffsetMetric;
+  const witAx = anchorA.x + perpX * witnessOffsetMetric;
+  const witAy = anchorA.y + perpY * witnessOffsetMetric;
+  const witBx = anchorB.x + perpX * witnessOffsetMetric;
+  const witBy = anchorB.y + perpY * witnessOffsetMetric;
+
+  // Witness lines: from each anchor to its witness endpoint (3 px past dim line).
   ctx.beginPath();
   ctx.moveTo(anchorA.x, anchorA.y);
-  ctx.lineTo(anchorA.x + perpOffsetX, anchorA.y + perpOffsetY);
+  ctx.lineTo(witAx, witAy);
   ctx.moveTo(anchorB.x, anchorB.y);
-  ctx.lineTo(anchorB.x + perpOffsetX, anchorB.y + perpOffsetY);
+  ctx.lineTo(witBx, witBy);
   ctx.stroke();
 
-  // Dim line: between the two witness-line outer endpoints.
-  const dimAx = anchorA.x + perpOffsetX;
-  const dimAy = anchorA.y + perpOffsetY;
-  const dimBx = anchorB.x + perpOffsetX;
-  const dimBy = anchorB.y + perpOffsetY;
+  // Dim line: between the two witness mid-points (at the dim offset, not the witness end).
   ctx.beginPath();
   ctx.moveTo(dimAx, dimAy);
   ctx.lineTo(dimBx, dimBy);
   ctx.stroke();
 
   // Arrow ticks at each dim-line endpoint (45° marks pointing inward).
-  const tickMetric = ARROW_TICK_CSS / metricToPx;
   const segUnitX = dx / len;
   const segUnitY = dy / len;
   paintTickAt(ctx, dimAx, dimAy, segUnitX, segUnitY, tickMetric);
@@ -149,9 +182,16 @@ function paintTickAt(
 }
 
 /**
- * Angle-arc: arc centered at `pivot` from `baseAngleRad` sweeping
- * `sweepAngleRad` at screen-px radius `radiusCssPx` (converted to
- * metric). ctx.arc handles the polar-to-Cartesian internally.
+ * Angle-arc with polar reference baseline (AC-style "angle from
+ * horizontal"). Renders:
+ *   1. A faint dotted horizontal "0° baseline" extending POLAR_REF_LENGTH_CSS
+ *      from the pivot in the baseAngleRad direction (the reference the
+ *      angle is measured FROM).
+ *   2. The arc itself from baseAngleRad sweeping sweepAngleRad at radius
+ *      radiusCssPx (converted to metric).
+ *
+ * The pill consumer (DynamicInputPills.derivePillAnchorMetric) anchors
+ * on the arc midpoint at sweep/2.
  */
 function paintAngleArc(
   ctx: CanvasRenderingContext2D,
@@ -168,39 +208,46 @@ function paintAngleArc(
   const radiusMetric = radiusCssPx / metricToPx;
   const endAngleRad = baseAngleRad + sweepAngleRad;
   const counterclockwise = sweepAngleRad < 0;
+
+  // Polar reference baseline: faint dotted line from pivot extending
+  // POLAR_REF_LENGTH_CSS in the baseAngleRad direction. Mockup uses
+  // ~100 px length; dashed pattern matches AC's "0° guide" look.
+  const polarRefLenMetric = POLAR_REF_LENGTH_CSS / metricToPx;
+  const polarEndX = pivot.x + Math.cos(baseAngleRad) * polarRefLenMetric;
+  const polarEndY = pivot.y + Math.sin(baseAngleRad) * polarRefLenMetric;
+  ctx.save();
+  ctx.setLineDash([2 / metricToPx, 3 / metricToPx]);
+  ctx.beginPath();
+  ctx.moveTo(pivot.x, pivot.y);
+  ctx.lineTo(polarEndX, polarEndY);
+  ctx.stroke();
+  ctx.restore();
+
+  // The arc itself.
   ctx.beginPath();
   ctx.arc(pivot.x, pivot.y, radiusMetric, baseAngleRad, endAngleRad, counterclockwise);
   ctx.stroke();
 }
 
 /**
- * Radius-line: small tick marker at the midpoint between pivot and
- * endpoint. paintPreview's circle arm already draws the radius line
- * itself; the tick gives a visual confirmation that the DI guide is
- * tracking the cursor without duplicating the line stroke.
+ * Radius-line: visual no-op. AC's circle DI shows the radius value pill
+ * directly on the existing `paintPreview` circle-arm radius line — no
+ * additional tick or witness mark. The guide carries the pivot +
+ * endpoint coords so `DynamicInputPills.derivePillAnchorMetric` can
+ * place the pill on the radius midpoint, but the painter itself draws
+ * nothing here. Plan §3 A2 explicitly allowed the radius-line variant
+ * to be a no-op: "the radius line is already drawn by paintPreview's
+ * circle arm, so this guide may be a no-op visual marker; decide at
+ * execution time."
  */
 function paintRadiusLine(
-  ctx: CanvasRenderingContext2D,
-  guide: {
+  _ctx: CanvasRenderingContext2D,
+  _guide: {
     kind: 'radius-line';
     pivot: { x: number; y: number };
     endpoint: { x: number; y: number };
   },
-  metricToPx: number,
+  _metricToPx: number,
 ): void {
-  const { pivot, endpoint } = guide;
-  const midX = (pivot.x + endpoint.x) / 2;
-  const midY = (pivot.y + endpoint.y) / 2;
-  const dx = endpoint.x - pivot.x;
-  const dy = endpoint.y - pivot.y;
-  const len = Math.hypot(dx, dy);
-  if (len === 0) return;
-  // Perpendicular tick across the radius line at midpoint.
-  const perpX = -dy / len;
-  const perpY = dx / len;
-  const tickMetric = ARROW_TICK_CSS / metricToPx;
-  ctx.beginPath();
-  ctx.moveTo(midX + perpX * tickMetric * 0.5, midY + perpY * tickMetric * 0.5);
-  ctx.lineTo(midX - perpX * tickMetric * 0.5, midY - perpY * tickMetric * 0.5);
-  ctx.stroke();
+  // Intentional no-op (AC parity).
 }

@@ -25,13 +25,18 @@
 import type { Point2D } from '@portplanner/domain';
 import type { ReactElement } from 'react';
 
-import { metricToScreen } from '../canvas/view-transform';
+import { type Viewport, metricToScreen } from '../canvas/view-transform';
 import type { DimensionGuide } from '../tools/types';
 import styles from './DynamicInputPills.module.css';
 import { useEditorUi } from './use-editor-ui-store';
 
 const FALLBACK_PILL_OFFSET_X_PX = 16;
 const FALLBACK_PILL_OFFSET_Y_PX = 28;
+// Linear-dim FULL-mode pill perpendicular offset (matches paintDimensionGuides
+// dim-line offset). Pill sits ON the dim line, centered via CSS
+// translate(-50%, -50%).
+// Inline-mode (offsetCssPx === 0) pills sit on the segment midpoint with
+// no perpendicular offset.
 
 export function DynamicInputPills(): ReactElement | null {
   const cursor = useEditorUi((s) => s.overlay.cursor);
@@ -60,22 +65,23 @@ export function DynamicInputPills(): ReactElement | null {
         {dynamicInput.manifest.fields.map((field, idx) => {
           const guide = dimensionGuides[idx];
           if (!guide) return null;
-          const anchorMetric = derivePillAnchorMetric(guide);
-          const screen = metricToScreen(anchorMetric, viewport);
+          const screen = derivePillScreenAnchor(guide, viewport);
           const focused = idx === dynamicInput.activeFieldIdx;
           const buffer = dynamicInput.buffers[idx] ?? '';
           const labelPrefix = field.label ? `${field.label}: ` : '';
           const text = `${labelPrefix}${buffer}`;
+          // Multi-pill mode: pill centered on dim-line midpoint via
+          // .pillCentered translate(-50%, -50%). Inline left/top set
+          // to absolute screen position. AC parity per mockup.
+          const focusClass = focused ? styles.pillFocused : styles.pillDimmed;
           return (
             <div
               key={`di-pill-${idx}`}
-              className={`${styles.pill} ${focused ? styles.pillFocused : ''}`}
+              className={`${styles.pill} ${styles.pillCentered} ${focusClass}`}
               data-component="dynamic-input-pill"
               data-pill-index={idx}
               data-pill-focused={focused ? 'true' : 'false'}
-              style={{
-                transform: `translate(${screen.x + FALLBACK_PILL_OFFSET_X_PX}px, ${screen.y + FALLBACK_PILL_OFFSET_Y_PX}px)`,
-              }}
+              style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
             >
               {text}
               {focused ? <span className={styles.pillCaret} aria-hidden /> : null}
@@ -104,31 +110,66 @@ export function DynamicInputPills(): ReactElement | null {
 }
 
 /**
- * Derive a metric anchor point for the pill from a `DimensionGuide`.
- * Plan §4.1 Pills row: linear-dim → midpoint of [anchorA, anchorB];
- * angle-arc → on the arc at sweep midpoint (computed in metric);
- * radius-line → midpoint of [pivot, endpoint].
+ * Compute a SCREEN-SPACE anchor point for a pill given its
+ * DimensionGuide. Returns `{x, y}` in CSS pixels (viewport-screen
+ * coordinates) — the multi-pill mode then sets `left` + `top` to
+ * these and centers the pill rectangle via `.pillCentered`.
  *
- * For angle-arc, the arc radius is in screen-px (`radiusCssPx`); we
- * approximate the metric anchor by placing the pill at the pivot —
- * the fixed screen offset (FALLBACK_PILL_OFFSET_X_PX/Y_PX) carries
- * the pill off the pivot visually. A more accurate variant could
- * convert radiusCssPx through viewport.zoom; v0 is intentionally
- * simple and refines if visual-test feedback warrants.
+ * Per-kind logic (mockup-grounded):
+ *   - linear-dim FULL (offsetCssPx > 0): pill on the DIM-LINE midpoint
+ *     (segment midpoint + perpendicular offsetCssPx). Computed in
+ *     screen space because the perpendicular offset is screen-px.
+ *   - linear-dim INLINE (offsetCssPx === 0): pill on the SEGMENT
+ *     midpoint (no perpendicular offset). The line itself is the
+ *     dim reference.
+ *   - angle-arc: pill on the ARC MIDPOINT — pivot + radiusCssPx
+ *     (cos(midAngle), sin(midAngle)) in screen space (radius is
+ *     screen-px, so screen-space placement avoids zoom-distortion
+ *     of the offset).
+ *   - radius-line: pill on the segment midpoint between pivot and
+ *     endpoint (paintPreview's circle arm draws the actual line; the
+ *     pill sits on its midpoint).
  */
-function derivePillAnchorMetric(guide: DimensionGuide): Point2D {
+function derivePillScreenAnchor(guide: DimensionGuide, viewport: Viewport): Point2D {
   switch (guide.kind) {
-    case 'linear-dim':
+    case 'linear-dim': {
+      const ascr = metricToScreen(guide.anchorA, viewport);
+      const bscr = metricToScreen(guide.anchorB, viewport);
+      const midX = (ascr.x + bscr.x) / 2;
+      const midY = (ascr.y + bscr.y) / 2;
+      if (guide.offsetCssPx === 0) {
+        return { x: midX, y: midY };
+      }
+      // Perpendicular in screen space (rotated 90° CCW from segment).
+      const dx = bscr.x - ascr.x;
+      const dy = bscr.y - ascr.y;
+      const len = Math.hypot(dx, dy);
+      if (len === 0) return { x: midX, y: midY };
+      const perpX = -dy / len;
+      const perpY = dx / len;
       return {
-        x: (guide.anchorA.x + guide.anchorB.x) / 2,
-        y: (guide.anchorA.y + guide.anchorB.y) / 2,
+        x: midX + perpX * guide.offsetCssPx,
+        y: midY + perpY * guide.offsetCssPx,
       };
-    case 'angle-arc':
-      return { x: guide.pivot.x, y: guide.pivot.y };
-    case 'radius-line':
+    }
+    case 'angle-arc': {
+      const pivot = metricToScreen(guide.pivot, viewport);
+      const midAngleRad = guide.baseAngleRad + guide.sweepAngleRad / 2;
+      // Screen-Y is flipped relative to metric-Y, so negate the sin
+      // term when projecting from the (positive-CCW) angle into screen
+      // space.
       return {
-        x: (guide.pivot.x + guide.endpoint.x) / 2,
-        y: (guide.pivot.y + guide.endpoint.y) / 2,
+        x: pivot.x + Math.cos(midAngleRad) * guide.radiusCssPx,
+        y: pivot.y - Math.sin(midAngleRad) * guide.radiusCssPx,
       };
+    }
+    case 'radius-line': {
+      const pivot = metricToScreen(guide.pivot, viewport);
+      const endpoint = metricToScreen(guide.endpoint, viewport);
+      return {
+        x: (pivot.x + endpoint.x) / 2,
+        y: (pivot.y + endpoint.y) / 2,
+      };
+    }
   }
 }

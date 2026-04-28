@@ -33,13 +33,20 @@ export async function* drawLineTool(): ToolGenerator {
     // right with sweep = atan2(cursor-p1) (angle pill).
     dynamicInput: LINE_DI_MANIFEST,
     dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: 10 },
+      // Distance: AC-style INLINE dim — pill on line midpoint, perpendicular
+      // ticks at endpoints, no witness lines, no separate dim line. The
+      // line itself IS the dim reference. offsetCssPx: 0 selects this
+      // mode (mockup line-full panel + plan §3 A2).
+      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: 0 },
+      // Angle arc at p1 from horizontal-right baseline. Mockup uses
+      // 50 CSS-px radius. Pill anchors at arc midpoint (computed in
+      // DynamicInputPills.derivePillAnchorMetric for angle-arc kind).
       {
         kind: 'angle-arc',
         pivot: p1,
         baseAngleRad: 0,
         sweepAngleRad: Math.atan2(cursor.y - p1.y, cursor.x - p1.x),
-        radiusCssPx: 40,
+        radiusCssPx: 50,
       },
     ],
   };
