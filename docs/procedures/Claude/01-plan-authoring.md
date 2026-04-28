@@ -549,6 +549,44 @@ Plan authoring is complete only when:
     goal-sentence headers. This check is separate from §1.3 internal
     review rounds (which verify the new content); this step verifies
     the OLD content has been removed everywhere it appears.
+
+    **§1.16.12.a — Mandatory stale-symbol purge grep (added 2026-04-28
+    after M1.3 Round 7 Codex finding).** When a revision REMOVES or
+    RENAMES a specific named symbol (function name, class name, type
+    name, file path, identifier, gate name), the author MUST run a
+    literal-string grep for every removed/renamed symbol against the
+    entire plan file and address every match before commit. Specifically:
+    1. Build a list of removed-or-renamed symbols introduced by this
+       revision (e.g. `handleCanvasMouseDown`, `handleCanvasMouseUp`,
+       `STATE_MACHINE_ADVANCE_METHODS`, `publishPrompt`,
+       `advanceGenerator`, `dispatchInput`, `assertNotInSyncBootstrap`
+       for Rev-6 of M1.3 Round 6).
+    2. For each symbol, run `rg -n "<symbol>" docs/plans/<branch>.md`.
+    3. For each match, classify into one of three buckets:
+       - **(a) Stale active reference** in a normative section (Phase
+         steps, scope tables, gates, test specs, Done Criteria, risk
+         table, audit C-points without explicit historical framing) →
+         REWRITE to current symbol name or remove. **MUST fix.**
+       - **(b) Intentional historical narrative** (revision history
+         rows, post-execution notes, Codex paste block describing
+         "previous Rev-N said X"; passages that explicitly frame the
+         old symbol as old, e.g. "was incorrectly named X" or "Rev-N
+         specified Y based on a misread") → KEEP as-is.
+       - **(c) Borderline cases** (e.g. an audit C-point describing
+         the OLD design as the *fix-context*) → KEEP if surrounding
+         sentence makes the historical role explicit; rewrite if not.
+    4. Document the grep results + bucket classification in the §1.13
+       pre-response notification's "Plan-vs-Code Grounding Verification"
+       table (or a sibling "Stale-Symbol Purge" table) so the user
+       sees the sweep was actually performed.
+    5. **Failure mode this prevents:** partial revision where the
+       core flow steps get rewritten but Done Criteria, scope tables,
+       risk rows, audit C-points, and §11 test descriptions still
+       reference the old symbols. Codex Round-7 of M1.3 Round 6
+       caught this exact failure: 8 stale references survived Rev-6
+       across §4.1 / §4.2 / §7 gates / §10 audit / §11 tests / §12
+       Done Criteria / §13 risks despite Phase 1 step 12 being
+       correctly rewritten. Lesson source: M1.3 Round 6 Rev-6 → Rev-7.
 13. **Revisions follow the same closure discipline as initial
     authoring.** Steps 1–12 above are NOT limited to the first
     emission of a plan. Every revised emission (in response to
