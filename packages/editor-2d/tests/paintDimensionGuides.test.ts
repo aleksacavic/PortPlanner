@@ -47,7 +47,7 @@ function makeCtxRecorder(): { ctx: CanvasRenderingContext2D; calls: CtxCall[] } 
 }
 
 describe('paintDimensionGuides — per-shape dispatch', () => {
-  it("'linear-dim' emits witness lines + dim line + 2 arrow ticks (one per end)", () => {
+  it("'linear-dim' (full mode) emits witness lines + dim line + filled-square end-caps (NO arrow ticks per AC)", () => {
     const guide: DimensionGuide = {
       kind: 'linear-dim',
       anchorA: { x: 0, y: 0 },
@@ -56,25 +56,28 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     };
     const { ctx, calls } = makeCtxRecorder();
     paintDimensionGuides(ctx, [guide], viewport, dark);
-    // Expected sub-paths:
-    //   - 2 witness lines (1 moveTo + 1 lineTo each = 2 of each)
-    //   - 1 dim line (1 moveTo + 1 lineTo)
-    //   - 2 arrow ticks (each tick = 2 strokes via 2 moveTo + 2 lineTo)
-    // → ≥7 moveTo, ≥7 lineTo total. Stroke called multiple times.
+    // Expected sub-paths in FULL mode:
+    //   - 2 witness lines + 1 dim line in a single beginPath/stroke
+    //     pair (3 moveTo + 3 lineTo).
+    //   - 2 fillRect calls for the end-cap squares (one per witness end).
+    //   - NO paintTickAt calls — arrow ticks were removed in favour of
+    //     end-cap squares (AC parity; user feedback "you added end cap
+    //     squares and kept arrows" — the duplicate was incorrect).
     const moveTos = calls.filter((c) => c.method === 'moveTo');
     const lineTos = calls.filter((c) => c.method === 'lineTo');
-    expect(moveTos.length).toBeGreaterThanOrEqual(7);
-    expect(lineTos.length).toBeGreaterThanOrEqual(7);
-    expect(calls.filter((c) => c.method === 'stroke').length).toBeGreaterThanOrEqual(3);
+    expect(moveTos.length).toBeGreaterThanOrEqual(3);
+    expect(lineTos.length).toBeGreaterThanOrEqual(3);
+    expect(calls.filter((c) => c.method === 'fillRect').length).toBe(2);
+    expect(calls.filter((c) => c.method === 'stroke').length).toBeGreaterThanOrEqual(1);
   });
 
-  it("'angle-arc' emits ctx.arc with the right pivot + base + sweep + radius (in metric)", () => {
+  it("'angle-arc' emits ctx.arc with pivot + base + sweep; radius matches the clamped polar baseline length", () => {
     const guide: DimensionGuide = {
       kind: 'angle-arc',
       pivot: { x: 5, y: 5 },
       baseAngleRad: 0,
       sweepAngleRad: Math.PI / 6,
-      radiusCssPx: 40,
+      radiusCssPx: 40, // legacy hint — overridden by the polar-baseline-derived radius.
     };
     const { ctx, calls } = makeCtxRecorder();
     paintDimensionGuides(ctx, [guide], viewport, dark);
@@ -85,8 +88,9 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     const [cx, cy, r, start, end] = arc.args as [number, number, number, number, number];
     expect(cx).toBeCloseTo(5, 6);
     expect(cy).toBeCloseTo(5, 6);
-    // radiusCssPx 40 / metricToPx (zoom 10 * dpr 1 = 10) = 4 metric units.
-    expect(r).toBeCloseTo(4, 6);
+    // No polarRefLengthMetric supplied → painter uses POLAR_REF_DEFAULT_CSS (100)
+    // which clamps to MIN(100). radius = 100 / metricToPx (zoom 10 * dpr 1 = 10) = 10 metric.
+    expect(r).toBeCloseTo(10, 6);
     expect(start).toBeCloseTo(0, 6);
     expect(end).toBeCloseTo(Math.PI / 6, 6);
   });

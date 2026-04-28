@@ -13,6 +13,7 @@
 import { LayerId, type Point2D, newPrimitiveId } from '@portplanner/domain';
 import { addPrimitive } from '@portplanner/project-store';
 
+import { DIM_OFFSET_CSS } from '../../canvas/painters/paintDimensionGuides';
 import { editorUiStore } from '../../ui-state/store';
 import type { DimensionGuide, DynamicInputManifest, ToolGenerator } from '../types';
 
@@ -64,13 +65,18 @@ export async function* drawRectangleTool(): ToolGenerator {
       const effective = shift ? squareCorner(corner1, cursor) : cursor;
       // Bottom-right corner of the rectangle preview = (effective.x, corner1.y).
       const bottomRight = { x: effective.x, y: corner1.y };
+      // Anchor-order matters: paintLinearDim's perpendicular is the CCW
+      // rotation of (anchorB - anchorA). To put the dim line OUTSIDE
+      // the rectangle, the segment must traverse the edge such that
+      // the rectangle interior is to the RIGHT (i.e., go around the
+      // rectangle CW). So:
+      //  - W (bottom edge): anchorA = bottomRight, anchorB = corner1.
+      //    (rightward → leftward; CCW perp = downward = outside rect).
+      //  - H (right edge): anchorA = effective (top-right), anchorB = bottomRight.
+      //    (top → bottom; CCW perp = rightward = outside rect).
       return [
-        // W: along bottom edge from corner1 → bottomRight. AC-style
-        // perpendicular dim line offset 35 CSS-px outside the rectangle
-        // (mockup-measured value, plan §3 A2 + docs/round-6-mockup.html).
-        { kind: 'linear-dim', anchorA: corner1, anchorB: bottomRight, offsetCssPx: 35 },
-        // H: along right edge from bottomRight → effective (top-right cursor).
-        { kind: 'linear-dim', anchorA: bottomRight, anchorB: effective, offsetCssPx: 35 },
+        { kind: 'linear-dim', anchorA: bottomRight, anchorB: corner1, offsetCssPx: DIM_OFFSET_CSS },
+        { kind: 'linear-dim', anchorA: effective, anchorB: bottomRight, offsetCssPx: DIM_OFFSET_CSS },
       ];
     },
   };

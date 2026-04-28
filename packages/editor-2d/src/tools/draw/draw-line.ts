@@ -1,6 +1,7 @@
 import { LayerId, newPrimitiveId } from '@portplanner/domain';
 import { addPrimitive } from '@portplanner/project-store';
 
+import { DIM_OFFSET_CSS } from '../../canvas/painters/paintDimensionGuides';
 import { editorUiStore } from '../../ui-state/store';
 import type { DimensionGuide, DynamicInputManifest, ToolGenerator } from '../types';
 
@@ -33,28 +34,22 @@ export async function* drawLineTool(): ToolGenerator {
     // right with sweep = atan2(cursor-p1) (angle pill).
     dynamicInput: LINE_DI_MANIFEST,
     dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-      // Distance: AC-style FULL-witness with BOTH-SIDE mirror —
-      // parallelogram tube of dotted witness lines around the rubber-
-      // band line. mirrorWitness: true paints witness on both sides.
-      // 14 CSS-px offset on each side = 28-px-tall tube.
-      {
-        kind: 'linear-dim',
-        anchorA: p1,
-        anchorB: cursor,
-        offsetCssPx: 14,
-        mirrorWitness: true,
-      },
-      // Angle arc at p1 from horizontal-right baseline.
-      // - radiusCssPx 120 — substantial AC-scale arc.
-      // - polarRefLengthMetric = horizontal projection of the line
-      //   (abs(cursor.x - p1.x)), so the dotted polar baseline visually
-      //   spans from p1 toward the line end. AC reference image
-      //   behaviour.
+      // Distance: SINGLE-side witness (CCW perpendicular off the line).
+      // Offset uses shared SSOT constant DIM_OFFSET_CSS so line +
+      // rectangle dim offsets stay in lockstep (user feedback: "isnt
+      // this ssot?").
+      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
+      // Angle arc PIVOT IS AT THE CURSOR (the rubber-band end being
+      // dragged), not at p1 (user feedback: "polar arc just needs to
+      // start at the cursor position"). Polar baseline extends from
+      // cursor horizontally; arc sweeps from horizontal-right at cursor
+      // toward p1's direction. Painter clamps baseline to [100, 400]
+      // CSS-px and uses that same length as the arc radius.
       {
         kind: 'angle-arc',
-        pivot: p1,
+        pivot: cursor,
         baseAngleRad: 0,
-        sweepAngleRad: Math.atan2(cursor.y - p1.y, cursor.x - p1.x),
+        sweepAngleRad: Math.atan2(p1.y - cursor.y, p1.x - cursor.x),
         radiusCssPx: 120,
         polarRefLengthMetric: Math.abs(cursor.x - p1.x),
       },

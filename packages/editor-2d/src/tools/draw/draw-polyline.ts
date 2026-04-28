@@ -15,6 +15,7 @@
 import { LayerId, type Point2D, newPrimitiveId } from '@portplanner/domain';
 import { addPrimitive } from '@portplanner/project-store';
 
+import { DIM_OFFSET_CSS } from '../../canvas/painters/paintDimensionGuides';
 import { editorUiStore } from '../../ui-state/store';
 import type { DimensionGuide, DynamicInputManifest, ToolGenerator } from '../types';
 
@@ -62,20 +63,15 @@ export async function* drawPolylineTool(): ToolGenerator {
       // per cursor-tick. Per-loop yield resets buffers (Rev-1 R2-A5).
       dynamicInput: POLYLINE_DI_MANIFEST,
       dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-        // Same shape as draw-line: both-side witness tube + 120px arc
-        // + line-length-proportional polar reference baseline.
-        {
-          kind: 'linear-dim',
-          anchorA: lastVertex,
-          anchorB: cursor,
-          offsetCssPx: 14,
-          mirrorWitness: true,
-        },
+        // Same shape as draw-line: single-side witness using the SSOT
+        // DIM_OFFSET_CSS constant; angle pivot at the CURSOR (rubber-
+        // band end), not at the last committed vertex.
+        { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
         {
           kind: 'angle-arc',
-          pivot: lastVertex,
+          pivot: cursor,
           baseAngleRad: 0,
-          sweepAngleRad: Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x),
+          sweepAngleRad: Math.atan2(lastVertex.y - cursor.y, lastVertex.x - cursor.x),
           radiusCssPx: 120,
           polarRefLengthMetric: Math.abs(cursor.x - lastVertex.x),
         },

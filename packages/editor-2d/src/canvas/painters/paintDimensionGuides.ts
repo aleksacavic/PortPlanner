@@ -30,6 +30,17 @@ const STROKE_WIDTH_CSS = 1;
 const ARROW_TICK_CSS = 6;
 // Witness lines extend 3 CSS-px PAST the dim line.
 const WITNESS_OVERSHOOT_CSS = 3;
+/**
+ * SSOT for the dim-line perpendicular offset distance (in CSS pixels).
+ * Used by all tools that emit a `linear-dim` guide — rectangle W/H,
+ * line/polyline distance, and any future operators. Tools import this
+ * constant rather than hard-coding magic numbers per call-site.
+ *
+ * 20 CSS-px is a balance: large enough to clearly separate the dim
+ * line from rectangle edges (which have a 2D body to clear), small
+ * enough that line distance dim doesn't float far from the line.
+ */
+export const DIM_OFFSET_CSS = 20;
 // Witness end-cap: small filled square at the witness endpoint
 // (away from the anchor). AC shows this consistently — see user
 // rectangle screenshot. Square is centered on the witness end.
@@ -139,37 +150,9 @@ function paintLinearDim(
   }
 
   // FULL mode — paint primary side; if mirrorWitness, also paint mirror side.
-  paintWitnessSide(
-    ctx,
-    anchorA,
-    anchorB,
-    perpX,
-    perpY,
-    offsetCssPx,
-    dx,
-    dy,
-    len,
-    metricToPx,
-    tickMetric,
-    dashMetric,
-    endcapMetric,
-  );
+  paintWitnessSide(ctx, anchorA, anchorB, perpX, perpY, offsetCssPx, metricToPx, dashMetric, endcapMetric);
   if (mirrorWitness) {
-    paintWitnessSide(
-      ctx,
-      anchorA,
-      anchorB,
-      -perpX,
-      -perpY,
-      offsetCssPx,
-      dx,
-      dy,
-      len,
-      metricToPx,
-      tickMetric,
-      dashMetric,
-      endcapMetric,
-    );
+    paintWitnessSide(ctx, anchorA, anchorB, -perpX, -perpY, offsetCssPx, metricToPx, dashMetric, endcapMetric);
   }
 }
 
@@ -185,11 +168,7 @@ function paintWitnessSide(
   perpX: number,
   perpY: number,
   offsetCssPx: number,
-  dx: number,
-  dy: number,
-  len: number,
   metricToPx: number,
-  tickMetric: number,
   dashMetric: [number, number],
   endcapMetric: number,
 ): void {
@@ -217,45 +196,12 @@ function paintWitnessSide(
   ctx.stroke();
   ctx.restore();
 
-  // Small filled-square end-caps at the witness endpoints (AC parity).
+  // Small filled-square end-caps at the witness endpoints (AC parity —
+  // AC shows end-caps INSTEAD of arrow ticks, not both. Earlier
+  // implementation drew both; that was incorrect — arrow ticks removed).
   const endcapHalf = endcapMetric * 0.5;
   ctx.fillRect(witAx - endcapHalf, witAy - endcapHalf, endcapMetric, endcapMetric);
   ctx.fillRect(witBx - endcapHalf, witBy - endcapHalf, endcapMetric, endcapMetric);
-
-  // Arrow ticks at each dim-line endpoint (45° marks pointing inward).
-  // Drawn solid (not dashed) — they're tick marks not line segments.
-  const segUnitX = dx / len;
-  const segUnitY = dy / len;
-  paintTickAt(ctx, dimAx, dimAy, segUnitX, segUnitY, tickMetric);
-  paintTickAt(ctx, dimBx, dimBy, -segUnitX, -segUnitY, tickMetric);
-}
-
-/**
- * Tick mark at `(x, y)` extending in the direction `(unitX, unitY)` —
- * a small inward stub at 45° relative to the dim line. Approximates
- * the AC dim-line arrow style without committing to a specific shape.
- */
-function paintTickAt(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  unitX: number,
-  unitY: number,
-  tickMetric: number,
-): void {
-  // Two short strokes at +/-45° from the inward direction.
-  const cos45 = Math.SQRT1_2;
-  const sin45 = Math.SQRT1_2;
-  const a1x = unitX * cos45 - unitY * sin45;
-  const a1y = unitX * sin45 + unitY * cos45;
-  const a2x = unitX * cos45 + unitY * sin45;
-  const a2y = -unitX * sin45 + unitY * cos45;
-  ctx.beginPath();
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + a1x * tickMetric, y + a1y * tickMetric);
-  ctx.moveTo(x, y);
-  ctx.lineTo(x + a2x * tickMetric, y + a2y * tickMetric);
-  ctx.stroke();
 }
 
 /**
@@ -282,8 +228,7 @@ function paintAngleArc(
   },
   metricToPx: number,
 ): void {
-  const { pivot, baseAngleRad, sweepAngleRad, radiusCssPx, polarRefLengthMetric } = guide;
-  const radiusMetric = radiusCssPx / metricToPx;
+  const { pivot, baseAngleRad, sweepAngleRad, polarRefLengthMetric } = guide;
   const endAngleRad = baseAngleRad + sweepAngleRad;
   const counterclockwise = sweepAngleRad < 0;
 
@@ -303,6 +248,11 @@ function paintAngleArc(
   const requestedCss = requestedMetric * metricToPx;
   const clampedCss = Math.max(POLAR_REF_MIN_CSS, Math.min(POLAR_REF_MAX_CSS, requestedCss));
   const polarRefLenMetric = clampedCss / metricToPx;
+  // Arc radius matches the clamped polar baseline length so baseline +
+  // arc visually scale together (user feedback: "polar should be biggest
+  // possible arc on the line end"). The guide's radiusCssPx field is
+  // now an unused legacy hint — the arc always uses polarRefLenMetric.
+  const radiusMetric = polarRefLenMetric;
   const polarEndX = pivot.x + Math.cos(baseAngleRad) * polarRefLenMetric;
   const polarEndY = pivot.y + Math.sin(baseAngleRad) * polarRefLenMetric;
   ctx.save();
