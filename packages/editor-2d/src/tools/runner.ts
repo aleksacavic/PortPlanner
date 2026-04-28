@@ -19,7 +19,7 @@
 //     overlay.previewShape, never to projectStore.
 
 import { type EditorUiState, editorUiActions, editorUiStore } from '../ui-state/store';
-import type { Input, Prompt, ToolGenerator, ToolResult } from './types';
+import type { DimensionGuide, Input, Prompt, ToolGenerator, ToolResult } from './types';
 
 // M1.3d-Remediation-3 F6 — modeless / system tools never user-invoked
 // via shortcut. Excluded from `lastToolId` tracking so spacebar's
@@ -45,16 +45,33 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   // currentPromptRef.current is mutated when each new Prompt is
   // yielded; the subscription handler reads it on every fire so a
   // single subscription serves every prompt the tool yields.
+  //
+  // M1.3 Round 6 — extended to also re-invoke
+  // `currentPromptRef.current?.dimensionGuidesBuilder` per cursor-tick
+  // (mirrors `previewBuilder` exactly; same dedup / null-cursor /
+  // teardown semantics). Both builders are pure functions
+  // `(cursor) => Shape`; per plan §3 A2.1 they don't receive a
+  // `RunningTool` reference, so re-entrancy via `feedInput` is
+  // architecturally prevented (defense-in-depth via inSyncBootstrap).
   const currentPromptRef: { current: Prompt | null } = { current: null };
   let unsubscribePreview: (() => void) | null = null;
   let lastCursorSeen: { x: number; y: number } | null = null;
+  // M1.3 Round 6 — sync-bootstrap re-entrancy guard. Set true around
+  // synchronous builder seed calls (the block at the prompt-yield site
+  // below); cleared in finally. `feedInput` checks the flag at entry
+  // and throws if set. Plan §3 A2.1 + Phase 1 step 3a.iii (Rev-6
+  // single-method form per actual function-based runner architecture).
+  let inSyncBootstrap = false;
 
   function ensurePreviewSubscription(): void {
     if (unsubscribePreview !== null) return;
     unsubscribePreview = editorUiStore.subscribe((state: EditorUiState) => {
       const cursor = state.overlay.cursor;
-      const builder = currentPromptRef.current?.previewBuilder;
-      if (!builder) return;
+      const promptNow = currentPromptRef.current;
+      if (!promptNow) return;
+      const previewBuilder = promptNow.previewBuilder;
+      const guidesBuilder = promptNow.dimensionGuidesBuilder;
+      if (!previewBuilder && !guidesBuilder) return;
       if (!cursor) {
         lastCursorSeen = null;
         return;
@@ -62,7 +79,12 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
       const last = lastCursorSeen;
       if (last && last.x === cursor.metric.x && last.y === cursor.metric.y) return;
       lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
-      editorUiActions.setPreviewShape(builder(cursor.metric));
+      if (previewBuilder) {
+        editorUiActions.setPreviewShape(previewBuilder(cursor.metric));
+      }
+      if (guidesBuilder) {
+        editorUiActions.setDimensionGuides(guidesBuilder(cursor.metric));
+      }
     });
   }
 
@@ -74,6 +96,10 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
     currentPromptRef.current = null;
     lastCursorSeen = null;
     editorUiActions.setPreviewShape(null);
+    // M1.3 Round 6 — also clear DI manifest + dimension guides on teardown
+    // (plan §7 Phase 1 step 3c).
+    editorUiActions.clearDynamicInput();
+    editorUiActions.setDimensionGuides(null);
   }
 
   // Inputs may arrive faster than the generator drains them (rapid
@@ -113,19 +139,46 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           prompt.acceptedInputKinds,
           prompt.directDistanceFrom ?? null,
         );
-        if (prompt.previewBuilder) {
+        // M1.3 Round 6 — Phase 1 step 3a.i: publish DI manifest sparsely
+        // on prompt-yield (resets buffers + activeFieldIdx per Rev-1
+        // R2-A5). When the prompt has no manifest, clear any leftover.
+        if (prompt.dynamicInput) {
+          editorUiActions.setDynamicInputManifest(prompt.dynamicInput);
+        } else {
+          editorUiActions.clearDynamicInput();
+        }
+        if (prompt.previewBuilder || prompt.dimensionGuidesBuilder) {
           ensurePreviewSubscription();
-          // Seed the preview from the current cursor so the first
-          // frame shows it without waiting for a mousemove.
+          // M1.3 Round 6 — Phase 1 step 3a.ii: synchronous bootstrap.
+          // Seed preview AND dimension guides from the current cursor so
+          // the first frame after yield is coherent (Rev-3 H2 first-frame
+          // coherence). Wrap the builder calls with `inSyncBootstrap`
+          // try/finally so any re-entrancy attempt via `feedInput`
+          // throws (Rev-4 H + Rev-6 single-method re-entrancy guard).
           const cursor = editorUiStore.getState().overlay.cursor;
           if (cursor) {
-            editorUiActions.setPreviewShape(prompt.previewBuilder(cursor.metric));
-            lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+            inSyncBootstrap = true;
+            try {
+              if (prompt.previewBuilder) {
+                editorUiActions.setPreviewShape(prompt.previewBuilder(cursor.metric));
+                lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+              }
+              if (prompt.dimensionGuidesBuilder) {
+                const guides: DimensionGuide[] = prompt.dimensionGuidesBuilder(cursor.metric);
+                editorUiActions.setDimensionGuides(guides);
+              } else if (!prompt.dynamicInput) {
+                // Manifest absent → no guides expected; clear leftover.
+                editorUiActions.setDimensionGuides(null);
+              }
+            } finally {
+              inSyncBootstrap = false;
+            }
           }
         } else {
-          // Prompt without a preview — clear any leftover from the
-          // previous prompt so a stale shape doesn't linger.
+          // Prompt without builders — clear any leftover preview / guides
+          // so stale shapes don't linger.
           editorUiActions.setPreviewShape(null);
+          editorUiActions.setDimensionGuides(null);
           lastCursorSeen = null;
         }
         const input = await nextInput();
@@ -152,6 +205,16 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   return {
     toolId,
     feedInput(input: Input): void {
+      // M1.3 Round 6 — re-entrancy guard. If a builder somehow obtained
+      // a `RunningTool` reference (test-only contrivance — production
+      // builders are pure (cursor) => Shape and don't have access) and
+      // calls feedInput from inside the synchronous bootstrap path,
+      // throw. Plan §3 A2.1 + Phase 1 step 3a.iii (Rev-6 single-method
+      // form). Production tools never hit this; existing per-cursor-tick
+      // builder invocations leave the flag at false.
+      if (inSyncBootstrap) {
+        throw new Error('cursor-effect re-entered runner during sync bootstrap');
+      }
       if (pendingResolve) {
         const r = pendingResolve;
         pendingResolve = null;

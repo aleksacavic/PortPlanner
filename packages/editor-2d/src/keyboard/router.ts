@@ -20,6 +20,7 @@
 // (parity with the bottom command line's form submit, with explicit
 // history-append in EditorRoot per Rev-1 B1 fix).
 
+import type { DynamicInputManifest } from '../tools/types';
 import { editorUiActions, editorUiStore } from '../ui-state/store';
 import { type ToolId, lookupShortcut } from './shortcuts';
 
@@ -52,6 +53,15 @@ export interface KeyboardRouterCallbacks {
    *  transform applies uniformly), and explicitly appends to history
    *  to mirror CommandBar.tsx's bar-form onSubmit (Rev-1 B1 parity). */
   onSubmitBuffer: (raw: string) => void;
+  /** M1.3 Round 6 — submit the current Dynamic Input multi-field buffers
+   *  to the active tool. Fired when the user hits Enter / Space at
+   *  canvas focus while `commandBar.dynamicInput.manifest !== null`.
+   *  EditorRoot's implementation delegates to `combineDynamicInputBuffers`
+   *  helper (SSOT for `combineAs` policies + deg→rad conversion);
+   *  feeds the resulting Input to the runner (or ignores submit if
+   *  helper returns null on empty / un-parseable buffers). Plan §7
+   *  Phase 1 step 11 + §3 A2.1. */
+  onSubmitDynamicInput: (manifest: DynamicInputManifest, buffers: string[]) => void;
 }
 
 // M1.3d-Rem-4 G2 — keys that route into `commandBar.inputBuffer` at
@@ -121,6 +131,36 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     editorUiActions.setInputBuffer(current.slice(0, -1));
   }
 
+  // M1.3 Round 6 — DI helper: write/read/cycle the per-field DI buffer
+  // when `commandBar.dynamicInput.manifest !== null`. Sole writer is the
+  // router (numeric / Backspace / Tab branches below). Esc clears via
+  // `clearDynamicInput`. Plan §7 step 8.
+  function appendToDIActiveField(ch: string): void {
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    if (!di) return;
+    const idx = di.activeFieldIdx;
+    const cur = di.buffers[idx] ?? '';
+    editorUiActions.setDynamicInputFieldBuffer(idx, cur + ch);
+  }
+
+  function popFromDIActiveField(): void {
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    if (!di) return;
+    const idx = di.activeFieldIdx;
+    const cur = di.buffers[idx] ?? '';
+    if (cur.length === 0) return;
+    editorUiActions.setDynamicInputFieldBuffer(idx, cur.slice(0, -1));
+  }
+
+  function cycleDIActiveField(direction: 1 | -1): void {
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    if (!di) return;
+    const n = di.manifest.fields.length;
+    if (n <= 1) return;
+    const next = (di.activeFieldIdx + direction + n) % n;
+    editorUiActions.setDynamicInputActiveField(next);
+  }
+
   const handler = (e: KeyboardEvent): void => {
     const focus = editorUiStore.getState().focusHolder;
     const key = e.key;
@@ -166,19 +206,42 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       // M1.3d-Rem-4 G1: Escape clears the accumulator silently (no
       // activation). G2: Escape also clears the inputBuffer — Esc
       // means "abort everything in flight" (tool, accumulator, buffer).
+      // M1.3 Round 6: Esc also clears DI manifest + buffers.
       clearAccumulator();
       editorUiActions.setInputBuffer('');
+      editorUiActions.clearDynamicInput();
       callbacks.onAbortCurrentTool();
       editorUiActions.setFocusHolder('canvas');
       return;
     }
+    // M1.3 Round 6 — Tab / Shift+Tab cycles activeFieldIdx when DI is
+    // active. Intercepted at canvas OR bar focus so the user can Tab
+    // between DI pills regardless of which surface they're typing in.
+    // When no DI is active, Tab passes through to native browser
+    // behaviour (preserves accessibility for chrome regions).
+    if (key === 'Tab') {
+      const di = editorUiStore.getState().commandBar.dynamicInput;
+      if (di && di.manifest.fields.length > 1) {
+        e.preventDefault();
+        cycleDIActiveField(e.shiftKey ? -1 : 1);
+        return;
+      }
+      // No DI active OR single-field manifest — pass through.
+    }
     if (key === 'Enter' && focus === 'canvas') {
       // M1.3d-Rem-4 — Enter at canvas focus disambiguation per A10b.
-      // Branch order is inputBuffer-first (the AC-correct policy: a
-      // typed value answers the active prompt; activation can wait).
+      // M1.3 Round 6 — DI submit takes precedence over inputBuffer
+      // submit when a manifest is active (the DI per-field buffers
+      // are the active typing surface; inputBuffer is the legacy
+      // single-field path).
       e.preventDefault();
       const cb = editorUiStore.getState().commandBar;
       const activeToolId = editorUiStore.getState().activeToolId;
+      // (0) DI active + tool active → DI submit (Round 6).
+      if (cb.dynamicInput && activeToolId !== null) {
+        callbacks.onSubmitDynamicInput(cb.dynamicInput.manifest, cb.dynamicInput.buffers);
+        return;
+      }
       // (1) inputBuffer non-empty + tool active → submit buffer.
       if (cb.inputBuffer.length > 0 && activeToolId !== null) {
         callbacks.onSubmitBuffer(cb.inputBuffer);
@@ -208,6 +271,12 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       e.preventDefault();
       const cb = editorUiStore.getState().commandBar;
       const activeToolId = editorUiStore.getState().activeToolId;
+      // (0) DI active + tool active → DI submit (Round 6 — same
+      // precedence as Enter for symmetry).
+      if (cb.dynamicInput && activeToolId !== null) {
+        callbacks.onSubmitDynamicInput(cb.dynamicInput.manifest, cb.dynamicInput.buffers);
+        return;
+      }
       // (1) inputBuffer non-empty + tool active → submit buffer.
       if (cb.inputBuffer.length > 0 && activeToolId !== null) {
         callbacks.onSubmitBuffer(cb.inputBuffer);
@@ -243,7 +312,14 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     // when empty, the preventDefault is a benign safety net.
     if (key === 'Backspace' && focus === 'canvas') {
       e.preventDefault();
-      popFromInputBuffer();
+      // M1.3 Round 6 — when DI is active, Backspace pops from the
+      // active field's buffer; otherwise legacy inputBuffer pop.
+      const di = editorUiStore.getState().commandBar.dynamicInput;
+      if (di) {
+        popFromDIActiveField();
+      } else {
+        popFromInputBuffer();
+      }
       return;
     }
 
@@ -273,7 +349,15 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     // bar input handles its own onChange.
     if (focus === 'canvas' && INPUT_BUFFER_KEY_RE.test(key)) {
       e.preventDefault();
-      appendToInputBuffer(key);
+      // M1.3 Round 6 — when DI is active, route digits/punct to the
+      // active field's per-field buffer (NOT the legacy inputBuffer).
+      // Plan §7 step 8.
+      const di = editorUiStore.getState().commandBar.dynamicInput;
+      if (di) {
+        appendToDIActiveField(key);
+      } else {
+        appendToInputBuffer(key);
+      }
       return;
     }
     // Bar / dialog focus: native input handles letters / numerics; we

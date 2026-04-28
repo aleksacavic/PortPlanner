@@ -20,7 +20,12 @@ import { createStore } from 'zustand/vanilla';
 
 import type { ScreenPoint, Viewport } from '../canvas/view-transform';
 import type { SnapHit } from '../snap/priority';
-import type { AcceptedInputKind, PreviewShape } from '../tools/types';
+import type {
+  AcceptedInputKind,
+  DimensionGuide,
+  DynamicInputManifest,
+  PreviewShape,
+} from '../tools/types';
 
 /**
  * Snap target highlighted under the cursor — alias of the snap engine's
@@ -125,6 +130,23 @@ export interface CommandBarState {
    * streams matching AC's mental model (see plan §3 A4 / A10b).
    */
   accumulator: string;
+  /**
+   * M1.3 Round 6 — Dynamic Input multi-field state. Published by the
+   * tool runner on prompt-yield with `prompt.dynamicInput` set; cleared
+   * on tool teardown OR yielded prompt without manifest. Plan §3 A2.1:
+   * sparse — manifest carries NO anchor info; anchor coords live on
+   * `overlay.dimensionGuides`.
+   *
+   * Buffer reset semantics (Rev-1 R2-A5): each prompt yield with a
+   * manifest resets `buffers` to `Array(manifest.fields.length).fill('')`
+   * and `activeFieldIdx` to 0. Polyline-loop iterations therefore
+   * start with empty buffers per leg.
+   */
+  dynamicInput: {
+    manifest: DynamicInputManifest;
+    buffers: string[];
+    activeFieldIdx: number;
+  } | null;
 }
 
 export interface OverlayState {
@@ -203,6 +225,25 @@ export interface OverlayState {
    * `lastKnownCursor` is purely a memory of the last-seen position.
    */
   lastKnownCursor: Point2D | null;
+  /**
+   * M1.3 Round 6 — Dimension-guide descriptors written by per-tool
+   * cursor-effect (extends the existing `Prompt.previewBuilder` pattern
+   * via sibling `Prompt.dimensionGuidesBuilder`). Read by
+   * `paintDimensionGuides` (overlay-pass painter; flat metric coords
+   * only, no resolution logic) and by the multi-pill chrome
+   * (`DynamicInputPills`) for per-pill anchor positioning.
+   *
+   * Plan §3 A2.1 publication contract: dynamic — written every
+   * cursor-tick AND seeded synchronously on prompt-yield (Rev-3 H2
+   * first-frame coherence; sync seed wrapped with `inSyncBootstrap`
+   * try/finally per Rev-4 H + Rev-6 single-method re-entrancy guard).
+   * Cleared on tool teardown OR yielded prompt without manifest.
+   *
+   * Shape invariant: when `commandBar.dynamicInput.manifest !== null`,
+   * `dimensionGuides !== null && dimensionGuides.length ===
+   * manifest.fields.length`.
+   */
+  dimensionGuides: DimensionGuide[] | null;
 }
 
 /**
@@ -267,6 +308,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     directDistanceFrom: null,
     lastToolId: null,
     accumulator: '',
+    dynamicInput: null,
   },
   focusHolder: 'canvas',
   focusStack: [],
@@ -282,6 +324,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     suppressEntityPaint: null,
     hoveredGrip: null,
     lastKnownCursor: null,
+    dimensionGuides: null,
   },
   modifiers: { shift: false },
 });
@@ -458,6 +501,41 @@ export const editorUiActions = {
   setAccumulator(value: string): void {
     editorUiStore.setState((s) => {
       s.commandBar.accumulator = value;
+    });
+  },
+  // M1.3 Round 6 — Dynamic Input multi-field state setters per plan §3 A2.1.
+  // Plan Rev-1 R2-A5: each prompt yield with a manifest resets buffers + activeFieldIdx.
+  setDynamicInputManifest(manifest: DynamicInputManifest): void {
+    editorUiStore.setState((s) => {
+      s.commandBar.dynamicInput = {
+        manifest,
+        buffers: Array<string>(manifest.fields.length).fill(''),
+        activeFieldIdx: 0,
+      };
+    });
+  },
+  setDynamicInputActiveField(idx: number): void {
+    editorUiStore.setState((s) => {
+      if (s.commandBar.dynamicInput) {
+        s.commandBar.dynamicInput.activeFieldIdx = idx;
+      }
+    });
+  },
+  setDynamicInputFieldBuffer(idx: number, value: string): void {
+    editorUiStore.setState((s) => {
+      if (s.commandBar.dynamicInput && idx >= 0 && idx < s.commandBar.dynamicInput.buffers.length) {
+        s.commandBar.dynamicInput.buffers[idx] = value;
+      }
+    });
+  },
+  clearDynamicInput(): void {
+    editorUiStore.setState((s) => {
+      s.commandBar.dynamicInput = null;
+    });
+  },
+  setDimensionGuides(guides: DimensionGuide[] | null): void {
+    editorUiStore.setState((s) => {
+      s.overlay.dimensionGuides = guides;
     });
   },
   /**

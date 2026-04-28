@@ -19,6 +19,50 @@ export type AcceptedInputKind =
   | 'entity'
   | 'subOption';
 
+// M1.3 Round 6 — Dynamic Input manifest contract per ADR-024.
+// Sparse declarative metadata published once on prompt-yield; carries
+// NO anchor info. Anchor coords live on `overlay.dimensionGuides`
+// (per-tool cursor-effect responsibility). See plan §3 A2.1.
+
+export type DynamicInputFieldKind = 'number' | 'distance' | 'angle';
+
+export interface DynamicInputField {
+  kind: DynamicInputFieldKind;
+  label?: string;
+}
+
+export type CombineAsPolicy = 'numberPair' | 'point' | 'number';
+
+export interface DynamicInputManifest {
+  fields: DynamicInputField[];
+  combineAs: CombineAsPolicy;
+}
+
+// `DimensionGuide` discriminated union — flat metric coords ONLY.
+// No reference strings, no callbacks, no anchor IDs (Rev-2 H1 lock).
+// Painter `paintDimensionGuides` reads these flat coords; per-tool
+// cursor-effect handler (extended `previewBuilder` style via
+// `Prompt.dimensionGuidesBuilder`) writes them per cursor-tick.
+export type DimensionGuide =
+  | {
+      kind: 'linear-dim';
+      anchorA: Point2D;
+      anchorB: Point2D;
+      offsetCssPx: number;
+    }
+  | {
+      kind: 'angle-arc';
+      pivot: Point2D;
+      baseAngleRad: number;
+      sweepAngleRad: number;
+      radiusCssPx: number;
+    }
+  | {
+      kind: 'radius-line';
+      pivot: Point2D;
+      endpoint: Point2D;
+    };
+
 /**
  * In-flight visualisation a tool yields alongside a Prompt. The tool
  * runner re-invokes `Prompt.previewBuilder` on every cursor change and
@@ -93,6 +137,33 @@ export interface Prompt {
    * Dimensions sub-option).
    */
   directDistanceFrom?: Point2D;
+  /**
+   * M1.3 Round 6 — optional Dynamic Input manifest. When set, the
+   * runner publishes the manifest to `commandBar.dynamicInput.manifest`
+   * (sparse) on yield. Multi-pill chrome reads the manifest for field
+   * count / labels / activeFieldIdx; keyboard router routes Tab /
+   * numeric / Enter to the per-field buffers. Tools without DI omit
+   * this field — legacy single-pill / F1 path unchanged.
+   *
+   * Plan §3 A2.1: manifest carries NO anchor info; anchor coords live
+   * on `overlay.dimensionGuides` (sibling `dimensionGuidesBuilder`).
+   */
+  dynamicInput?: DynamicInputManifest;
+  /**
+   * M1.3 Round 6 — optional dimension-guides builder mirroring the
+   * existing `previewBuilder` pattern. Pure function `(cursor) =>
+   * DimensionGuide[]`. Runner subscribes to `overlay.cursor` and
+   * re-invokes on every cursor change; result is written to
+   * `overlay.dimensionGuides`. Synchronous seed on yield happens in
+   * the same block at runner.ts:116-130 that already seeds
+   * `previewBuilder` (Rev-3 H2 first-frame coherence + Rev-4 H +
+   * Rev-6 single-method re-entrancy guard).
+   *
+   * Contract: pure function — does NOT receive a `RunningTool`
+   * reference, cannot reach `feedInput` (architectural primary
+   * defense for re-entrancy per plan §3 A2.1).
+   */
+  dimensionGuidesBuilder?: (cursor: Point2D) => DimensionGuide[];
 }
 
 export type Input =

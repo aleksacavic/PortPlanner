@@ -17,6 +17,7 @@ import type { PrimitiveId, Project } from '@portplanner/domain';
 import type { Grip, OverlayState } from '../ui-state/store';
 import { paintGrid, paintPrimitive } from './painters';
 import { paintCrosshair } from './painters/paintCrosshair';
+import { paintDimensionGuides } from './painters/paintDimensionGuides';
 import { paintHoverHighlight } from './painters/paintHoverHighlight';
 import { paintPreview } from './painters/paintPreview';
 import { paintSelection } from './painters/paintSelection';
@@ -117,6 +118,14 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     // painter's save/restore left ctx in identity.
     if (overlay.previewShape && overlay.previewShape.kind !== 'selection-rect') {
       paintPreview(ctx, overlay.previewShape, viewport, dark);
+      applyToCanvasContext(ctx, viewport);
+    }
+    // M1.3 Round 6 — dimension guides (linear-dim / angle-arc /
+    // radius-line) painted AFTER paintPreview so the witness/dim/arc
+    // strokes render on top of the rubber-band geometry. Plan §7
+    // Phase 1 step 5 + §10 audit C3.8.
+    if (overlay.dimensionGuides && overlay.dimensionGuides.length > 0) {
+      paintDimensionGuides(ctx, overlay.dimensionGuides, viewport, dark);
       applyToCanvasContext(ctx, viewport);
     }
     // Phase 3 — snap glyph.

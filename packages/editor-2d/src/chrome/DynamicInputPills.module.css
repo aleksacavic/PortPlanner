@@ -1,0 +1,40 @@
+/* M1.3 Round 6 — Dynamic Input multi-pill chrome.
+   Successor to DynamicInputPill.module.css. The .pill base class is
+   identical (visual carry-over from single-pill); .pillFocused adds
+   the active-field glow ring; .pillCaret renders the animated text
+   caret on the focused field. pointer-events none so canvas clicks
+   pass through. */
+.pill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background: var(--surface-overlay, rgba(17, 17, 17, 0.92));
+  color: var(--text-primary, #eee);
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: 1px dotted var(--surface-border, #555);
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 10;
+}
+.pillFocused {
+  border-style: solid;
+  border-color: var(--text-primary, #eee);
+  box-shadow: 0 0 0 1px rgba(255, 200, 0, 0.6);
+}
+.pillCaret {
+  display: inline-block;
+  width: 1px;
+  height: 1em;
+  margin-left: 2px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: di-caret-blink 1s steps(2, start) infinite;
+}
+@keyframes di-caret-blink {
+  to {
+    visibility: hidden;
+  }
+}

@@ -24,7 +24,7 @@ import { hitTest } from './canvas/hit-test';
 import { PrimitiveSpatialIndex } from './canvas/spatial-index';
 import { type ScreenPoint, screenToMetric } from './canvas/view-transform';
 import { CommandBar } from './chrome/CommandBar';
-import { DynamicInputPill } from './chrome/DynamicInputPill';
+import { DynamicInputPills } from './chrome/DynamicInputPills';
 import { LayerManagerDialog } from './chrome/LayerManagerDialog';
 import { PropertiesPanel } from './chrome/PropertiesPanel';
 import { useEditorUi } from './chrome/use-editor-ui-store';
@@ -33,6 +33,7 @@ import type { ToolId } from './keyboard/shortcuts';
 import { commitSnappedVertex } from './snap/commit';
 import { resolveSnap } from './snap/priority';
 import { lookupTool } from './tools';
+import { combineDynamicInputBuffers } from './tools/dynamic-input-combine';
 import { gripStretchTool } from './tools/grip-stretch';
 import { type RunningTool, startTool } from './tools/runner';
 import { selectRectTool } from './tools/select-rect';
@@ -172,6 +173,53 @@ export function EditorRoot(): ReactElement {
         }
         handleCommandSubmit(raw);
         editorUiActions.setInputBuffer('');
+      },
+      // M1.3 Round 6 — Dynamic Input submit. Delegates to the SSOT
+      // helper `combineDynamicInputBuffers` (deg→rad conversion lives
+      // there only — Gate REM6-P1-AngleUnit asserts EditorRoot.tsx has
+      // ZERO conversion-symbol matches). On non-null Input, feeds to
+      // runner; clears DI buffers via `clearDynamicInput`. Anchor
+      // sourced from `overlay.dimensionGuides[0].anchorA` (or the
+      // prompt's `directDistanceFrom` as fallback) — the same physical
+      // anchor that paintDimensionGuides uses for the linear-dim
+      // segment. Plan §7 Phase 1 step 11 + §10 audit C2.5.
+      onSubmitDynamicInput: (manifest, buffers) => {
+        const cb = editorUiStore.getState().commandBar;
+        const guides = editorUiStore.getState().overlay.dimensionGuides;
+        // Resolve anchor: linear-dim guide carries anchorA (line p1);
+        // angle-arc guide carries pivot; radius-line guide carries pivot.
+        // Fall back to commandBar.directDistanceFrom (set by the runner
+        // from prompt.directDistanceFrom) when no guide is available.
+        let anchor: Point2D | null = null;
+        if (guides && guides.length > 0) {
+          const g0 = guides[0];
+          if (g0) {
+            anchor = g0.kind === 'linear-dim' ? g0.anchorA : g0.pivot;
+          }
+        }
+        if (!anchor) anchor = cb.directDistanceFrom;
+        const input = combineDynamicInputBuffers(manifest, buffers, anchor ?? { x: 0, y: 0 });
+        if (input === null) {
+          // Empty / un-parseable buffers — ignore submit (buffers stay
+          // intact so the user can edit). Plan §3 A7.
+          return;
+        }
+        // Append history mirror of the typed buffers (joined with " / ").
+        const rawJoin = buffers
+          .map((b, i) => {
+            const label = manifest.fields[i]?.label;
+            return label ? `${label}=${b}` : b;
+          })
+          .join(' / ');
+        if (rawJoin.length > 0) {
+          editorUiActions.appendHistory({
+            role: 'input',
+            text: rawJoin,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        runningToolRef.current?.feedInput(input);
+        editorUiActions.clearDynamicInput();
       },
     });
   }, []);
@@ -381,12 +429,36 @@ export function EditorRoot(): ReactElement {
     return () => unsubscribe();
   }, []);
 
+  /**
+   * M1.3 Round 6 — click-eat predicate. Returns true when ANY of the
+   * three typing surfaces holds in-flight content (legacy `inputBuffer`
+   * for non-DI prompts; OR any per-field DI `buffers` non-empty for
+   * multi-field manifests). Sole gate for the 3 click-eat sites
+   * (handleCanvasClick / handleGripDown / handleSelectRectStart) per
+   * Plan §7 step 12 + Gate REM6-P1-ClickEat.
+   *
+   * Plan §3 A2.1: when DI is active, `inputBuffer` may stay empty while
+   * `dynamicInput.buffers` are populated — clicks during DI typing
+   * would otherwise slip through. Helper is the single named symbol
+   * the click-eat gate's grep can match (refactor-resilient — Rev-3 Q
+   * locked the gate to unit tests, but this helper preserves the
+   * comment-annotation regression-protection grep).
+   */
+  function hasNonEmptyTypingBuffer(): boolean {
+    const cb = editorUiStore.getState().commandBar;
+    if (cb.inputBuffer.length > 0) return true;
+    if (cb.dynamicInput && cb.dynamicInput.buffers.some((b) => b.length > 0)) return true;
+    return false;
+  }
+
   const handleCanvasClick = (metric: Point2D, screen: { x: number; y: number }): void => {
     // M1.3d-Remediation-4 G2 — click-eat: when the inputBuffer has
     // content, the user is mid-typing a value into the Dynamic Input
     // pill. AC parity: the buffer takes precedence; clicks are silently
     // eaten until the user commits (Enter) or aborts (Esc) the buffer.
-    if (editorUiStore.getState().commandBar.inputBuffer.length > 0) return;
+    // M1.3 Round 6 — also eat clicks when any DI per-field buffer is
+    // non-empty (multi-field DI parity).
+    if (hasNonEmptyTypingBuffer()) return;
     const tool = runningToolRef.current;
     if (tool) {
       // M1.3d Phase 3 — if the snap engine resolved a target this frame,
@@ -529,8 +601,8 @@ export function EditorRoot(): ReactElement {
   };
 
   const handleGripDown = (grip: Grip): void => {
-    // M1.3d-Rem-4 G2 — click-eat (see handleCanvasClick).
-    if (editorUiStore.getState().commandBar.inputBuffer.length > 0) return;
+    // M1.3d-Rem-4 G2 + M1.3 Round 6 — click-eat (see handleCanvasClick).
+    if (hasNonEmptyTypingBuffer()) return;
     // M1.3d-Remediation-3 F5 BUG FIX — when a tool is already running
     // and awaiting a 'point' input, clicking on a grip MUST feed the
     // grip's exact position as the input (AutoCAD parity: grip serves
@@ -556,8 +628,8 @@ export function EditorRoot(): ReactElement {
   // no tool is active. canvas-host fires onSelectRectStart on EVERY
   // mousedown; we gate on activeToolId === null here.
   const handleSelectRectStart = (metric: Point2D, screen: ScreenPoint): void => {
-    // M1.3d-Rem-4 G2 — click-eat (see handleCanvasClick).
-    if (editorUiStore.getState().commandBar.inputBuffer.length > 0) return;
+    // M1.3d-Rem-4 G2 + M1.3 Round 6 — click-eat (see handleCanvasClick).
+    if (hasNonEmptyTypingBuffer()) return;
     if (runningToolRef.current !== null) return;
     const factory = selectRectTool(metric, screen);
     const running = startTool('select-rect', factory);
@@ -632,7 +704,7 @@ export function EditorRoot(): ReactElement {
         {/* M1.3d-Rem-4 G2 — Dynamic Input pill anchored at cursor.
             Sibling of CanvasHost; canvas-area is position:relative so
             the pill's absolute positioning resolves correctly. */}
-        <DynamicInputPill />
+        <DynamicInputPills />
       </div>
       <div
         data-component="properties-area"
