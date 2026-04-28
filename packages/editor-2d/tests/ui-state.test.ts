@@ -266,3 +266,111 @@ describe('editorUiStore — M1.3d-Rem-4 G1 accumulator', () => {
     expect(editorUiStore.getState().commandBar.accumulator).toBe('');
   });
 });
+
+// M1.3 Round 6 — Dynamic Input slice extensions per plan §3 A2.1 +
+// §11 substrate slice tests. commandBar.dynamicInput (manifest +
+// buffers + activeFieldIdx); overlay.dimensionGuides.
+describe('editorUiStore — M1.3 Round 6 Dynamic Input slice', () => {
+  afterEach(() => resetEditorUiStoreForTests());
+
+  it('commandBar.dynamicInput defaults to null', () => {
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+  });
+
+  it('overlay.dimensionGuides defaults to null', () => {
+    expect(editorUiStore.getState().overlay.dimensionGuides).toBeNull();
+  });
+
+  it('setDynamicInputManifest stores manifest AND resets buffers + activeFieldIdx (Rev-1 R2-A5)', () => {
+    editorUiActions.setDynamicInputManifest({
+      fields: [
+        { kind: 'number', label: 'W' },
+        { kind: 'number', label: 'H' },
+      ],
+      combineAs: 'numberPair',
+    });
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di).not.toBeNull();
+    if (!di) return;
+    expect(di.manifest.fields).toHaveLength(2);
+    expect(di.buffers).toEqual(['', '']);
+    expect(di.activeFieldIdx).toBe(0);
+  });
+
+  it('setDynamicInputFieldBuffer updates the buffer at idx', () => {
+    editorUiActions.setDynamicInputManifest({
+      fields: [
+        { kind: 'number', label: 'W' },
+        { kind: 'number', label: 'H' },
+      ],
+      combineAs: 'numberPair',
+    });
+    editorUiActions.setDynamicInputFieldBuffer(1, '4');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers).toEqual(['', '4']);
+    editorUiActions.setDynamicInputFieldBuffer(0, '6');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers).toEqual(['6', '4']);
+  });
+
+  it('setDynamicInputActiveField cycles idx', () => {
+    editorUiActions.setDynamicInputManifest({
+      fields: [
+        { kind: 'distance', label: 'D' },
+        { kind: 'angle', label: 'A' },
+      ],
+      combineAs: 'point',
+    });
+    editorUiActions.setDynamicInputActiveField(1);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(1);
+    editorUiActions.setDynamicInputActiveField(0);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(0);
+  });
+
+  it('clearDynamicInput resets to null', () => {
+    editorUiActions.setDynamicInputManifest({
+      fields: [{ kind: 'number', label: 'R' }],
+      combineAs: 'number',
+    });
+    editorUiActions.clearDynamicInput();
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+  });
+
+  it('setDimensionGuides stores and clears via null', () => {
+    editorUiActions.setDimensionGuides([
+      {
+        kind: 'linear-dim',
+        anchorA: { x: 0, y: 0 },
+        anchorB: { x: 10, y: 0 },
+        offsetCssPx: 10,
+      },
+    ]);
+    const guides = editorUiStore.getState().overlay.dimensionGuides;
+    expect(guides).toHaveLength(1);
+    expect(guides?.[0]?.kind).toBe('linear-dim');
+    editorUiActions.setDimensionGuides(null);
+    expect(editorUiStore.getState().overlay.dimensionGuides).toBeNull();
+  });
+
+  it('setDynamicInputManifest re-yield resets buffers (polyline-loop semantics — Rev-1 R2-A5)', () => {
+    editorUiActions.setDynamicInputManifest({
+      fields: [
+        { kind: 'distance', label: 'D' },
+        { kind: 'angle', label: 'A' },
+      ],
+      combineAs: 'point',
+    });
+    editorUiActions.setDynamicInputFieldBuffer(0, '5');
+    editorUiActions.setDynamicInputFieldBuffer(1, '30');
+    editorUiActions.setDynamicInputActiveField(1);
+    // Re-publish (simulates next polyline-loop iteration).
+    editorUiActions.setDynamicInputManifest({
+      fields: [
+        { kind: 'distance', label: 'D' },
+        { kind: 'angle', label: 'A' },
+      ],
+      combineAs: 'point',
+    });
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di?.buffers).toEqual(['', '']);
+    expect(di?.activeFieldIdx).toBe(0);
+  });
+});

@@ -9,11 +9,12 @@
 // Gate REM6-P1-DimensionGuideTypes asserts the schema is flat-coord-
 // only with no reference strings, callbacks, or anchor IDs).
 //
-// I-DTP-8 / Gate DTP-T2: this painter MUST NOT call ctx.fillText /
-// ctx.strokeText. Pill labels live in DOM (DynamicInputPills); guides
-// are pure-vector strokes (witness/dim/arrow lines + arcs + tick
-// marks). The forbidden method names are deliberately not mentioned
-// in this file's prose.
+// I-DTP-8 / Gate DTP-T2: this painter MUST NOT call the canvas text
+// APIs (paintTransientLabel + paintGrid are the SOLE allowed callers).
+// Pill labels live in DOM (DynamicInputPills); guides are pure-vector
+// strokes (witness/dim/arrow lines + arcs + tick marks). The forbidden
+// method names are deliberately not mentioned in this file's prose so
+// the gate's substring grep doesn't trip on documentation.
 //
 // Each arm draws in METRIC SPACE (the active transform is the metric
 // transform applied by paint.ts). Stroke patterns / widths follow the
@@ -70,7 +71,12 @@ export function paintDimensionGuides(
  */
 function paintLinearDim(
   ctx: CanvasRenderingContext2D,
-  guide: { kind: 'linear-dim'; anchorA: { x: number; y: number }; anchorB: { x: number; y: number }; offsetCssPx: number },
+  guide: {
+    kind: 'linear-dim';
+    anchorA: { x: number; y: number };
+    anchorB: { x: number; y: number };
+    offsetCssPx: number;
+  },
   metricToPx: number,
 ): void {
   const { anchorA, anchorB, offsetCssPx } = guide;
@@ -149,7 +155,13 @@ function paintTickAt(
  */
 function paintAngleArc(
   ctx: CanvasRenderingContext2D,
-  guide: { kind: 'angle-arc'; pivot: { x: number; y: number }; baseAngleRad: number; sweepAngleRad: number; radiusCssPx: number },
+  guide: {
+    kind: 'angle-arc';
+    pivot: { x: number; y: number };
+    baseAngleRad: number;
+    sweepAngleRad: number;
+    radiusCssPx: number;
+  },
   metricToPx: number,
 ): void {
   const { pivot, baseAngleRad, sweepAngleRad, radiusCssPx } = guide;
@@ -169,7 +181,11 @@ function paintAngleArc(
  */
 function paintRadiusLine(
   ctx: CanvasRenderingContext2D,
-  guide: { kind: 'radius-line'; pivot: { x: number; y: number }; endpoint: { x: number; y: number } },
+  guide: {
+    kind: 'radius-line';
+    pivot: { x: number; y: number };
+    endpoint: { x: number; y: number };
+  },
   metricToPx: number,
 ): void {
   const { pivot, endpoint } = guide;

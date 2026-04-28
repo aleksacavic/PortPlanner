@@ -447,7 +447,7 @@ export function EditorRoot(): ReactElement {
   function hasNonEmptyTypingBuffer(): boolean {
     const cb = editorUiStore.getState().commandBar;
     if (cb.inputBuffer.length > 0) return true;
-    if (cb.dynamicInput && cb.dynamicInput.buffers.some((b) => b.length > 0)) return true;
+    if (cb.dynamicInput?.buffers.some((b) => b.length > 0)) return true;
     return false;
   }
 

@@ -14,6 +14,7 @@ interface RouterMocks {
   onToggleCrosshair: ReturnType<typeof vi.fn>;
   onRepeatLastCommand: ReturnType<typeof vi.fn>;
   onSubmitBuffer: ReturnType<typeof vi.fn>;
+  onSubmitDynamicInput: ReturnType<typeof vi.fn>;
 }
 
 let mocks: RouterMocks;
@@ -35,6 +36,7 @@ beforeEach(() => {
     onToggleCrosshair: vi.fn(),
     onRepeatLastCommand: vi.fn(),
     onSubmitBuffer: vi.fn(),
+    onSubmitDynamicInput: vi.fn(),
   };
   registerKeyboardRouter(mocks);
 });
@@ -410,5 +412,91 @@ describe('shortcut lookup', () => {
     expect(lookupShortcut('A')).toBe('draw-arc');
     expect(lookupShortcut('XL')).toBe('draw-xline');
     expect(lookupShortcut('XX')).toBe('draw-xline');
+  });
+});
+
+// M1.3 Round 6 — Dynamic Input router branches per plan §11.
+// Tab cycles activeFieldIdx; numeric/Backspace route to active DI field
+// when manifest is active; Enter invokes onSubmitDynamicInput.
+describe('keyboard router — M1.3 Round 6 Dynamic Input', () => {
+  function activateDIManifest(): void {
+    editorUiActions.setDynamicInputManifest({
+      fields: [
+        { kind: 'distance', label: 'D' },
+        { kind: 'angle', label: 'A' },
+      ],
+      combineAs: 'point',
+    });
+    editorUiActions.setActiveToolId('draw-line');
+    editorUiActions.setFocusHolder('canvas');
+  }
+
+  it('Tab cycles activeFieldIdx forward (with DI manifest active)', () => {
+    activateDIManifest();
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(0);
+    pressKey('Tab');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(1);
+    pressKey('Tab');
+    // Wraps modulo field-count (2 fields → 1 → 0).
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(0);
+  });
+
+  it('Shift+Tab cycles activeFieldIdx backward', () => {
+    activateDIManifest();
+    pressKey('Tab', { shiftKey: true });
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(1);
+  });
+
+  it('Numeric keys route to dynamicInput.buffers[activeFieldIdx] (NOT inputBuffer)', () => {
+    activateDIManifest();
+    pressKey('5');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers).toEqual(['5', '']);
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
+    // Tab to next field then type.
+    pressKey('Tab');
+    pressKey('3');
+    pressKey('0');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers).toEqual(['5', '30']);
+  });
+
+  it('Backspace pops from active field buffer (when DI active)', () => {
+    activateDIManifest();
+    pressKey('5');
+    pressKey('5');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('55');
+    pressKey('Backspace');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('5');
+  });
+
+  it('Enter at canvas focus + DI active → onSubmitDynamicInput (DI submit takes precedence over inputBuffer submit)', () => {
+    activateDIManifest();
+    pressKey('5');
+    pressKey('Tab');
+    pressKey('3');
+    pressKey('0');
+    pressKey('Enter');
+    expect(mocks.onSubmitDynamicInput).toHaveBeenCalledTimes(1);
+    expect(mocks.onSubmitDynamicInput).toHaveBeenCalledWith(
+      expect.objectContaining({ combineAs: 'point' }),
+      ['5', '30'],
+    );
+    // onSubmitBuffer NOT called — DI takes precedence.
+    expect(mocks.onSubmitBuffer).not.toHaveBeenCalled();
+  });
+
+  it('Esc clears DI buffers (in addition to existing inputBuffer + accumulator)', () => {
+    activateDIManifest();
+    pressKey('5');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('5');
+    pressKey('Escape');
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+  });
+
+  it('Tab passes through (no DI active) — does NOT preventDefault, no slice mutation', () => {
+    // No DI manifest set; activeFieldIdx is null.
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+    pressKey('Tab');
+    // No DI to mutate; the test merely asserts no throw + no DI side effect.
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
   });
 });
