@@ -2,7 +2,19 @@ import { LayerId, newPrimitiveId } from '@portplanner/domain';
 import { addPrimitive } from '@portplanner/project-store';
 
 import { editorUiStore } from '../../ui-state/store';
-import type { ToolGenerator } from '../types';
+import type { DimensionGuide, DynamicInputManifest, ToolGenerator } from '../types';
+
+// M1.3 Round 6 — DI manifest for the second-point prompt. Sparse:
+// distance + angle fields, combineAs:'point' triggers the deg→rad
+// polar conversion in combineDynamicInputBuffers. Plan §4.1 + Phase 2
+// step 13.
+const LINE_DI_MANIFEST: DynamicInputManifest = {
+  fields: [
+    { kind: 'distance', label: 'Distance' },
+    { kind: 'angle', label: 'Angle' },
+  ],
+  combineAs: 'point',
+};
 
 export async function* drawLineTool(): ToolGenerator {
   const start = yield { text: 'Specify start point', acceptedInputKinds: ['point'] };
@@ -14,6 +26,22 @@ export async function* drawLineTool(): ToolGenerator {
     previewBuilder: (cursor) => ({ kind: 'line', p1, cursor }),
     // F1: typed numeric distance lands at p1 + unit(cursor - p1) * d.
     directDistanceFrom: p1,
+    // M1.3 Round 6 — DI manifest + dimension-guides builder. The
+    // dimensionGuidesBuilder mirrors previewBuilder shape: pure
+    // (cursor) => DimensionGuide[]. Two guides: linear-dim along the
+    // leg p1→cursor (distance pill); angle-arc at p1 from horizontal-
+    // right with sweep = atan2(cursor-p1) (angle pill).
+    dynamicInput: LINE_DI_MANIFEST,
+    dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
+      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: 10 },
+      {
+        kind: 'angle-arc',
+        pivot: p1,
+        baseAngleRad: 0,
+        sweepAngleRad: Math.atan2(cursor.y - p1.y, cursor.x - p1.x),
+        radiusCssPx: 40,
+      },
+    ],
   };
   if (end.kind !== 'point') return { committed: false, reason: 'aborted' };
   const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;

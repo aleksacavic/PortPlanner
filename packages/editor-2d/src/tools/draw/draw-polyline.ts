@@ -16,7 +16,18 @@ import { LayerId, type Point2D, newPrimitiveId } from '@portplanner/domain';
 import { addPrimitive } from '@portplanner/project-store';
 
 import { editorUiStore } from '../../ui-state/store';
-import type { ToolGenerator } from '../types';
+import type { DimensionGuide, DynamicInputManifest, ToolGenerator } from '../types';
+
+// M1.3 Round 6 — DI manifest for the per-loop next-point prompt.
+// Same shape as draw-line (distance + angle, combineAs:'point').
+// Plan §4.1 + Phase 2 step 14.
+const POLYLINE_DI_MANIFEST: DynamicInputManifest = {
+  fields: [
+    { kind: 'distance', label: 'Distance' },
+    { kind: 'angle', label: 'Angle' },
+  ],
+  combineAs: 'point',
+};
 
 export async function* drawPolylineTool(): ToolGenerator {
   const start = yield { text: 'Specify start point', acceptedInputKinds: ['point'] };
@@ -30,6 +41,7 @@ export async function* drawPolylineTool(): ToolGenerator {
     // chain is bound at yield time so the runner can re-invoke it on
     // every cursor frame without re-yielding.
     const verticesSnapshot: Point2D[] = [...vertices];
+    const lastVertex = verticesSnapshot[verticesSnapshot.length - 1]!;
     const next = yield {
       text: 'Specify next point or [Close/Undo]',
       subOptions: [
@@ -44,7 +56,21 @@ export async function* drawPolylineTool(): ToolGenerator {
         closed: false,
       }),
       // F1: typed numeric distance lands at lastVertex + unit(cursor - lastVertex) * d.
-      directDistanceFrom: verticesSnapshot[verticesSnapshot.length - 1]!,
+      directDistanceFrom: lastVertex,
+      // M1.3 Round 6 — same DI shape as draw-line per loop iteration.
+      // Pivot/anchorA = last committed vertex; anchorB / sweep updates
+      // per cursor-tick. Per-loop yield resets buffers (Rev-1 R2-A5).
+      dynamicInput: POLYLINE_DI_MANIFEST,
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
+        { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: 10 },
+        {
+          kind: 'angle-arc',
+          pivot: lastVertex,
+          baseAngleRad: 0,
+          sweepAngleRad: Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x),
+          radiusCssPx: 40,
+        },
+      ],
     };
     if (next.kind === 'subOption' && next.optionLabel === 'Close') {
       if (vertices.length < 3) {

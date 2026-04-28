@@ -846,94 +846,76 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
   // ============================================================
 
   it('dynamic input pill: typing a number while in line tool shows pill + Enter submits', async () => {
-    // G2 — Activate LINE via L+Enter (G1 AC mode); click p1; move
-    // cursor on canvas (sets lastKnownCursor + cursor.screen so the
-    // pill anchor resolves); type "7" via canvas-focus number-keys
-    // (router routes into inputBuffer); pill renders; Enter at canvas
-    // focus + buffer non-empty + tool active fires onSubmitBuffer →
-    // EditorRoot's handler appends history + handleCommandSubmit
-    // (which applies F1 direct-distance: dest = p1 + unit(cursor-p1)*7).
+    // M1.3 Round 6 migration (plan §11): assertions updated to multi-
+    // field DI flow. After draw-line's second-point manifest publishes,
+    // digits at canvas focus route to dynamicInput.buffers[activeFieldIdx]
+    // (NOT the legacy inputBuffer). The pill renders with field labels.
+    // DI-submit DOM mechanics (Tab + Enter → line commit) are covered
+    // by the new 'line DI' smoke scenario added in Phase 2 + the
+    // tool-runner sync-bootstrap unit test; this scenario asserts only
+    // the substrate routing of digits and pill rendering.
     const { container } = render(<EditorRoot />);
     createNewProject(makeProject());
     const canvas = getCanvasOrThrow(container);
 
-    // Activate draw-line (AC mode: letter + Enter).
     fireEvent.keyDown(window, { key: 'L' });
     fireEvent.keyDown(window, { key: 'Enter' });
     await wait(20);
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
 
-    // Click p1 at metric (0, 0) → screen (400, 300).
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
     await wait(20);
-    // Move cursor to (450, 300) → metric (5, 0) — establishes the
-    // direction vector for F1.
+    // Move cursor so cursor-tick subscription fires the dimensionGuides-
+    // Builder; guides[] populates → multi-pill mode renders.
     fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
     await wait(40);
 
-    // Type "7" via canvas-focus number key (router routes into inputBuffer).
     expect(editorUiStore.getState().focusHolder).toBe('canvas');
+    // Type "7" → routes to DI buffers[0] (Distance), NOT inputBuffer.
     fireEvent.keyDown(window, { key: '7' });
-    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('7');
-
-    // Pill renders the buffer.
-    const pill = container.querySelector('[data-component="dynamic-input-pill"]');
-    expect(pill).not.toBeNull();
-    expect(pill!.textContent).toBe('7');
-
-    // Enter submits. inputBuffer is fed through handleCommandSubmit
-    // → F1 transform → dest = (0, 0) + (1, 0) * 7 = (7, 0).
-    fireEvent.keyDown(window, { key: 'Enter' });
-    await wait(50);
-
-    const lines = Object.values(projectStore.getState().project!.primitives).filter(
-      (p) => p.kind === 'line',
-    );
-    expect(lines).toHaveLength(1);
-    const ln = lines[0] as { p1: { x: number; y: number }; p2: { x: number; y: number } };
-    expect(ln.p1).toEqual({ x: 0, y: 0 });
-    expect(ln.p2.x).toBeCloseTo(7, 6);
-    expect(ln.p2.y).toBeCloseTo(0, 6);
-
-    // Buffer cleared after submit; history appended (Rev-1 B1 parity).
     expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
-    const inputEntries = editorUiStore
-      .getState()
-      .commandBar.history.filter((h) => h.role === 'input');
-    expect(inputEntries.some((h) => h.text === '7')).toBe(true);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('7');
+
+    // Pill renders the buffer (multi-pill mode active because line's
+    // second-point prompt has a manifest + dimensionGuides populated).
+    const pills = container.querySelectorAll('[data-component="dynamic-input-pill"]');
+    expect(pills.length).toBeGreaterThanOrEqual(1);
+    expect(pills[0]?.textContent).toContain('7');
   });
 
   it('click is eaten while inputBuffer non-empty (AC parity)', async () => {
-    // G2 — When the user is mid-typing a value into the buffer,
-    // canvas clicks are silently eaten until the user commits (Enter)
-    // or aborts (Esc) the buffer. AC parity.
+    // M1.3 Round 6 migration (plan §11): assertions updated to multi-
+    // field DI flow. After draw-line yields the manifest, digits route
+    // to DI buffers (NOT inputBuffer). Click-eat extension catches both
+    // (hasNonEmptyTypingBuffer in EditorRoot ORs the two checks).
     const { container } = render(<EditorRoot />);
     createNewProject(makeProject());
     const canvas = getCanvasOrThrow(container);
 
-    // Activate L + Enter, click p1.
     fireEvent.keyDown(window, { key: 'L' });
     fireEvent.keyDown(window, { key: 'Enter' });
     await wait(20);
     fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
     await wait(20);
 
-    // Pollute the inputBuffer (simulating mid-typing).
+    // Pollute the DI buffer (simulating mid-typing in the Distance field).
     fireEvent.keyDown(window, { key: '5' });
-    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('5');
+    // inputBuffer remains empty — the new flow routes digits to DI.
+    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('');
 
-    // Click on canvas — should be EATEN (no second point fed to draw-line).
+    // Click on canvas — should be EATEN by hasNonEmptyTypingBuffer
+    // (which OR-checks DI buffers per M1.3 Round 6 + Rev-6 D5).
     fireEvent.mouseDown(canvas, { button: 0, clientX: 500, clientY: 300 });
     await wait(50);
 
-    // Tool is still running (no line committed because the click was eaten).
     expect(editorUiStore.getState().activeToolId).toBe('draw-line');
     expect(
       Object.values(projectStore.getState().project!.primitives).filter((p) => p.kind === 'line')
         .length,
     ).toBe(0);
-    // Buffer still pending.
-    expect(editorUiStore.getState().commandBar.inputBuffer).toBe('5');
+    // DI buffer still pending (click-eat preserves typing in flight).
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('5');
   });
 
   it('rectangle Dimensions: typed "30,40" + Enter commits W=30 H=40', async () => {

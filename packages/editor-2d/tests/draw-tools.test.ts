@@ -551,3 +551,108 @@ describe('draw-rectangle F3 — Dimensions sub-option', () => {
     expect(r.height).toBe(4);
   });
 });
+
+// M1.3 Round 6 — per-tool manifest publish tests per plan §11. Verifies
+// each migrated tool yields the expected DynamicInputManifest on the
+// relevant prompt + that the dimensionGuidesBuilder produces the
+// expected DimensionGuide[] given known cursor + state.
+describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
+  beforeEach(() => {
+    createNewProject(makeProject());
+    editorUiActions.setCursor({ metric: { x: 5, y: 2 }, screen: { x: 50, y: 20 } });
+  });
+  afterEach(() => resetEditorUiStoreForTests());
+
+  it('rectangle: second-corner prompt yields {fields: [W, H], combineAs: numberPair} + 2 linear-dim guides', async () => {
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    // Now second-corner prompt is yielded; runner has published manifest.
+    const di = (await import('../src/ui-state/store')).editorUiStore.getState().commandBar
+      .dynamicInput;
+    expect(di).not.toBeNull();
+    expect(di?.manifest.fields).toHaveLength(2);
+    expect(di?.manifest.combineAs).toBe('numberPair');
+    expect(di?.manifest.fields[0]?.label).toBe('W');
+    expect(di?.manifest.fields[1]?.label).toBe('H');
+    // dimensionGuides populated synchronously on yield.
+    const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
+      .dimensionGuides;
+    expect(guides).toHaveLength(2);
+    expect(guides?.[0]?.kind).toBe('linear-dim');
+    expect(guides?.[1]?.kind).toBe('linear-dim');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('line: second-point prompt yields {fields: [Distance, Angle], combineAs: point} + linear-dim + angle-arc guides', async () => {
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const di = (await import('../src/ui-state/store')).editorUiStore.getState().commandBar
+      .dynamicInput;
+    expect(di?.manifest.fields).toHaveLength(2);
+    expect(di?.manifest.combineAs).toBe('point');
+    expect(di?.manifest.fields[0]?.label).toBe('Distance');
+    expect(di?.manifest.fields[1]?.label).toBe('Angle');
+    const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
+      .dimensionGuides;
+    expect(guides?.[0]?.kind).toBe('linear-dim');
+    expect(guides?.[1]?.kind).toBe('angle-arc');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('polyline: per-loop next-point prompt yields the same shape as line + uses last vertex as anchor', async () => {
+    const tool = startTool('draw-polyline', lookupTool('draw-polyline')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    // After p1, polyline yields next-point with manifest. Anchor = p1.
+    const di = (await import('../src/ui-state/store')).editorUiStore.getState().commandBar
+      .dynamicInput;
+    expect(di?.manifest.combineAs).toBe('point');
+    const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
+      .dimensionGuides;
+    if (guides?.[0]?.kind === 'linear-dim') {
+      expect(guides[0].anchorA).toEqual({ x: 0, y: 0 });
+    } else {
+      throw new Error('expected linear-dim guide[0]');
+    }
+    // Feed second vertex; next loop iteration should re-yield with anchor at (3,4).
+    tool.feedInput({ kind: 'point', point: { x: 3, y: 4 } });
+    await tick();
+    const guidesNext = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
+      .dimensionGuides;
+    if (guidesNext?.[0]?.kind === 'linear-dim') {
+      expect(guidesNext[0].anchorA).toEqual({ x: 3, y: 4 });
+    } else {
+      throw new Error('expected linear-dim guide[0] after 2nd vertex');
+    }
+    tool.abort();
+    await tool.done();
+  });
+
+  it('circle: radius prompt yields single-field {fields: [Radius], combineAs: number} + radius-line guide', async () => {
+    const tool = startTool('draw-circle', lookupTool('draw-circle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 5, y: 5 } });
+    await tick();
+    const di = (await import('../src/ui-state/store')).editorUiStore.getState().commandBar
+      .dynamicInput;
+    expect(di?.manifest.fields).toHaveLength(1);
+    expect(di?.manifest.combineAs).toBe('number');
+    expect(di?.manifest.fields[0]?.label).toBe('Radius');
+    const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
+      .dimensionGuides;
+    expect(guides).toHaveLength(1);
+    expect(guides?.[0]?.kind).toBe('radius-line');
+    if (guides?.[0]?.kind === 'radius-line') {
+      expect(guides[0].pivot).toEqual({ x: 5, y: 5 });
+    }
+    tool.abort();
+    await tool.done();
+  });
+});
