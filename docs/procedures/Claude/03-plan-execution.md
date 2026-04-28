@@ -26,6 +26,41 @@ plan file at `docs/plans/<branch-name>.md`.
 - MUST NOT deviate from the approved plan. If mid-execution you discover
   a reason to deviate, stop and follow §3.10.
 
+### 3.0.1) Pre-Phase-1 plan-vs-code re-grounding (mandatory — added 2026-04-28)
+
+Before writing the first line of code in Phase 1, MUST perform a
+plan-vs-code re-grounding audit:
+
+1. **Read every file the plan cites for modification.** Confirm the file
+   exists, the shape matches the plan's described shape, and any cited
+   line numbers are reasonable.
+2. **Read every file the plan cites for "the existing pattern is X".**
+   Confirm X is actually the established pattern, not an assumed one.
+3. **Read every file the plan cites for "extend class Y with methods
+   M1/M2/M3".** Confirm Y exists as a class (not a factory function), and
+   that the cited methods exist or are net-new additions consistent with
+   the file's current structure.
+4. **Drift between plan approval and execution start:** plans typically
+   sit approved-but-unexecuted for hours-to-days. The codebase may have
+   shifted (other branches merged into main, fixes applied, refactors
+   landed). The pre-Phase-1 audit catches drift early, before code is
+   written against an outdated plan.
+
+If the audit finds plan-vs-code mismatches:
+- MUST stop. MUST NOT silently adapt the implementation to match reality.
+- MUST follow §3.10 mid-execution deviation protocol.
+- The discovery is a **plan-authoring procedure violation** if the
+  mismatch existed at plan-approval time (Procedure 01 §1.4.1 was not
+  followed); a **drift discovery** if the mismatch arose between approval
+  and execution-start. Both cases require §3.10.
+
+**Lesson source:** M1.3 Round 6 discovered after Codex Round-6 Go that
+the plan's `class ToolRunner` did not match the actual function-based
+`startTool` runner. Five Codex review rounds and three Claude internal
+self-audit rounds all failed to catch this because none of them did
+plan-vs-code grounding. The cost was a §3.10 patch + Codex Round-7
+re-review after a clean Go.
+
 ---
 
 ## 3.1) Mandatory Phase Discipline

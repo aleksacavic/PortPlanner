@@ -139,6 +139,42 @@ chat.
 
 Explicitly scan for:
 
+- **Plan-vs-Code Grounding (mandatory — added 2026-04-28 after M1.3
+  Round 6 deviation discovery).** For every plan-text claim that
+  references a specific code construct (class declaration, function
+  signature, public API surface, file path, line number, architectural
+  pattern), Codex MUST verify the claim by reading the referenced file
+  and confirming the construct exists in the form the plan claims.
+  - **Trigger sentences to grep for in the plan:** "class X", "method
+    Y", "the runner exposes ...", "the existing pattern is ...", "tools
+    already ...", file paths with line numbers (e.g. `path/to/file.ts:NN`),
+    pseudocode blocks claiming a specific code shape.
+  - **For each cited construct:** open the file, locate the construct,
+    confirm name + shape + location match the plan claim. If the plan
+    cites a class but the file exports a factory function, that's a
+    **High-risk** finding regardless of internal plan consistency.
+  - **Output:** the §2.9 review memo MUST include a "Plan-vs-Code
+    Grounding Verification" table (per §2.9 item 5b below) listing
+    every cited construct + whether it matches reality + the file:line
+    evidence.
+  - **Failure mode this prevents:** plan text that survives multiple
+    review rounds on the strength of internal logical consistency but
+    specifies code constructs that do not exist. M1.3 Round 6 reached
+    Go at 9.8/10 after 6 rounds of review, then on starting execution
+    Claude discovered the plan's `class ToolRunner` with
+    `STATE_MACHINE_ADVANCE_METHODS` SSOT array did not match the
+    actual function-based `startTool(toolId, factory): RunningTool`
+    runner. Codex's prior rounds did not catch this because Codex was
+    checking plan internal consistency, not plan-vs-code grounding.
+    The discovery cost a Procedure 03 §3.10 mid-execution patch round
+    after the plan was approved — work that would have been a single
+    Round-1 finding had Codex verified the construct against the
+    actual runner.ts.
+  - **Codex-specific posture:** when the plan author claims "I read
+    the file and verified the shape matches", Codex MUST still verify
+    independently. The §1.13 plan-vs-code grounding table the author
+    emits is a forcing function for the author, not an alternative
+    to Codex's verification.
 - Type/schema consistency (object contract per ADR-002).
 - Extraction contract conformance (inputs, outputs, version per ADR-004
   and registry entry).
@@ -254,6 +290,7 @@ Codex-specific emphasis:
 4. **Self-Review Miss Assessment** (Codex-specific) — patterns Claude's
    self-review should have caught
 5. **Forced Completeness Scan Results**
+5b. **Plan-vs-Code Grounding Verification** (mandatory per §2.4 — added 2026-04-28). Table of cited code constructs with Match / Mismatch / Partial status + file:line evidence. Mismatches are High-risk findings.
 6. **Extraction Registry Scrutiny Results** (if applicable)
 7. **SQL Migration Scrutiny Results** (if applicable)
 8. **Deviation Scrutiny Results** (if applicable)

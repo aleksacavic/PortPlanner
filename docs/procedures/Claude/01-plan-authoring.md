@@ -130,6 +130,75 @@ Claims in the plan MUST cite concrete proof. "According to ADR-004
 §..." or "see `packages/domain/src/extractors/rtg-block.ts` line X" is
 acceptable. "Probably" or "should be" is not.
 
+### 1.4.1) Plan-vs-Code Grounding (mandatory — added 2026-04-28 after M1.3 Round 6 deviation discovery)
+
+Every plan-text claim that references a specific code construct MUST be
+grounded by reading the actual file at plan-authoring time. "Investigate
+the codebase" is NOT satisfied by greps alone — when the plan describes
+code SHAPES, the author MUST have read enough of the file to confirm the
+shape matches reality.
+
+**Constructs requiring file-read grounding:**
+
+- **Class declarations and class-shape claims.** If the plan says "extend
+  `class X` with methods M1 / M2 / M3" or "the runner is a class with
+  state-machine methods", the author MUST have read the file and confirmed
+  the class declaration exists in that form. A function that exports a
+  factory returning an interface is NOT a class, even if it conceptually
+  serves the same role.
+- **Function signatures.** If the plan says "modify `functionY(a, b, c)`"
+  or "the existing helper takes `(manifest, buffers, anchor)`", the author
+  MUST have read the function's actual signature.
+- **Public API surfaces.** If the plan claims a module exposes specific
+  public methods or types (e.g. "the runner exposes `publishPrompt` /
+  `advanceGenerator` / `dispatchInput`"), the author MUST have read the
+  module's exports and confirmed those names exist.
+- **File paths and line numbers.** If the plan cites a specific file path
+  or line number ("the click-eat guard at `EditorRoot.tsx:533`"), the
+  author MUST have read that file and confirmed the line is reasonable
+  (off-by-a-few is acceptable; off-by-handler-name is not).
+- **Architectural patterns.** If the plan claims "the existing pattern
+  is X" or "tools already do Y per cursor-tick", the author MUST have
+  read enough of the relevant code to confirm X / Y is the established
+  pattern, not an assumed one.
+
+**Failure mode this prevents:** plan text that LOOKS internally
+consistent and survives multi-round reviewer scrutiny, but specifies an
+architecture that does not match the actual codebase. When execution
+begins, the implementer discovers the mismatch and must either deviate
+silently (forbidden per Procedure 03 §3.10), apply a §3.10 mid-execution
+patch (possible but expensive after multiple review rounds), or pause
+the round entirely. The cost of skipping plan-vs-code grounding compounds
+through every subsequent review round — Codex polishes plan text that
+will not survive contact with the actual code.
+
+**Lesson source:** M1.3 Round 6 (DI pill redesign) reached Codex Go at
+9.8/10 after 6 review rounds, then on starting execution was found to
+specify a class-based `ToolRunner` with `STATE_MACHINE_ADVANCE_METHODS`
+SSOT array. The actual `tools/runner.ts` is function-based
+(`startTool(toolId, factory): RunningTool`) with a single external
+state-advance entrypoint (`feedInput`). Six rounds of review never
+caught this because Codex was checking internal plan consistency, not
+plan-vs-code grounding. Substantial Rev-5 H machinery (SSOT array +
+helper + parameterized tests + exhaustiveness count gate) was
+over-engineered for an architecture that does not exist.
+
+**Pre-emit grounding checklist** — before §1.13 emission, the author
+MUST run this check internally and include the results in the §1.13
+pre-response notification (see §1.13 below):
+
+For each plan claim that names a specific class / function / file path
+/ line / architectural pattern:
+1. **Did I read the file at plan-authoring time?** Yes / No.
+2. **Did the actual code match the plan claim?** Match / Mismatch /
+   Partial-match-with-implementation-tactic-deferral.
+3. **If mismatch:** revise the plan text to match the code, OR document
+   the proposed code refactor as part of the plan scope.
+
+Skipping this checklist is a **plan-authoring procedure violation** and
+materially increases the probability of a Procedure 03 §3.10
+mid-execution deviation discovery.
+
 ---
 
 ## 1.5) Scope + Blast Radius (mandatory section in plan)
@@ -406,6 +475,18 @@ intervene before wading through a long plan.
 | Risk | Mitigation in plan |
 |------|---------------------|
 | (summary) | (summary) |
+
+**Plan-vs-Code Grounding Verification** (mandatory per §1.4.1 — added 2026-04-28):
+
+| Plan claim citing a code construct | File read at authoring time? | Match status |
+|------------------------------------|------------------------------|--------------|
+| (e.g. "extend `class ToolRunner` with method `publishPrompt`") | Yes — `packages/.../runner.ts` lines X-Y | Match / Mismatch / Partial |
+| (one row per cited construct — class / function / path / line / pattern) | | |
+
+If any row in this table is "No" or "Mismatch", the plan MUST be revised
+before §1.13 emission. The table is a forcing function for §1.4.1
+discipline — the author cannot emit the notification without confronting
+the grounding question for each cited construct.
 
 ### Rules
 
