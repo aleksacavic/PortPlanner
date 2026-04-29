@@ -10,6 +10,7 @@
 |---|---|---|---|
 | 1 | 2026-04-29 | Initial draft after M1.3 Round 6 + Round-2 + Round-3 remediation merged to `main` (commit `291ec68`). User-locked scope: full painter token sweep (option B), buffer persistence within-tab + per-prompt-identity + dim-placeholder mechanic, hover tooltip on overflow only with value+unit content, three phases bundled into one plan. |
 | 2 | 2026-04-29 | §1.4.1 plan-vs-code grounding pass + §1.3 self-audit revealed four issues: (a) Phase 1 step 1 hand-waved an "audit at execution time" — replaced with explicit enumeration of every numeric chrome constant in §4.1 + §9; (b) `parseDashPattern` is duplicated across THREE painters (paintCrosshair, paintHoverHighlight, paintSelectionRect) — consolidation into the new `_tokens.ts` helper added as explicit Phase 1 step (was implicit); (c) `paintTransientLabel` has TWO numeric chrome constants (`FONT_PX_CSS = 11`, `CORNER_RADIUS_CSS = 4`) — `transient_label_font_size` token added; the original plan only mentioned `transient_label_radius`; (d) the original DIM_OFFSET_CSS module-load-time evaluation pattern was fragile (`parseNumericToken(dark.canvas.transient.dim_witness_offset)` evaluated at import time would crash on any malformed token at module load). Replaced with literal-in-painter + mirrored-token + unit-test-asserts-equal approach: keep `export const DIM_OFFSET_CSS = 40` literal, add `dim_witness_offset: '40'` to dark theme, gate REM7-P1-DimOffsetMirror asserts they stay in sync. SSOT enforced by assertion, not by import-time coupling. |
+| 3 | 2026-04-29 | Codex Procedure 02 Round-1 review (3 Blockers + 3 High-risks). **B1:** I-BPER-1 "no serialization" claim relied on narrative; added grep gate REM7-P2-NoPersistenceLeak. **B2:** Phase 3 overflow tooltip tests under-specified for JSDOM `scrollWidth` / `clientWidth`; added explicit `Object.defineProperty` stubbing requirement + REM7-P3-OverflowDeterministic gate. **B3:** §1.4.1 grounding evidence missing from plan body (was only in chat §1.13); embedded the full grounding table at new §3.1. **H1:** `getPersistedBuffers` action-vs-helper drift — collapsed to single mutator action `recordSubmittedBuffers`; reads happen inline at call sites (no parallel selector helper). Naming convention codified in §3 A15. **H2:** scope-table `${toolId}:${promptKey}` recursive typo — corrected to canonical expression `${toolId}:${prompt.persistKey ?? promptIndex}` (matches I-BPER-2). Section-consistency pass per §1.16.12 confirms the canonical expression appears verbatim in scope, phase, invariants, risks, and audit — zero stale forms. **H3:** parseNumericToken / parseDashPattern negative-input tests added to Phase 1 step 3 with explicit error-throw assertions + new Gate REM7-P1-ParseHelperNegative. |
 
 ## 1. Request summary
 
@@ -49,6 +50,31 @@ User-confirmed in chat 2026-04-29:
 - **A12 — DIM_OFFSET_CSS export pattern (Rev-2 lock-in).** The exported `DIM_OFFSET_CSS = 40` constant in [paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts) is consumed at module load by tools that don't have access to the live `tokens` parameter (line / polyline / rectangle / circle each `import { DIM_OFFSET_CSS }`). Original plan revision 1 proposed evaluating `parseNumericToken(dark.canvas.transient.dim_witness_offset)` at module top-level — this couples `editor-2d` import-time to design-system bundle being parseable, and any malformed token value would crash editor-2d at load. Rev-2 lock: keep the literal `export const DIM_OFFSET_CSS = 40`, mirror the same value in `dim_witness_offset: '40'` on `semantic-dark.ts`, and add a unit test (Gate REM7-P1-DimOffsetMirror) asserting `DIM_OFFSET_CSS === parseNumericToken(dark.canvas.transient.dim_witness_offset)`. SSOT is enforced by the equality assertion at test time; runtime stays decoupled. Same pattern applies to any future numeric token whose value is read by tools at module import (none currently — only DIM_OFFSET_CSS).
 - **A13 — `parseDashPattern` consolidation (Rev-2 finding).** Three painters currently maintain identical local copies of `parseDashPattern(token: string): number[]` (paintCrosshair:96, paintHoverHighlight:37, paintSelectionRect:55). `paintTransientLabel` has a sibling `parsePadding(token: string): number` doing the equivalent for single-number tokens (paintTransientLabel:137). Phase 1 consolidates all four into `_tokens.ts` exporting `parseDashPattern` + `parseNumericToken`. Per-painter local copies removed. Gate REM7-P1-NoLocalParseHelper asserts zero matches for the local function definitions in painter files.
 - **A14 — Sub-namespace structure.** New tokens that are painter-specific (e.g., snap-glyph sizes for the 6 snap kinds) cluster under a sub-namespace `canvas.transient.snap_glyph.*` per the existing precedent of `canvas.transient.selection_window.*` / `canvas.transient.selection_crossing.*` / `canvas.transient.hover_highlight.*`. Cross-painter shared tokens (e.g., `dim_*` overlay-wide stroke widths) sit at `canvas.transient.*` top level. The grouping makes the token catalogue navigable.
+- **A15 — Slice action vs selector naming convention (Rev-3 lock per Codex H1).** `editorUiActions` carries **mutators only** — every entry sets state. Reads happen at call sites via `editorUiStore.getState()`. There are no "selector helpers" co-located with actions. The single new entry on `editorUiActions` for buffer persistence is `recordSubmittedBuffers(promptKey: string, buffers: string[]): void` (mutator). Consumers that need to read persisted buffers do so inline: `editorUiStore.getState().commandBar.lastSubmittedBuffers[promptKey] ?? null`. This matches the existing convention (e.g., `setDynamicInputManifest` is on `editorUiActions`; reads of `commandBar.dynamicInput` happen at call sites — `editorUiStore.getState().commandBar.dynamicInput` — never via a `getDynamicInput` helper).
+- **A16 — Canonical promptKey expression.** The buffer-persistence identity key is **always** computed as `${toolId}:${prompt.persistKey ?? promptIndex}` where `toolId` comes from the runner's closure (see `runner.ts:32` / `:38`) and `promptIndex` is the zero-based index of the prompt within the tool generator's yield sequence. This expression appears verbatim in I-BPER-2, the Phase 2 step 3 detail, the runner-row of §4.1, the §13 risk row, and audit C-points — Codex H2 fix (the original Rev-1 scope-row had a recursive typo `${toolId}:${promptKey}` that has been corrected).
+
+## 3.1 Plan-vs-Code Grounding Table (§1.4.1, embedded per Codex Round-1 B3)
+
+Every plan claim that names a specific code construct was grounded by reading the cited file at plan-authoring time. Match status: Match / Partial / Mismatch. Partial = grep-confirmed but full file walk deferred to execution Phase step.
+
+| # | Plan claim | File:line | Observed shape | Match |
+|---|-----------|-----------|----------------|-------|
+| 1 | `STROKE_WIDTH_CSS=1` + `PICKBOX_HALF_CSS=5` constants in paintCrosshair | [paintCrosshair.ts:33-34](packages/editor-2d/src/canvas/painters/paintCrosshair.ts:33) | `const STROKE_WIDTH_CSS = 1;` `const PICKBOX_HALF_CSS = 5;` | Match |
+| 2 | `STROKE_WIDTH_CSS=1` in paintHoverHighlight + reads `transient.hover_highlight.{stroke,dash}` | [paintHoverHighlight.ts:17 + :25-32](packages/editor-2d/src/canvas/painters/paintHoverHighlight.ts:17) | `const STROKE_WIDTH_CSS = 1;` and `tokens.canvas.transient.hover_highlight` destructured | Match |
+| 3 | `FONT_PX_CSS=11` + `CORNER_RADIUS_CSS=4` in paintTransientLabel; reads `label_padding` token via local `parsePadding` | [paintTransientLabel.ts:37-38, :85, :137](packages/editor-2d/src/canvas/painters/paintTransientLabel.ts:37) | Constants present at lines 37-38; `parsePadding(tokens.canvas.transient.label_padding)` at :85; helper definition at :137 | Match |
+| 4 | 4 selection constants (OUTLINE_STROKE_CSS=1.5, GRIP_SIDE_CSS=7, GRIP_HOVERED_SIDE_CSS=9, GRIP_BORDER_CSS=1) | [paintSelection.ts:25-28](packages/editor-2d/src/canvas/painters/paintSelection.ts:25) | All four constants present at the cited lines | Match |
+| 5 | `STROKE_WIDTH_CSS=1` in paintSelectionRect + local `parseDashPattern` | [paintSelectionRect.ts:18, :55-62](packages/editor-2d/src/canvas/painters/paintSelectionRect.ts:18) | Constant present at :18; helper at :55 | Match |
+| 6 | 7 snap-glyph constants (ENDPOINT/MIDPOINT/INTERSECTION/NODE/GRID_NODE/GRID_LINE sizes + STROKE_CSS_PX) | [paintSnapGlyph.ts:30-36](packages/editor-2d/src/canvas/painters/paintSnapGlyph.ts:30) | All seven constants present at cited lines | Match |
+| 7 | paintDimensionGuides 4 module-level + 1 inline `[2,3]` + 1 inline `100` + exported `DIM_OFFSET_CSS=40` | [paintDimensionGuides.ts:37-57](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts:37) | `STROKE_WIDTH_CSS=1`, `ARROW_TICK_CSS=6`, `WITNESS_OVERSHOOT_CSS=3`, `WITNESS_ENDCAP_CSS=4` at module scope; `export const DIM_OFFSET_CSS = 40` at :51; `DASHED_PATTERN_CSS: [2,3]` at :57 | Match |
+| 8 | `paintGrid` `lineWidth = 1 / metricToPx` inline | [paintGrid.ts:24](packages/editor-2d/src/canvas/painters/paintGrid.ts:24) | `ctx.lineWidth = 1 / metricToPx;` | Match |
+| 9 | `STROKE_WIDTH_CSS=1` in paintPreview module scope (single grep hit) | [paintPreview.ts:28](packages/editor-2d/src/canvas/painters/paintPreview.ts:28) | `const STROKE_WIDTH_CSS = 1;` | Match (Phase 1 step 5 walks file to confirm no missed sub-constants) |
+| 10 | `commandBar.dynamicInput` shape `{ manifest, buffers, activeFieldIdx } \| null` | [store.ts:145-149](packages/editor-2d/src/ui-state/store.ts:145) | Type matches verbatim | Match |
+| 11 | `setDynamicInputManifest` resets buffers to `Array(N).fill('')` | [store.ts:508-515](packages/editor-2d/src/ui-state/store.ts:508) | `buffers: Array<string>(manifest.fields.length).fill('')` at :512 | Match |
+| 12 | Runner manifest publication: `if (prompt.dynamicInput) { setDynamicInputManifest(...) }` | [runner.ts:145-149](packages/editor-2d/src/tools/runner.ts:145) | Branch present verbatim; `else` branch calls `clearDynamicInput()` | Match |
+| 13 | `startTool(toolId, factory): RunningTool` exposes `toolId` in closure scope | [runner.ts:32, :38](packages/editor-2d/src/tools/runner.ts:32) | Type signature matches; `toolId` referenced inside closure at :120, :199, :206 | Match |
+| 14 | `EditorRoot.tsx onSubmitDynamicInput` callback exists | [EditorRoot.tsx:186](packages/editor-2d/src/EditorRoot.tsx:186) | `onSubmitDynamicInput: (manifest, buffers) => { ... }` callback present | Match |
+| 15 | Three painters carry duplicate `parseDashPattern` definitions | paintCrosshair.ts:96, paintHoverHighlight.ts:37, paintSelectionRect.ts:55 | All three present with the same `'solid'` sentinel + whitespace-split + finite-filter logic | Match |
+| 16 | `Prompt.persistKey?: string` is NEW (not currently in interface) | [types.ts](packages/editor-2d/src/tools/types.ts) Prompt interface | Confirmed absent (introduced by this plan) | Match — additive |
 
 ## 4. Scope
 
@@ -68,14 +94,14 @@ User-confirmed in chat 2026-04-29:
 | `packages/editor-2d/src/canvas/painters/paintTransientLabel.ts` | Replace 2 module-level constants (`FONT_PX_CSS=11`, `CORNER_RADIUS_CSS=4`) with `transient.label_font_size` / `transient.label_radius`. The existing `label_padding` token continues to be read; remove the local `parsePadding` helper — import `parseNumericToken` from `_tokens.ts`. |
 | `packages/editor-2d/src/canvas/painters/paintPreview.ts` | Replace 1 module-level constant (`STROKE_WIDTH_CSS=1`) with `transient.preview_stroke_width`. |
 | `packages/editor-2d/src/canvas/painters/paintGrid.ts` | Replace `ctx.lineWidth = 1 / metricToPx` with `parseNumericToken(transient.grid_stroke_width) / metricToPx`. Add `transient.grid_stroke_width: '1'` token. |
-| `packages/editor-2d/src/ui-state/store.ts` | Add `commandBar.lastSubmittedBuffers: Record<string, string[]>` slice field + actions: `recordSubmittedBuffers(promptKey, buffers)`, `getPersistedBuffers(promptKey): string[] \| null` (getter helper). Initial state: `{}`. |
-| `packages/editor-2d/src/tools/runner.ts` | On manifest publication (existing prompt-yield branch), build a stable `promptKey = ${toolId}:${promptKey}` where `promptKey` is the `Prompt.persistKey` field (new optional field on the Prompt interface) or falls back to `${promptIndex}`. Polyline tools set `persistKey: 'next-vertex'` so all loop iterations share one key. |
+| `packages/editor-2d/src/ui-state/store.ts` | Add `commandBar.lastSubmittedBuffers: Record<string, string[]>` slice field + a single mutator action `recordSubmittedBuffers(promptKey, buffers)` on `editorUiActions` (Codex H1: only mutators live on `editorUiActions`; reads happen inline via `editorUiStore.getState().commandBar.lastSubmittedBuffers[promptKey] ?? null` at the call site — no parallel "selector helper" function added). Initial state: `{}`. |
+| `packages/editor-2d/src/tools/runner.ts` | On manifest publication (existing prompt-yield branch), build a stable `promptKey = ${toolId}:${prompt.persistKey ?? promptIndex}` (canonical expression, see I-BPER-2). Polyline tools set `persistKey: 'next-vertex'` so all loop iterations share one key. |
 | `packages/editor-2d/src/tools/types.ts` | Add `Prompt.persistKey?: string` field — optional stable identifier for buffer-persistence. When unset, runner derives from prompt index. |
 | `packages/editor-2d/src/tools/draw/draw-polyline.ts` | Set `persistKey: 'next-vertex'` on the per-loop prompt so buffer state persists across loop iterations within a single tool session AND across tool re-invocations. |
 | `packages/editor-2d/src/chrome/DynamicInputPills.tsx` | Read persisted buffer for the active prompt; render dim placeholder when active buffer is empty. New constant `PILL_PLACEHOLDER_OPACITY = 0.45` (also tokenised). Hover handler: on `mouseEnter` measure `scrollWidth > clientWidth`; if overflow, render tooltip via portal + `mouseLeave` clears. New `<div className={styles.tooltip}>` element. |
 | `packages/editor-2d/src/chrome/DynamicInputPills.module.css` | New `.pillPlaceholder` (dim color via opacity); new `.tooltip` (positioned absolute, small backdrop, value+unit text). |
 | `packages/editor-2d/src/EditorRoot.tsx` | On successful DI submit (existing `onSubmitDynamicInput` callback path), call `recordSubmittedBuffers(promptKey, buffers)` BEFORE `clearDynamicInput()` so the values are captured for next invocation. |
-| `packages/editor-2d/tests/ui-state.test.ts` | New tests for the slice: default `{}`; `recordSubmittedBuffers` stores; `getPersistedBuffers` returns null for unknown keys + array for known keys. |
+| `packages/editor-2d/tests/ui-state.test.ts` | New tests for the slice: default `{}`; `recordSubmittedBuffers` stores; reading `editorUiStore.getState().commandBar.lastSubmittedBuffers[promptKey]` returns `undefined` for unknown keys and the stored array for known keys (no helper function exercised — A15 lock). |
 | `packages/editor-2d/tests/tool-runner.test.ts` | New test: prompt with `persistKey` propagates to manifest publication (verify via overlay state inspection at yield time). |
 | `packages/editor-2d/tests/DynamicInputPills.test.tsx` | New tests: dim placeholder renders when buffer empty + persisted value present; placeholder has `data-pill-placeholder="true"` attribute; tooltip renders only on overflow + correct unit suffix per field kind. |
 | `packages/editor-2d/tests/draw-tools.test.ts` | Polyline test asserts `persistKey: 'next-vertex'` on the next-vertex prompt. |
@@ -190,8 +216,20 @@ See §4.1 first 13 rows + §4.2.
 1. **Extend `TransientTokens` interface** in `packages/design-system/src/tokens/themes.ts` with every new leaf listed in the §4.1.1 Token additions table. Each leaf has a TSDoc comment describing the unit and the consumer painter(s). New sub-namespaces (`grip`, `snap_glyph`) introduced as nested object types; existing sub-namespaces (`hover_highlight`, `selection_window`, `selection_crossing`) gain new sibling fields.
 2. **Populate `semantic-dark.ts`** with every new leaf at the value listed in the §4.1.1 table (1:1 with the painter constants being migrated). TypeScript's exhaustive object check catches any missed leaf at compile time.
 3. **Create `_tokens.ts` helper** at `packages/editor-2d/src/canvas/painters/_tokens.ts`. Exports two functions:
-   - `parseNumericToken(s: string): number` — `Number(s.trim())` + `Number.isFinite` guard; throws `new Error('parseNumericToken: invalid value "${s}"')` on failure.
+   - `parseNumericToken(s: string): number` — `Number(s.trim())` + `Number.isFinite` guard; throws `new Error('parseNumericToken: invalid value "${s}"')` on failure (NaN, empty after trim, `Infinity`).
    - `parseDashPattern(s: string): number[]` — handles `'solid'` sentinel + empty string (returns `[]`); otherwise splits on whitespace, parses each, filters non-finite. (Verbatim port of the three existing duplicates.)
+   - **Negative-input test coverage (Codex H3 fix):** alongside the helpers, add `packages/editor-2d/tests/_tokens.test.ts` with explicit negative-path assertions:
+     - `parseNumericToken('')` → throws `Error` matching `/invalid value/`.
+     - `parseNumericToken('  ')` → throws.
+     - `parseNumericToken('40px')` → throws (not pure number).
+     - `parseNumericToken('NaN')` → throws.
+     - `parseNumericToken('Infinity')` → throws.
+     - `parseNumericToken('40')` → returns `40`; `parseNumericToken('1.5')` → returns `1.5`.
+     - `parseDashPattern('')` → `[]`; `parseDashPattern('solid')` → `[]`.
+     - `parseDashPattern('6 4')` → `[6, 4]`.
+     - `parseDashPattern('6 nope 4')` → `[6, 4]` (filters non-finite).
+     - `parseDashPattern('   ')` → `[]`.
+   - Gate REM7-P1-ParseHelperNegative asserts every negative path test passes.
 4. **Consolidate the `parseDashPattern` duplicates.** Per A13: remove the local definitions in `paintCrosshair.ts:96-102`, `paintHoverHighlight.ts:37-44`, `paintSelectionRect.ts:55-62`. Each painter `import { parseDashPattern } from './_tokens';` instead. Same for `parsePadding` in `paintTransientLabel.ts:137-140` — replace with `parseNumericToken`.
 5. **Migrate each painter** in this order (least-to-most-coupled to keep blast radius small per file):
    - `paintGrid.ts` — single `1 / metricToPx` becomes `parseNumericToken(transient.grid_stroke_width) / metricToPx`.
@@ -211,6 +249,7 @@ See §4.1 first 13 rows + §4.2.
 
 - **REM7-P1-NoHardcodedConstants:** `rg -nE "^const [A-Z_]+_CSS\s*=\s*[0-9]|^const [A-Z_]+_PX\s*=\s*[0-9]" packages/editor-2d/src/canvas/painters/` returns matches in **at most 2 files**: `paintPoint.ts` (entity painter, out of scope per A11) and `paintDimensionGuides.ts` (`DIM_OFFSET_CSS = 40` literal, mirrored per A12). Every other overlay painter has zero numeric chrome constants at module scope.
 - **REM7-P1-NoLocalParseHelper:** `rg -n "function parseDashPattern\|function parsePadding" packages/editor-2d/src/canvas/painters/` returns matches **only** in `_tokens.ts`. The three previously-duplicated `parseDashPattern` definitions and the one `parsePadding` definition have been removed from individual painters.
+- **REM7-P1-ParseHelperNegative (Codex Round-1 H3):** all negative-input tests in `packages/editor-2d/tests/_tokens.test.ts` pass. Specifically: `parseNumericToken('')`, `parseNumericToken('  ')`, `parseNumericToken('40px')`, `parseNumericToken('NaN')`, and `parseNumericToken('Infinity')` each throw with a message containing `'invalid value'`; `parseDashPattern('')`, `parseDashPattern('solid')`, `parseDashPattern('   ')` each return `[]`; `parseDashPattern('6 nope 4')` returns `[6, 4]`. Locks the parse-failure contract so a future helper change can't silently swallow malformed tokens.
 - **REM7-P1-DimOffsetMirror:** unit test asserts `DIM_OFFSET_CSS === parseNumericToken(dark.canvas.transient.dim_witness_offset)`. Both equal `40`. Locks the literal-vs-token equality per A12.
 - **REM7-P1-PainterTokenMigration:** all tests in `painter-token-migration.test.ts` pass. One assertion per migrated painter that the captured `ctx.lineWidth` and `ctx.setLineDash` calls match the token-derived expected numbers given the `dark` token bundle.
 - **REM7-P1-CssVarsRoundtrip:** Existing design-system test suite continues to pass (`pnpm --filter @portplanner/design-system test`); the css-vars emitter handles the new leaves automatically (recursive walker — verified by spot-checking the generated `:root` block during execution).
@@ -236,7 +275,7 @@ See §4.1 rows for `store.ts`, `runner.ts`, `types.ts`, `draw-polyline.ts`, `Dyn
 
 #### Phase 2 Steps
 
-1. **Add slice field + actions.** `commandBar.lastSubmittedBuffers: Record<string, string[]>` initialised to `{}`. Two actions: `recordSubmittedBuffers(promptKey, buffers)` (set), `getPersistedBuffers(promptKey)` (get-or-null helper accessor — implemented as a plain function reading from `editorUiStore.getState()` rather than a slice action, since reads don't mutate).
+1. **Add slice field + single mutator action.** `commandBar.lastSubmittedBuffers: Record<string, string[]>` initialised to `{}`. Single action on `editorUiActions`: `recordSubmittedBuffers(promptKey, buffers)`. Reads happen inline at consumer sites via `editorUiStore.getState().commandBar.lastSubmittedBuffers[promptKey] ?? null` — no separate selector helper function (Codex Round-1 H1 fix: actions are mutators only; reads are inline state access, matching the existing `editorUiActions` convention where every entry mutates).
 2. **Add `Prompt.persistKey?: string`** to the `Prompt` interface in `tools/types.ts`. Doc comment explains it as the buffer-persistence key suffix; absent means runner derives from prompt index.
 3. **Runner: derive `promptKey` and pre-fill placeholder.** On manifest publication (existing yield branch in `runner.ts`), compute `promptKey = ${toolId}:${prompt.persistKey ?? promptIndex}`. Pass it through to the published `commandBar.dynamicInput` slice (new field `commandBar.dynamicInput.promptKey`). The slice's `setDynamicInputManifest` action reads `lastSubmittedBuffers[promptKey]` and seeds it as `placeholders` (a new sibling field on `commandBar.dynamicInput`, parallel to `buffers`).
 4. **Polyline `persistKey`.** Set `persistKey: 'next-vertex'` on the per-loop prompt in `draw-polyline.ts`. This makes all loop iterations share one key — typing 5 / 30 in iteration 1 surfaces as a placeholder in iteration 2 too. Other tools rely on prompt-index identity; no change.
@@ -251,11 +290,12 @@ See §4.1 rows for `store.ts`, `runner.ts`, `types.ts`, `draw-polyline.ts`, `Dyn
 
 #### Phase 2 Mandatory Completion Gates
 
-- **REM7-P2-SliceShape:** `tests/ui-state.test.ts` assertions on `lastSubmittedBuffers` slice shape + actions pass.
-- **REM7-P2-PromptKey:** `tests/tool-runner.test.ts` assertion on `promptKey` propagation passes.
+- **REM7-P2-SliceShape:** `tests/ui-state.test.ts` assertions on `lastSubmittedBuffers` slice shape + the `recordSubmittedBuffers` mutator action pass. Read-path assertions exercise `editorUiStore.getState().commandBar.lastSubmittedBuffers[promptKey]` directly (no helper).
+- **REM7-P2-PromptKey:** `tests/tool-runner.test.ts` assertion on `promptKey` propagation passes. Test verifies the canonical expression `${toolId}:${prompt.persistKey ?? promptIndex}` (per A16) for at least three cases: (1) prompt without `persistKey` at index 0 → `${toolId}:0`; (2) prompt without `persistKey` at index 1 → `${toolId}:1`; (3) prompt with `persistKey: 'next-vertex'` → `${toolId}:next-vertex` regardless of prompt index.
 - **REM7-P2-Placeholder:** `tests/DynamicInputPills.test.tsx` assertions on dim-placeholder rendering pass.
 - **REM7-P2-PolylinePersistKey:** `tests/draw-tools.test.ts` polyline `persistKey: 'next-vertex'` assertion passes.
 - **REM7-P2-SmokeRoundtrip:** `tests/smoke-e2e.test.tsx` `'line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults'` passes.
+- **REM7-P2-NoPersistenceLeak (Codex Round-1 B1):** `rg -n "lastSubmittedBuffers" apps/web/src/persistence/ packages/project-store/src/ services/api/` returns **zero matches**. Proves the buffer-persistence slice is never serialised to IndexedDB, never sync'd to the API, and never touched by the project-store (which is the persisted document layer per ADR-014). Locks I-BPER-1.
 - **REM7-P2-Typecheck / Lint / Tests:** standard `pnpm typecheck` / `check` / `test` clean.
 
 #### Phase 2 Tests added
@@ -278,12 +318,18 @@ When a DI pill's text overflows its rendered width, hovering shows a tooltip wit
 2. **Render tooltip via portal.** When `isOverflow && hovered`, render `<TooltipPortal>{formattedValue}</TooltipPortal>`. Portal target is `document.body` via `createPortal`; positioned absolute at pill anchor + small offset (`top: pillRect.bottom + 6, left: pillRect.left`).
 3. **Format the value.** Helper `formatPillValue(rawBuffer: string, fieldKind: 'distance' | 'angle' | 'number'): string` returns `'5 m'` / `'30°'` / `'5'`. Parses raw buffer with `Number(...)` and formats; falls back to raw buffer if non-numeric (e.g., partial typing like `5.`).
 4. **`mouseLeave` clears.** Hovered state + overflow boolean reset.
-5. **Tests.** Render with a forced-overflow pill (very long buffer + narrow CSS); assert tooltip appears with expected text. Render with short buffer; assert no tooltip. Per-field-kind suffix assertion.
+5. **Tests.** JSDOM does not compute layout, so `scrollWidth` and `clientWidth` are always `0` by default. Tests MUST stub these via `Object.defineProperty(element, 'scrollWidth', { value: 200, configurable: true })` and `Object.defineProperty(element, 'clientWidth', { value: 100, configurable: true })` BEFORE firing the `mouseEnter` event so the overflow detection branch is deterministic (Codex Round-1 B2 fix). Three test cases minimum:
+   - **Overflow case:** `scrollWidth=200`, `clientWidth=100` → tooltip appears with full value+unit text.
+   - **No-overflow case:** `scrollWidth=80`, `clientWidth=100` → no tooltip rendered (assert by absence of `[data-component="dynamic-input-pill-tooltip"]`).
+   - **Mouse leave:** start in overflow case, fire `mouseLeave`, assert tooltip removed.
+   Plus per-field-kind suffix tests: `'distance'` → ' m'; `'angle'` → '°'; `'number'` → no suffix.
 
 #### Phase 3 Mandatory Completion Gates
 
-- **REM7-P3-OverflowDetection:** test asserts tooltip present only when `scrollWidth > clientWidth`.
-- **REM7-P3-UnitFormat:** test asserts unit suffix per field kind.
+- **REM7-P3-OverflowDetection:** test asserts tooltip present only when `scrollWidth > clientWidth` AND absent when `scrollWidth <= clientWidth`. Both branches exercised.
+- **REM7-P3-OverflowDeterministic (Codex Round-1 B2):** the overflow tests use `Object.defineProperty(el, 'scrollWidth', { value: N, configurable: true })` and the same for `clientWidth` BEFORE the hover event fires. JSDOM's default `0` value for layout properties is overridden so the test's overflow branch is deterministic — no reliance on real layout calculation. Locks against flaky / false-pass behaviour.
+- **REM7-P3-UnitFormat:** test asserts unit suffix per field kind. Three cases: `'distance'` → ' m'; `'angle'` → '°'; `'number'` → no suffix.
+- **REM7-P3-MouseLeaveCleanup:** test asserts the tooltip is removed when `mouseLeave` fires after `mouseEnter`. Locks the cleanup path.
 - **REM7-P3-Typecheck / Lint / Tests:** standard.
 
 #### Phase 3 Tests added
@@ -295,20 +341,21 @@ When a DI pill's text overflows its rendered width, hovering shows a tooltip wit
 - **I-CTOK-1 — All overlay painter numeric chrome constants live in `canvas.transient.*` tokens.** The two intentional exceptions are `paintPoint.ts` (entity painter, A11) and `DIM_OFFSET_CSS` literal in `paintDimensionGuides.ts` (mirrored per A12). Enforcement: REM7-P1-NoHardcodedConstants grep + REM7-P1-PainterTokenMigration unit tests.
 - **I-CTOK-2 — `DIM_OFFSET_CSS` literal mirrors `dim_witness_offset` token.** The exported constant value (40) equals `parseNumericToken(dark.canvas.transient.dim_witness_offset)`. Enforcement: REM7-P1-DimOffsetMirror unit test (per A12).
 - **I-CTOK-3 — `parseDashPattern` and `parseNumericToken` are SSOT in `_tokens.ts`.** No painter defines a local copy. Enforcement: REM7-P1-NoLocalParseHelper grep gate.
-- **I-BPER-1 — Buffer persistence is tab-local.** `lastSubmittedBuffers` lives in `editorUiStore`, never written to IndexedDB. Enforcement: code-review (no `persistence.ts` reference in the slice path) + the absence of a serialiser entry covers this.
-- **I-BPER-2 — Per-prompt identity.** `promptKey = ${toolId}:${persistKey ?? promptIndex}`. Two prompts share a key only when both opt in via `persistKey`. Enforcement: REM7-P2-PromptKey unit test.
+- **I-BPER-1 — Buffer persistence is tab-local.** `lastSubmittedBuffers` lives in `editorUiStore`, never written to IndexedDB, never sync'd, never touched by the project-store. Enforcement: REM7-P2-NoPersistenceLeak grep gate (`rg -n "lastSubmittedBuffers" apps/web/src/persistence/ packages/project-store/src/ services/api/` returns zero matches). Locks the no-leak invariant objectively (Codex Round-1 B1 fix; replaces the original narrative-only "code-review" enforcement).
+- **I-BPER-2 — Per-prompt identity (canonical expression per A16).** `promptKey = ${toolId}:${prompt.persistKey ?? promptIndex}`. Two prompts share a key only when both opt in via `persistKey`. Enforcement: REM7-P2-PromptKey unit test.
 - **I-BPER-3 — Polyline shares one key across loop iterations.** All iterations of polyline's next-vertex prompt write to the same `promptKey`. Enforcement: REM7-P2-PolylinePersistKey unit test.
-- **I-HOV-1 — Tooltip renders only on overflow.** No tooltip for non-overflow pills. Enforcement: REM7-P3-OverflowDetection unit test.
+- **I-HOV-1 — Tooltip renders only on overflow.** No tooltip for non-overflow pills. Enforcement: REM7-P3-OverflowDetection unit test (both branches) + REM7-P3-OverflowDeterministic (Object.defineProperty stubbing) + REM7-P3-MouseLeaveCleanup.
+- **I-HELP-1 — `parseNumericToken` and `parseDashPattern` reject malformed tokens deterministically.** Negative inputs throw a recognisable `Error` (numeric helper) or filter to `[]`/non-finite-skip (dash helper). Enforcement: REM7-P1-ParseHelperNegative unit tests.
 
 ## 11. Test strategy
 
 Baseline at `main` (`291ec68`): 399 tests pass in `editor-2d`. Phases add tests:
 
-- Phase 1: `painter-token-migration.test.ts` (~10 tests, one per painter).
-- Phase 2: ~5 unit tests + 1 smoke scenario.
-- Phase 3: ~3 unit tests.
+- Phase 1: `painter-token-migration.test.ts` (~10 tests, one per painter) + `_tokens.test.ts` (~10 negative + positive cases for `parseNumericToken` / `parseDashPattern`) + `dim-offset-mirror.test.ts` (1 test) ≈ ~21 net-new.
+- Phase 2: ~6 unit tests (slice + 3 promptKey cases + pill placeholder + polyline shape) + 1 smoke scenario ≈ ~7.
+- Phase 3: ~5 unit tests (overflow / no-overflow / mouseLeave / 3 unit-format cases).
 
-Total net-new: ~19. Final count target ≥ 415. `pnpm --filter @portplanner/editor-2d test` workspace tripwire ≥ 415.
+Total net-new: ~33. Final count target ≥ 432 (baseline 399). `pnpm --filter @portplanner/editor-2d test` workspace tripwire ≥ 432.
 
 `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build` all pass after each phase.
 
@@ -320,8 +367,10 @@ Total net-new: ~19. Final count target ≥ 415. `pnpm --filter @portplanner/edit
 - [ ] **Phase 2 — buffer persistence functional within-tab.** Re-invoking line tool after typing 5 / 30 + Esc shows dim placeholders. Verified by REM7-P2-Placeholder + REM7-P2-SmokeRoundtrip.
 - [ ] **Polyline next-vertex buffer persists across loop iterations AND tool re-invocations.** Verified by REM7-P2-PolylinePersistKey.
 - [ ] **Buffer recording happens on successful submit only.** Failed-parse submits (combiner returns null) do not record. Verified by smoke + slice tests.
-- [ ] **Phase 3 — hover tooltip on overflow.** Pills with overflowing text show a tooltip on hover; non-overflow pills do not. Verified by REM7-P3-OverflowDetection.
+- [ ] **Buffer persistence does not leak into project / IndexedDB / sync.** Verified by REM7-P2-NoPersistenceLeak grep gate.
+- [ ] **Phase 3 — hover tooltip on overflow.** Pills with overflowing text show a tooltip on hover; non-overflow pills do not. Both branches deterministically tested via Object.defineProperty stubbing. Verified by REM7-P3-OverflowDetection + REM7-P3-OverflowDeterministic + REM7-P3-MouseLeaveCleanup.
 - [ ] **Tooltip content = value + unit suffix per field kind.** Verified by REM7-P3-UnitFormat.
+- [ ] **Parse helpers reject malformed tokens deterministically.** Verified by REM7-P1-ParseHelperNegative.
 - [ ] All Phase 1 + 2 + 3 gates pass. `pnpm typecheck`, `pnpm check`, `pnpm test`, `pnpm build` all pass.
 - [ ] `docs/design-tokens.md` version bumped + changelog reflects the new tokens.
 - [ ] No deviations from binding specs (none planned per §6).
