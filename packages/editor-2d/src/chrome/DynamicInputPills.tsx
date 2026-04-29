@@ -69,19 +69,28 @@ export function DynamicInputPills(): ReactElement | null {
           const screen = derivePillScreenAnchor(guide, viewport);
           const focused = idx === dynamicInput.activeFieldIdx;
           const buffer = dynamicInput.buffers[idx] ?? '';
+          // Round 7 Phase 2 — dim placeholder. When the active buffer
+          // for this field is empty AND a previously-submitted value
+          // was recorded under the current promptKey, render the
+          // persisted value with reduced opacity. Typing replaces; if
+          // the user hits Enter without typing, the placeholder is
+          // used as the effective buffer (fallback applied at the
+          // EditorRoot.onSubmitDynamicInput boundary).
+          const placeholder = dynamicInput.placeholders[idx] ?? '';
+          const showPlaceholder = buffer.length === 0 && placeholder.length > 0;
           const labelPrefix = field.label ? `${field.label}: ` : '';
-          const text = `${labelPrefix}${buffer}`;
-          // Multi-pill mode: pill centered on dim-line midpoint via
-          // .pillCentered translate(-50%, -50%). Inline left/top set
-          // to absolute screen position. AC parity per mockup.
+          const valueText = showPlaceholder ? placeholder : buffer;
+          const text = `${labelPrefix}${valueText}`;
           const focusClass = focused ? styles.pillFocused : styles.pillDimmed;
+          const placeholderClass = showPlaceholder ? styles.pillPlaceholder : '';
           return (
             <div
               key={`di-pill-${idx}`}
-              className={`${styles.pill} ${styles.pillCentered} ${focusClass}`}
+              className={`${styles.pill} ${styles.pillCentered} ${focusClass} ${placeholderClass}`}
               data-component="dynamic-input-pill"
               data-pill-index={idx}
               data-pill-focused={focused ? 'true' : 'false'}
+              data-pill-placeholder={showPlaceholder ? 'true' : 'false'}
               style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
             >
               {text}

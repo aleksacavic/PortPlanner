@@ -146,7 +146,36 @@ export interface CommandBarState {
     manifest: DynamicInputManifest;
     buffers: string[];
     activeFieldIdx: number;
+    /**
+     * Round 7 Phase 2 — buffer-persistence identity for the active
+     * prompt. Computed by the runner per A16:
+     * `${toolId}:${prompt.persistKey ?? promptIndex}`. Used by the
+     * pill chrome to look up `lastSubmittedBuffers[promptKey]` for
+     * placeholder seeding and by EditorRoot.onSubmitDynamicInput to
+     * record the submitted buffers under this key.
+     */
+    promptKey: string;
+    /**
+     * Round 7 Phase 2 — dim placeholder values pre-filled from the
+     * `lastSubmittedBuffers` map at manifest publication time. One
+     * entry per manifest field (parallel to `buffers`). Empty string
+     * means "no persisted value for this field — render the pill
+     * label only". When the active buffer for a field is empty AND
+     * `placeholders[idx]` is non-empty, the pill renders the
+     * placeholder dim (per `pill_placeholder_opacity` token).
+     */
+    placeholders: string[];
   } | null;
+  /**
+   * Round 7 Phase 2 — buffer persistence within tab. Key =
+   * `${toolId}:${prompt.persistKey ?? promptIndex}` (canonical per
+   * plan A16). Value = the per-field buffer array submitted on the
+   * most recent successful `onSubmitDynamicInput` for that prompt
+   * key. Cleared on page reload (lives only in editorUiStore;
+   * never written to IndexedDB / project-store / API per
+   * I-BPER-1 + REM7-P2-NoPersistenceLeak gate).
+   */
+  lastSubmittedBuffers: Record<string, string[]>;
 }
 
 export interface OverlayState {
@@ -309,6 +338,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     lastToolId: null,
     accumulator: '',
     dynamicInput: null,
+    lastSubmittedBuffers: {},
   },
   focusHolder: 'canvas',
   focusStack: [],
@@ -505,13 +535,41 @@ export const editorUiActions = {
   },
   // M1.3 Round 6 — Dynamic Input multi-field state setters per plan §3 A2.1.
   // Plan Rev-1 R2-A5: each prompt yield with a manifest resets buffers + activeFieldIdx.
-  setDynamicInputManifest(manifest: DynamicInputManifest): void {
+  /**
+   * Round 7 Phase 2 — manifest publication takes the runner-derived
+   * `promptKey` (canonical expression per plan A16:
+   * `${toolId}:${prompt.persistKey ?? promptIndex}`). The placeholder
+   * array is seeded from `commandBar.lastSubmittedBuffers[promptKey]`
+   * if a previous submit recorded values under that key; otherwise
+   * empty strings. Buffers always start empty (Rev-1 R2-A5).
+   */
+  setDynamicInputManifest(manifest: DynamicInputManifest, promptKey: string): void {
     editorUiStore.setState((s) => {
+      const persisted = s.commandBar.lastSubmittedBuffers[promptKey];
+      const placeholders =
+        persisted && persisted.length === manifest.fields.length
+          ? [...persisted]
+          : Array<string>(manifest.fields.length).fill('');
       s.commandBar.dynamicInput = {
         manifest,
         buffers: Array<string>(manifest.fields.length).fill(''),
         activeFieldIdx: 0,
+        promptKey,
+        placeholders,
       };
+    });
+  },
+  /**
+   * Round 7 Phase 2 — record the submitted buffers for a prompt under
+   * the given key (canonical expression — see plan A16). Replaces any
+   * previous entry for the key. Called by EditorRoot.onSubmitDynamicInput
+   * BEFORE clearDynamicInput on a successful combiner result. Locks
+   * I-BPER-1: writes only to editorUiStore; never reaches the
+   * project-store / IndexedDB / API.
+   */
+  recordSubmittedBuffers(promptKey: string, buffers: string[]): void {
+    editorUiStore.setState((s) => {
+      s.commandBar.lastSubmittedBuffers[promptKey] = [...buffers];
     });
   },
   setDynamicInputActiveField(idx: number): void {

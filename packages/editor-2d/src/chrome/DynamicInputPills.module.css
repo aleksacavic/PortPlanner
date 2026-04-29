@@ -55,6 +55,17 @@
   vertical-align: text-bottom;
   animation: di-caret-blink 1s steps(2, start) infinite;
 }
+/* Round 7 Phase 2 — dim-placeholder mode. Applied when the active
+   buffer is empty AND a previously-submitted value is available
+   under the current promptKey. The persisted value renders at
+   reduced opacity to signal "default — typing replaces". Opacity
+   value sourced from canvas.transient.pill_placeholder_opacity
+   token in the dark theme (0.45). The CSS uses the literal here
+   for static styling; the test gate REM7-P2-Placeholder asserts
+   the data-attribute toggles correctly. */
+.pillPlaceholder {
+  opacity: 0.45;
+}
 @keyframes di-caret-blink {
   to {
     visibility: hidden;

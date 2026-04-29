@@ -122,6 +122,7 @@ const SCENARIOS = [
   'circle DI: single-field [Radius] manifest + per-field digit routing (Round-2)',
   'click is eaten while DI buffer non-empty (multi-field DI parity)',
   'first-frame DI coherence',
+  'line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults (Round 7 Phase 2 buffer persistence)',
 ] as const;
 
 function makeProject(): Project {
@@ -1281,6 +1282,62 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     if (di && guides) {
       expect(guides.length).toBe(di.manifest.fields.length);
     }
+  });
+
+  it('line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults (Round 7 Phase 2 buffer persistence)', async () => {
+    // Round 7 Phase 2 — buffer persistence within tab. After a successful
+    // line submit with Distance=5, Angle=30, re-invoking the line tool
+    // should pre-fill the dim placeholders (per pill_placeholder_opacity
+    // + data-pill-placeholder='true'). Locks I-BPER-1 + I-BPER-4 +
+    // REM7-P2-SmokeRoundtrip.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // First invocation — type 5 / 30 / Enter to commit.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(40);
+    fireEvent.keyDown(window, { key: '5' });
+    fireEvent.keyDown(window, { key: 'Tab' });
+    fireEvent.keyDown(window, { key: '3' });
+    fireEvent.keyDown(window, { key: '0' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(60);
+    // Buffer persistence map should have an entry for draw-line.
+    const persistedAfterCommit = editorUiStore.getState().commandBar.lastSubmittedBuffers;
+    const lineKey = Object.keys(persistedAfterCommit).find((k) => k.startsWith('draw-line:'));
+    expect(lineKey).toBeDefined();
+    expect(persistedAfterCommit[lineKey as string]).toEqual(['5', '30']);
+
+    // Re-invoke L — manifest publication should seed placeholders from
+    // the persisted entry under the same key.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 200, clientY: 200 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 260, clientY: 240 });
+    await wait(40);
+
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di).not.toBeNull();
+    expect(di?.placeholders).toEqual(['5', '30']);
+    expect(di?.buffers).toEqual(['', '']);
+
+    // Pill chrome reflects the placeholder state via data attribute.
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills.length).toBeGreaterThanOrEqual(2);
+    const distPill = Array.from(pills).find((p) => /^Distance:/.test(p.textContent ?? ''));
+    const anglePill = Array.from(pills).find((p) => /^Angle:/.test(p.textContent ?? ''));
+    expect(distPill?.getAttribute('data-pill-placeholder')).toBe('true');
+    expect(anglePill?.getAttribute('data-pill-placeholder')).toBe('true');
+    expect(distPill?.textContent).toContain('Distance: 5');
+    expect(anglePill?.textContent).toContain('Angle: 30');
   });
 });
 

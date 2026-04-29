@@ -198,14 +198,26 @@ export function EditorRoot(): ReactElement {
           }
         }
         if (!anchor) anchor = cb.directDistanceFrom;
-        const input = combineDynamicInputBuffers(manifest, buffers, anchor ?? { x: 0, y: 0 });
+        // Round 7 Phase 2 — placeholder fallback at the submit
+        // boundary. For each empty buffer slot, substitute the
+        // persisted placeholder value (if any). This keeps the
+        // combiner pure (it still receives a flat string[] and
+        // doesn't know about lastSubmittedBuffers); empty-buffer +
+        // empty-placeholder still produces null per the combiner's
+        // existing parse-failure semantics.
+        const placeholders = cb.dynamicInput?.placeholders ?? [];
+        const effectiveBuffers = buffers.map((b, i) => {
+          if (b.length > 0) return b;
+          return placeholders[i] ?? '';
+        });
+        const input = combineDynamicInputBuffers(manifest, effectiveBuffers, anchor ?? { x: 0, y: 0 });
         if (input === null) {
           // Empty / un-parseable buffers — ignore submit (buffers stay
           // intact so the user can edit). Plan §3 A7.
           return;
         }
-        // Append history mirror of the typed buffers (joined with " / ").
-        const rawJoin = buffers
+        // Append history mirror of the EFFECTIVE buffers (joined with " / ").
+        const rawJoin = effectiveBuffers
           .map((b, i) => {
             const label = manifest.fields[i]?.label;
             return label ? `${label}=${b}` : b;
@@ -217,6 +229,14 @@ export function EditorRoot(): ReactElement {
             text: rawJoin,
             timestamp: new Date().toISOString(),
           });
+        }
+        // Round 7 Phase 2 — record the submitted buffers under the
+        // active promptKey BEFORE clearDynamicInput wipes the slice.
+        // I-BPER-1: writes only to editorUiStore; never to project /
+        // IndexedDB / API. Locked by REM7-P2-NoPersistenceLeak.
+        const promptKey = cb.dynamicInput?.promptKey;
+        if (promptKey !== undefined) {
+          editorUiActions.recordSubmittedBuffers(promptKey, effectiveBuffers);
         }
         runningToolRef.current?.feedInput(input);
         editorUiActions.clearDynamicInput();
