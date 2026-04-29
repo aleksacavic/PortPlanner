@@ -33,11 +33,8 @@ import type { SemanticTokens } from '@portplanner/design-system';
 
 import type { DimensionGuide } from '../../tools/types';
 import type { Viewport } from '../view-transform';
+import { parseDashPattern, parseNumericToken } from './_tokens';
 
-const STROKE_WIDTH_CSS = 1;
-const ARROW_TICK_CSS = 6;
-// Witness lines extend 3 CSS-px PAST the dim line.
-const WITNESS_OVERSHOOT_CSS = 3;
 /**
  * SSOT for the dim-line perpendicular offset distance (in CSS pixels).
  * Used by ALL primitives that emit a `linear-dim` guide — rectangle
@@ -46,15 +43,15 @@ const WITNESS_OVERSHOOT_CSS = 3;
  * (Round-2 remediation: user-locked SSOT, every primitive's witness
  * offset MUST resolve through this constant).
  *
- * 40 CSS-px (Round-2 remediation: user requested explicit 40 px gap).
+ * **Round 7 (canvas-tokens-and-di-polish A12) lock:** the literal `40`
+ * is mirrored by `canvas.transient.dim_witness_offset: '40'` in
+ * `semantic-dark.ts`. Equality is locked by
+ * `tests/dim-offset-mirror.test.ts`. The literal stays in this file
+ * so tools that consume `DIM_OFFSET_CSS` at module load (line /
+ * polyline / rectangle / circle) don't depend on design-system
+ * bundle parsing at import time.
  */
 export const DIM_OFFSET_CSS = 40;
-// Witness end-cap: small filled square at the witness endpoint
-// (away from the anchor). AC shows this consistently — see user
-// rectangle screenshot. Square is centered on the witness end.
-const WITNESS_ENDCAP_CSS = 4;
-// Dash pattern for witness + dim lines (AC dotted look).
-const DASHED_PATTERN_CSS: [number, number] = [2, 3];
 
 export function paintDimensionGuides(
   ctx: CanvasRenderingContext2D,
@@ -65,7 +62,12 @@ export function paintDimensionGuides(
   if (guides.length === 0) return;
   const transient = tokens.canvas.transient;
   const metricToPx = viewport.zoom * viewport.dpr;
-  const lineWidthMetric = STROKE_WIDTH_CSS / metricToPx;
+  const dimStrokeWidthCss = parseNumericToken(transient.dim_stroke_width);
+  const arrowTickCss = parseNumericToken(transient.dim_arrow_tick);
+  const witnessOvershootCss = parseNumericToken(transient.dim_witness_overshoot);
+  const witnessEndcapCss = parseNumericToken(transient.dim_witness_endcap);
+  const dashedPatternCss = parseDashPattern(transient.dim_dashed_pattern);
+  const lineWidthMetric = dimStrokeWidthCss / metricToPx;
 
   ctx.save();
   ctx.strokeStyle = transient.preview_stroke;
@@ -76,15 +78,31 @@ export function paintDimensionGuides(
   for (const guide of guides) {
     switch (guide.kind) {
       case 'linear-dim':
-        paintLinearDim(ctx, guide, metricToPx);
+        paintLinearDim(ctx, guide, metricToPx, {
+          arrowTickCss,
+          witnessOvershootCss,
+          witnessEndcapCss,
+          dashedPatternCss,
+        });
         break;
       case 'angle-arc':
-        paintAngleArc(ctx, guide, metricToPx);
+        paintAngleArc(ctx, guide, metricToPx, { dashedPatternCss });
         break;
     }
   }
 
   ctx.restore();
+}
+
+interface LinearDimChrome {
+  arrowTickCss: number;
+  witnessOvershootCss: number;
+  witnessEndcapCss: number;
+  dashedPatternCss: number[];
+}
+
+interface AngleArcChrome {
+  dashedPatternCss: number[];
 }
 
 /**
@@ -118,8 +136,10 @@ function paintLinearDim(
     offsetCssPx: number;
   },
   metricToPx: number,
+  chrome: LinearDimChrome,
 ): void {
   const { anchorA, anchorB, offsetCssPx } = guide;
+  const { arrowTickCss, witnessOvershootCss, witnessEndcapCss, dashedPatternCss } = chrome;
   const dx = anchorB.x - anchorA.x;
   const dy = anchorB.y - anchorA.y;
   const len = Math.hypot(dx, dy);
@@ -127,7 +147,7 @@ function paintLinearDim(
 
   const perpX = -dy / len;
   const perpY = dx / len;
-  const tickMetric = ARROW_TICK_CSS / metricToPx;
+  const tickMetric = arrowTickCss / metricToPx;
 
   if (offsetCssPx === 0) {
     // INLINE mode — perpendicular ticks at each endpoint of the segment.
@@ -142,13 +162,10 @@ function paintLinearDim(
   }
 
   // FULL mode — witness + dim lines + filled-square end-caps.
-  const dashMetric: [number, number] = [
-    DASHED_PATTERN_CSS[0] / metricToPx,
-    DASHED_PATTERN_CSS[1] / metricToPx,
-  ];
-  const endcapMetric = WITNESS_ENDCAP_CSS / metricToPx;
+  const dashMetric = dashedPatternCss.map((n) => n / metricToPx);
+  const endcapMetric = witnessEndcapCss / metricToPx;
   const dimOffsetMetric = offsetCssPx / metricToPx;
-  const witnessOffsetMetric = (offsetCssPx + WITNESS_OVERSHOOT_CSS) / metricToPx;
+  const witnessOffsetMetric = (offsetCssPx + witnessOvershootCss) / metricToPx;
   const dimAx = anchorA.x + perpX * dimOffsetMetric;
   const dimAy = anchorA.y + perpY * dimOffsetMetric;
   const dimBx = anchorB.x + perpX * dimOffsetMetric;
@@ -203,16 +220,24 @@ function paintAngleArc(
     radiusMetric: number;
   },
   metricToPx: number,
+  chrome: AngleArcChrome,
 ): void {
   const { pivot, baseAngleRad, sweepAngleRad, radiusMetric } = guide;
+  const { dashedPatternCss } = chrome;
   if (radiusMetric <= 0) return;
+  // Round-2 contract preserved (no min-radius clamp): the arc passes
+  // THROUGH the cursor at radiusMetric (= full segment length), and the
+  // polar baseline extends to the same length. Clamping to a CSS-px
+  // floor disconnects the arc from the cursor at short distances —
+  // user-rejected per AC parity (Phase 1 §3.10 in-flight discovery,
+  // 2026-04-29: clamp added then reverted).
   const endAngleRad = baseAngleRad + sweepAngleRad;
   const counterclockwise = sweepAngleRad < 0;
   const polarEndX = pivot.x + Math.cos(baseAngleRad) * radiusMetric;
   const polarEndY = pivot.y + Math.sin(baseAngleRad) * radiusMetric;
 
   ctx.save();
-  ctx.setLineDash([DASHED_PATTERN_CSS[0] / metricToPx, DASHED_PATTERN_CSS[1] / metricToPx]);
+  ctx.setLineDash(dashedPatternCss.map((n) => n / metricToPx));
   ctx.beginPath();
   ctx.moveTo(pivot.x, pivot.y);
   ctx.lineTo(polarEndX, polarEndY);

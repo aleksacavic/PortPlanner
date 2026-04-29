@@ -26,14 +26,7 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import type { SnapHit } from '../../snap/priority';
 
 import { type Viewport, metricToScreen } from '../view-transform';
-
-const ENDPOINT_SIDE_CSS = 8;
-const MIDPOINT_SIDE_CSS = 8;
-const INTERSECTION_HALF_CSS = 5;
-const NODE_RADIUS_CSS = 5;
-const GRID_NODE_HALF_CSS = 4;
-const GRID_LINE_HALF_CSS = 3;
-const STROKE_CSS_PX = 1.5;
+import { parseNumericToken } from './_tokens';
 
 /**
  * Paint a snap-target glyph at the resolved point. Caller passes the
@@ -55,12 +48,20 @@ export function paintSnapGlyph(
 ): void {
   if (snapTarget.kind === 'cursor') return;
 
+  const sg = tokens.canvas.transient.snap_glyph;
+  const ENDPOINT_SIDE_CSS = parseNumericToken(sg.endpoint_side);
+  const MIDPOINT_SIDE_CSS = parseNumericToken(sg.midpoint_side);
+  const INTERSECTION_HALF_CSS = parseNumericToken(sg.intersection_half);
+  const NODE_RADIUS_CSS = parseNumericToken(sg.node_radius);
+  const GRID_NODE_HALF_CSS = parseNumericToken(sg.grid_node_half);
+  const GRID_LINE_HALF_CSS = parseNumericToken(sg.grid_line_half);
+
   const screen = metricToScreen(snapTarget.point, viewport);
   const dpr = viewport.dpr;
   const cx = screen.x * dpr;
   const cy = screen.y * dpr;
   const color = tokens.canvas.snap_indicator;
-  const stroke = STROKE_CSS_PX * dpr;
+  const stroke = parseNumericToken(sg.stroke_width) * dpr;
 
   ctx.save();
   // Reset transform so we draw in device pixels; multiply by dpr inline

@@ -33,9 +33,7 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import type { Point2D } from '@portplanner/domain';
 
 import { type Viewport, metricToScreen } from '../view-transform';
-
-const FONT_PX_CSS = 11;
-const CORNER_RADIUS_CSS = 4;
+import { parseNumericToken } from './_tokens';
 
 export interface TransientLabelAnchor {
   /** Anchor point in metric. Painter computes screen position via
@@ -81,9 +79,9 @@ export function paintTransientLabel(
   const dy = anchor.screenOffset?.dy ?? 0;
   const px = (screen.x + dx) * dpr;
   const py = (screen.y + dy) * dpr;
-  const fontPx = FONT_PX_CSS * dpr;
-  const padding = parsePadding(tokens.canvas.transient.label_padding) * dpr;
-  const radius = CORNER_RADIUS_CSS * dpr;
+  const fontPx = parseNumericToken(tokens.canvas.transient.label_font_size) * dpr;
+  const padding = parseNumericToken(tokens.canvas.transient.label_padding) * dpr;
+  const radius = parseNumericToken(tokens.canvas.transient.label_radius) * dpr;
   const angle = options?.angleRad !== undefined ? normalizeReadable(options.angleRad) : null;
 
   ctx.save();
@@ -132,11 +130,6 @@ function normalizeReadable(angleRad: number): number {
   if (a > Math.PI / 2) a -= Math.PI;
   else if (a <= -Math.PI / 2) a += Math.PI;
   return a;
-}
-
-function parsePadding(token: string): number {
-  const n = Number.parseInt(token, 10);
-  return Number.isFinite(n) ? n : 4;
 }
 
 function drawRoundedRect(

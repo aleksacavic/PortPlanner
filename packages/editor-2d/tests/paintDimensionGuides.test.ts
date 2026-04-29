@@ -73,7 +73,7 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     expect(calls.filter((c) => c.method === 'stroke').length).toBeGreaterThanOrEqual(1);
   });
 
-  it("'angle-arc' emits ctx.arc with pivot + base + sweep; radius is the AUTHORITATIVE radiusMetric field (= line length per Round-2 user spec)", () => {
+  it("'angle-arc' emits ctx.arc with pivot + base + sweep; radius is the AUTHORITATIVE radiusMetric field (= line length per Round-2 user spec; no CSS-px min-clamp per Round 7 §3.10 revert — clamp would disconnect the arc from the cursor at short distances)", () => {
     const guide: DimensionGuide = {
       kind: 'angle-arc',
       pivot: { x: 5, y: 5 },
@@ -90,8 +90,9 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     const [cx, cy, r, start, end] = arc.args as [number, number, number, number, number];
     expect(cx).toBeCloseTo(5, 6);
     expect(cy).toBeCloseTo(5, 6);
-    // Round-2 user spec: radiusMetric is the arc radius directly (no
-    // CSS-px ↔ metric conversion needed in the painter).
+    // Round-2 contract preserved through Round 7: radiusMetric is the
+    // arc radius directly. No clamp — the arc always passes through the
+    // cursor (AC parity).
     expect(r).toBeCloseTo(7, 6);
     expect(start).toBeCloseTo(0, 6);
     expect(end).toBeCloseTo(Math.PI / 6, 6);

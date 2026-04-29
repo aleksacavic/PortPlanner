@@ -23,9 +23,8 @@ import type { Point2D, Primitive } from '@portplanner/domain';
 
 import type { PreviewShape } from '../../tools/types';
 import type { Viewport } from '../view-transform';
+import { parseNumericToken } from './_tokens';
 import { paintTransientLabel } from './paintTransientLabel';
-
-const STROKE_WIDTH_CSS = 1;
 
 /**
  * Paint a live preview shape.
@@ -52,7 +51,8 @@ export function paintPreview(
   if (shape.kind === 'selection-rect') return;
 
   const transient = tokens.canvas.transient;
-  const lineWidthMetric = STROKE_WIDTH_CSS / (viewport.zoom * viewport.dpr);
+  const lineWidthMetric =
+    parseNumericToken(transient.preview_stroke_width) / (viewport.zoom * viewport.dpr);
 
   ctx.save();
   ctx.strokeStyle = transient.preview_stroke;

@@ -61,7 +61,7 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     const layer = project.layers[grid.layerId];
     if (!layer || !layer.visible || layer.frozen) continue;
     const style = resolveEffectiveStyle({}, layer);
-    paintGrid(ctx, grid, style, metricToPx, frustum);
+    paintGrid(ctx, grid, style, metricToPx, frustum, dark);
   }
 
   // 2. Primitives in frustum, filtered by layer visibility.

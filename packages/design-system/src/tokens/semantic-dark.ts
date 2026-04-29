@@ -69,6 +69,7 @@ export const dark: SemanticTokens = {
       preview_stroke: '#7d8fa3',
       preview_fill: 'rgba(125, 143, 163, 0.05)',
       preview_dash: '6 4',
+      preview_stroke_width: '1',
       // M1.3d-Remediation-2 R6 — small blue rounded pill for in-flight
       // measurements. blue matches selection_window.stroke / accent.primary
       // for consistent "selection / accent" visual vocabulary across
@@ -77,23 +78,58 @@ export const dark: SemanticTokens = {
       label_text: '#ffffff',
       label_bg: 'rgba(42, 127, 255, 0.9)',
       label_padding: '3',
+      label_font_size: '11',
+      label_radius: '4',
       crosshair: 'rgba(180, 200, 255, 0.35)',
       crosshair_dash: 'solid',
+      crosshair_stroke_width: '1',
+      crosshair_pickbox_half: '5',
       dimension_line: '#7d8fa3',
+      // M1.3 Round 7 (canvas-tokens-and-di-polish) — every dim-guide
+      // numeric chrome value lives here per ADR-025 §6 SSOT. The literal
+      // `DIM_OFFSET_CSS = 40` exported from `paintDimensionGuides.ts`
+      // mirrors `dim_witness_offset` below; equality locked by
+      // tests/dim-offset-mirror.test.ts.
+      dim_stroke_width: '1',
+      dim_arrow_tick: '6',
+      dim_witness_overshoot: '3',
+      dim_witness_offset: '40',
+      dim_witness_endcap: '4',
+      dim_dashed_pattern: '2 3',
+      grid_stroke_width: '1',
       selection_window: {
         stroke: 'rgba(42, 127, 255, 0.9)',
         fill: 'rgba(42, 127, 255, 0.07)',
         dash: '6 4',
+        stroke_width: '1',
       },
       selection_crossing: {
         stroke: 'rgba(0, 255, 128, 0.9)',
         fill: 'rgba(0, 255, 128, 0.07)',
         dash: '6 4',
+        stroke_width: '1',
       },
       hover_highlight: {
         stroke: 'rgba(180, 200, 255, 0.5)',
         dash: '4 2',
+        stroke_width: '1',
       },
+      selection_outline_width: '1.5',
+      grip: {
+        side: '7',
+        hovered_side: '9',
+        border_width: '1',
+      },
+      snap_glyph: {
+        endpoint_side: '8',
+        midpoint_side: '8',
+        intersection_half: '5',
+        node_radius: '5',
+        grid_node_half: '4',
+        grid_line_half: '3',
+        stroke_width: '1.5',
+      },
+      pill_placeholder_opacity: '0.45',
     },
   },
 };

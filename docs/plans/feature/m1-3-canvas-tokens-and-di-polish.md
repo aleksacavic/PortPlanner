@@ -429,3 +429,46 @@ Total net-new: ~33. Final count target ≥ 432 (baseline 399). `pnpm --filter @p
 > Review this plan using the protocol at
 > `docs/procedures/Codex/02-plan-review.md` (Procedure 02).
 > Apply strict evidence mode. Start from Round 1.
+
+---
+
+## Post-execution notes
+
+### Phase 1 — Canvas painter token sweep (2026-04-29)
+
+**Phase verdict:** GO. All 9 mandatory completion gates passed:
+
+- REM7-P1-NoHardcodedConstants — `rg -nE "^const [A-Z_]+_CSS\s*=\s*[0-9]|^const [A-Z_]+_PX\s*=\s*[0-9]" packages/editor-2d/src/canvas/painters/` returned only `paintPoint.ts:5` (entity painter, out of scope per A11). PASS.
+- REM7-P1-NoLocalParseHelper — `rg -n "function parseDashPattern|function parsePadding" packages/editor-2d/src/canvas/painters/` returned only `_tokens.ts:63`. Three duplicate `parseDashPattern` definitions and one `parsePadding` definition removed. PASS.
+- REM7-P1-DimOffsetMirror — 2/2 unit tests in `tests/dim-offset-mirror.test.ts` pass. `DIM_OFFSET_CSS === parseNumericToken(dark.canvas.transient.dim_witness_offset) === 40`. PASS.
+- REM7-P1-PainterTokenMigration — 10/10 unit tests in `tests/painter-token-migration.test.ts` pass. Each overlay painter's `ctx.lineWidth` (and where applicable `setLineDash` argument) matches the token-derived expected value under the `dark` token bundle. PASS.
+- REM7-P1-ParseHelperNegative — 19/19 unit tests in `tests/_tokens.test.ts` pass (10 negative-input cases + 9 positive). PASS.
+- REM7-P1-CssVarsRoundtrip — `pnpm --filter @portplanner/design-system test` returned 9/9 pass. The css-vars emitter handles the 27 new leaves automatically without code change. PASS.
+- REM7-P1-Typecheck — `pnpm typecheck` clean across all packages. PASS.
+- REM7-P1-Lint — `pnpm check` clean (biome auto-formatted 2 files during execution; no rule violations). PASS.
+- REM7-P1-Tests — `pnpm --filter @portplanner/editor-2d test` returned 430/430 pass (up from 399 baseline = +31 net-new). PASS.
+
+**Net-new tests in Phase 1:** 31 (vs plan target ~21 — 10 painter-migration + 19 parse-helper + 2 dim-offset-mirror; the parse-helper suite came in larger than planned because both positive AND negative cases were grouped together rather than just the negative-input batch).
+
+### §3.10 mid-execution discovery — `dim_polar_min_length` token added then reverted
+
+**What:** Plan §4.1.1 listed `dim_polar_min_length: '100'` "replacing paintDimensionGuides.ts inline `100` (POLAR_REF_MIN_CSS)". On grounding, the constant did not exist in the current painter (it had been removed during M1.3 Round 6 Round-2 remediation when the angle-arc geometry collapsed to `radiusMetric = full line length`). The plan §4.1.1 row carried the constant from a pre-Round-2 file shape.
+
+**Initial response:** Added the token to `themes.ts` + `semantic-dark.ts` and reinstated a clamp in `paintAngleArc` (`radius = Math.max(radiusMetric, polar_min/metricToPx)`). Existing `'angle-arc'` test in `paintDimensionGuides.test.ts` failed because the test fixture's `radiusMetric: 7` was lifted by the clamp to 10 metric.
+
+**User feedback (screenshot):** the clamp creates a visible disconnect between the arc and the cursor at short cursor distances — arc renders at fixed CSS-px while the line is shorter, so the cursor is INSIDE the arc rather than on the arc's terminus. AC parity is the no-clamp behaviour: arc passes through cursor consistently.
+
+**Resolution:**
+- Removed the clamp logic in `paintAngleArc` (radius = `radiusMetric` directly).
+- Removed `dim_polar_min_length` from `TransientTokens` interface + dark theme — no consumer remains.
+- Reverted the `paintDimensionGuides.test.ts` 'angle-arc' test fixture to `radiusMetric: 7` expecting `r=7`. Removed the `clamps the arc + baseline radius UP` test case I added.
+- Net token count shifts from "28 new leaves" (plan §4.1.1) to **27 new leaves**.
+- Round-2 contract preserved: arc passes through cursor (`radiusMetric = full segment length`), polar baseline same length, arc terminates on baseline endpoint.
+
+**Why this is in scope as a §3.10:** the plan claimed a code construct (`POLAR_REF_MIN_CSS = 100`) that did not exist post-Round-2, leading me to add infrastructure for a phantom requirement. Per §3.10, mid-execution deviation discoveries must be reported in chat; user acknowledged the revert; plan + code now consistent. No silent deviation.
+
+**Files affected by the revert (already merged into Phase 1's single commit):**
+- `packages/design-system/src/tokens/themes.ts` — `dim_polar_min_length` removed from interface.
+- `packages/design-system/src/tokens/semantic-dark.ts` — `dim_polar_min_length: '100'` line removed.
+- `packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts` — `polarMinLengthCss` chrome field removed; `paintAngleArc` reverted to direct `radiusMetric`.
+- `packages/editor-2d/tests/paintDimensionGuides.test.ts` — fixture restored; clamp test case removed.
