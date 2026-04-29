@@ -948,3 +948,69 @@ Schema changes 1–4 below deviate from ADR-024 (ACCEPTED on the same day). Per 
 **Created:**
 - [docs/adr/025-dynamic-input-manifest-v2.md](docs/adr/025-dynamic-input-manifest-v2.md)
 - this plan section
+
+---
+
+## Post-commit remediation Round 3 — 2026-04-29
+
+**Trigger:** Codex post-commit Round-3 audit memo (chat, 2026-04-29). Audited single commit `c32f011`. Memo gave 8.7 / 10 + Go (conditional) with 1 High-risk + 2 Quality items remaining.
+
+### Findings + fixes
+
+**High-risk — ADR supersession governance inconsistency.**
+- **Finding:** `docs/adr/README.md` and `docs/adr/superseded/README.md` document the convention that superseded ADRs are renamed with a `-superseded` suffix and moved to `docs/adr/superseded/`. ADR-024 was kept in place at `docs/adr/024-dynamic-input-manifest.md` with a long status preface — inconsistent with the convention used by ADRs 002 / 010 / 013 / 022. Created governance ambiguity for binding-spec workflow.
+- **Fix:** Moved ADR-024 to [docs/adr/superseded/024-dynamic-input-manifest-superseded.md](docs/adr/superseded/024-dynamic-input-manifest-superseded.md) via `git mv`. Replaced the long status preface with the canonical 2-line `Status: SUPERSEDED` + `Superseded by:` header used by the other superseded ADRs. Updated cross-references in:
+  - [docs/adr/025-dynamic-input-manifest-v2.md](docs/adr/025-dynamic-input-manifest-v2.md) — `Supersedes:` link path + cross-references section.
+  - [docs/adr/README.md](docs/adr/README.md) — supersession map entry path.
+  - [docs/adr/superseded/README.md](docs/adr/superseded/README.md) — current supersessions table.
+  - [docs/procedures/Claude/00-architecture-contract.md](docs/procedures/Claude/00-architecture-contract.md) — supersession note paragraph (no longer mentions in-place handling).
+  - [docs/procedures/Codex/00-architecture-contract.md](docs/procedures/Codex/00-architecture-contract.md) — ADR table row 024 → 025 (was missed in Round-2; landed in Round-3).
+  - [docs/operator-shortcuts.md](docs/operator-shortcuts.md) — Authority line ADR-024 → ADR-025.
+- **Verification:** `rg "024-dynamic-input-manifest\.md" docs/ packages/` returns zero matches outside the superseded file itself + the relative `Superseded by:` link target (verified post-commit).
+
+**Quality — stale `radiusCssPx` comment in `types.ts`.**
+- **Finding:** [types.ts:56](packages/editor-2d/src/tools/types.ts:56) sign-convention comment still mentioned `radiusCssPx` after the schema collapse to `radiusMetric`.
+- **Fix:** Updated the comment to describe `radiusMetric`, including the geometric contract (arc passes through cursor, baseline same length so arc terminates on baseline endpoint).
+
+**Quality — `radius-line` variant retained without enforceable gate.**
+- **Finding:** ADR-025 §5 retained the `radius-line` `DimensionGuide` variant for forward extensibility, but no consumer exists and no gate proves "intended dead" status. Codex flagged as silent-drift bait.
+- **Fix:** **Removed** the variant entirely per GR-1 clean-break (no compatibility shims, no forward-extensibility placeholders). Touched:
+  - [packages/editor-2d/src/tools/types.ts](packages/editor-2d/src/tools/types.ts) — variant removed from `DimensionGuide` union; replacement comment notes the Round-3 removal.
+  - [packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts) — `paintRadiusLine` no-op function removed; `case 'radius-line':` dropped from the dispatch switch; header comment updated.
+  - [packages/editor-2d/src/chrome/DynamicInputPills.tsx](packages/editor-2d/src/chrome/DynamicInputPills.tsx) — `case 'radius-line':` dropped from `derivePillScreenAnchor`; doc comment updated.
+  - [packages/editor-2d/src/EditorRoot.tsx](packages/editor-2d/src/EditorRoot.tsx) — anchor-resolution comment updated to drop the radius-line mention.
+  - [packages/editor-2d/src/canvas/paint.ts](packages/editor-2d/src/canvas/paint.ts) — overlay-pass comment updated.
+  - [packages/editor-2d/tests/paintDimensionGuides.test.ts](packages/editor-2d/tests/paintDimensionGuides.test.ts) — `'radius-line' is a visual no-op` test removed; header comment updated.
+  - [docs/adr/025-dynamic-input-manifest-v2.md](docs/adr/025-dynamic-input-manifest-v2.md) — §5 + §Consequences updated to note the variant was removed in Round-3 (the original Round-2 ADR-025 wording said "preserved for forward extensibility").
+- **Future-extensibility safety:** future operators that need a radius-tick visual write a new variant when their concrete need lands (lazy expansion per GR-2).
+
+### Workspace verification (Round-3)
+
+- `pnpm typecheck` — clean.
+- `pnpm check` (biome) — clean.
+- `pnpm --filter @portplanner/editor-2d test` — passing test count drops from 400 to 399 (one removed test: the radius-line no-op test, which was the only consumer of the removed variant).
+
+### Files changed (Round-3)
+
+**Renamed:**
+- `docs/adr/024-dynamic-input-manifest.md` → `docs/adr/superseded/024-dynamic-input-manifest-superseded.md`
+
+**Modified (source):**
+- [packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts)
+- [packages/editor-2d/src/canvas/paint.ts](packages/editor-2d/src/canvas/paint.ts)
+- [packages/editor-2d/src/chrome/DynamicInputPills.tsx](packages/editor-2d/src/chrome/DynamicInputPills.tsx)
+- [packages/editor-2d/src/EditorRoot.tsx](packages/editor-2d/src/EditorRoot.tsx)
+- [packages/editor-2d/src/tools/types.ts](packages/editor-2d/src/tools/types.ts)
+
+**Modified (tests):**
+- [packages/editor-2d/tests/paintDimensionGuides.test.ts](packages/editor-2d/tests/paintDimensionGuides.test.ts)
+
+**Modified (docs):**
+- [docs/adr/superseded/024-dynamic-input-manifest-superseded.md](docs/adr/superseded/024-dynamic-input-manifest-superseded.md) — renamed; status header collapsed to canonical 2-line form.
+- [docs/adr/025-dynamic-input-manifest-v2.md](docs/adr/025-dynamic-input-manifest-v2.md) — `Supersedes:` link path; §5 + §Consequences updated for radius-line removal.
+- [docs/adr/README.md](docs/adr/README.md) — supersession map entry path.
+- [docs/adr/superseded/README.md](docs/adr/superseded/README.md) — current supersessions table entry.
+- [docs/procedures/Claude/00-architecture-contract.md](docs/procedures/Claude/00-architecture-contract.md) — supersession note paragraph.
+- [docs/procedures/Codex/00-architecture-contract.md](docs/procedures/Codex/00-architecture-contract.md) — ADR table row 024 → 025 + supersession note.
+- [docs/operator-shortcuts.md](docs/operator-shortcuts.md) — Authority line ADR-024 → ADR-025.
+- this plan section appended.

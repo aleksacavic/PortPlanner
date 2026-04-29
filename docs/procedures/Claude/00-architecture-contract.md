@@ -52,14 +52,13 @@ All files in `docs/adr/` are binding.
 > Previously bound ADRs 002, 010, 013, 022, and 024 have been
 > superseded by ADR-019, ADR-020, ADR-021, ADR-023, and ADR-025
 > respectively (latest supersession 2026-04-29 — ADR-024 superseded by
-> ADR-025 for DI geometry contract refinement). Superseded ADRs 002,
-> 010, 013, and 022 live in the `docs/adr/superseded/` folder; ADR-024
-> stays at its original path with `Status: SUPERSEDED` and a link to
-> ADR-025 (partial supersession: ADR-024's ground architecture carries
-> forward unchanged; ADR-025 records ONLY the schema/scope deltas). See
-> `docs/adr/README.md` §Superseded ADRs for the supersession map. The
-> operator shortcut SSOT moved out of the ADR body to
-> `docs/operator-shortcuts.md` registry per ADR-023.
+> ADR-025 for DI geometry contract refinement; ADR-024's ground
+> architecture carries forward unchanged into ADR-025, which records
+> ONLY the schema/scope deltas). All superseded ADRs live in the
+> `docs/adr/superseded/` folder for historical context and are not
+> binding. See `docs/adr/README.md` §Superseded ADRs for the
+> supersession map. The operator shortcut SSOT moved out of the ADR
+> body to `docs/operator-shortcuts.md` registry per ADR-023.
 
 **ADR rules:**
 - ADRs MUST NOT be edited. If a decision changes, a new ADR MUST be written

@@ -2,19 +2,22 @@
 
 **Status:** ACCEPTED
 **Date:** 2026-04-29
-**Supersedes:** [ADR-024](024-dynamic-input-manifest.md) — DI manifest contract
-parts that this ADR refines. ADR-024's ground architecture (per-prompt
-manifest on the `Prompt` shape, sparse manifest publication, dynamic
-`overlay.dimensionGuides`, painter contract, click-eat guard, sync-
-bootstrap re-entrancy) is **preserved verbatim**. This ADR records ONLY
-the geometric / schema changes surfaced during M1.3 Round 6 post-commit
-remediation Round 2 (Codex Round-2 Blocker on angle-arc visual semantics
-+ user-locked geometric intent).
+**Supersedes:** [ADR-024](superseded/024-dynamic-input-manifest-superseded.md) —
+DI manifest contract parts that this ADR refines. ADR-024's ground
+architecture (per-prompt manifest on the `Prompt` shape, sparse manifest
+publication, dynamic `overlay.dimensionGuides`, painter contract, click-eat
+guard, sync-bootstrap re-entrancy) is **preserved verbatim**. This ADR
+records ONLY the geometric / schema changes surfaced during M1.3 Round 6
+post-commit remediation Round 2 (Codex Round-2 Blocker on angle-arc visual
+semantics + user-locked geometric intent).
 
 **Cross-references:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`)
-unchanged. ADR-024 (`docs/adr/024-dynamic-input-manifest.md`) is marked
-`Status: SUPERSEDED` with a one-line link back to this ADR (the only edit
-permitted to a superseded ADR per `00-architecture-contract.md §0.2`).
+unchanged. ADR-024 lives at
+`docs/adr/superseded/024-dynamic-input-manifest-superseded.md` per the
+superseded-folder convention documented in
+[`docs/adr/superseded/README.md`](superseded/README.md) (relocated in
+Round-3 remediation 2026-04-29 to follow the same layout as ADRs 002 / 010
+/ 013 / 022 — addresses Codex Round-3 governance-consistency finding).
 
 ## Context
 
@@ -165,9 +168,14 @@ the fifth tool:
   polyline / rectangle's measured-dim feel; the circle is rotationally
   symmetric so there is no Angle pill.
 
-The `radius-line` guide variant is preserved in the type (no production
-tool currently uses it; future operators may opt in), but the painter
-branch remains a no-op as documented in ADR-024.
+**Update (Remediation Round-3, same day):** the `radius-line` guide
+variant has been **removed** from `DimensionGuide`. The painter branch
++ pill component case + test were dropped together. Codex Round-3
+flagged the variant as a dead-variant gate risk (no consumer + no gate
+proving "intended dead" status); per GR-1 clean-break the variant
+should not linger as a forward-extensibility placeholder. Future
+operators that need a radius-tick visual add a new variant when their
+concrete need lands.
 
 ### 6. Witness-offset SSOT
 
@@ -232,6 +240,8 @@ Workspace test count: 400 / 400 pass. `pnpm typecheck` clean.
 - xline acquires the polar-witness-only DI without distance noise.
 - Circle gets the measured-dim feel its sibling tools have, without an
   irrelevant Angle pill.
-- The `radius-line` `DimensionGuide` variant remains in the type (no
-  current consumer; preserved for forward extensibility — e.g., a
-  future arc tool's chord-radius guide).
+- The `radius-line` `DimensionGuide` variant was originally retained in
+  this ADR for forward extensibility, then **removed in Round-3
+  cleanup** (Codex Round-3 dead-variant finding) per GR-1 clean-break.
+  Future operators that need a radius-tick visual write a new variant
+  when their concrete need lands.

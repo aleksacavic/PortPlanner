@@ -1,16 +1,7 @@
-# ADR-024 — Dynamic Input Manifest
+# ADR-024 — Dynamic Input Manifest (SUPERSEDED)
 
-**Status:** SUPERSEDED — see [ADR-025](025-dynamic-input-manifest-v2.md)
-(2026-04-29). The ground architecture (per-prompt manifest on the
-`Prompt` shape, sparse manifest publication, painter contract, sync-
-bootstrap re-entrancy, click-eat guard, angle-as-degrees invariant for
-`combineAs: 'point'`) carries forward. ADR-025 records ONLY the
-geometric / schema refinements surfaced during post-commit remediation
-Round 2 (`DimensionGuide.angle-arc` `radiusCssPx` + `polarRefLengthMetric`
-collapsed into a single `radiusMetric`; `linear-dim.mirrorWitness` dead
-field removed; `CombineAsPolicy` gains an `'angle'` arm; xline migration
-added; circle guide kind shifts from `radius-line` no-op to `linear-dim`;
-`DIM_OFFSET_CSS` SSOT bumped 20 → 40).
+**Status:** SUPERSEDED
+**Superseded by:** [ADR-025 Dynamic Input Manifest v2](../025-dynamic-input-manifest-v2.md) (2026-04-29). ADR-025's preamble explains the partial-supersession scope (ground architecture preserved verbatim; only schema/scope deltas recorded).
 **Date:** 2026-04-29
 **Cross-references:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`) — extends the tool runner / command bar / keyboard routing contracts described in ADR-023 §Tool generator shape and §Keyboard routing rules. ADR-023 itself is **NOT** modified per `00-architecture-contract.md §0.6` ("ADR files: never edited after acceptance"); this ADR records the additive Dynamic Input contract.
 

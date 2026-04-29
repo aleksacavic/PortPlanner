@@ -187,9 +187,9 @@ export function EditorRoot(): ReactElement {
         const cb = editorUiStore.getState().commandBar;
         const guides = editorUiStore.getState().overlay.dimensionGuides;
         // Resolve anchor: linear-dim guide carries anchorA (line p1);
-        // angle-arc guide carries pivot; radius-line guide carries pivot.
-        // Fall back to commandBar.directDistanceFrom (set by the runner
-        // from prompt.directDistanceFrom) when no guide is available.
+        // angle-arc guide carries pivot. Fall back to
+        // commandBar.directDistanceFrom (set by the runner from
+        // prompt.directDistanceFrom) when no guide is available.
         let anchor: Point2D | null = null;
         if (guides && guides.length > 0) {
           const g0 = guides[0];

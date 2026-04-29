@@ -2,7 +2,7 @@
 
 **Version:** 2.1.0
 **Date:** 2026-04-29
-**Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`); extended by ADR-024 (`docs/adr/024-dynamic-input-manifest.md`) for the multi-field Dynamic Input behaviour described under §M1.3 below.
+**Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`); extended by ADR-025 (`docs/adr/025-dynamic-input-manifest-v2.md`, supersedes ADR-024) for the multi-field Dynamic Input behaviour described under §M1.3 below.
 
 This registry is the going-forward source of truth for keyboard
 shortcuts in PortPlanner. It is edited in place with a version bump

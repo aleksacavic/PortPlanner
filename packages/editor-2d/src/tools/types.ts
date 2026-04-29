@@ -53,12 +53,14 @@ export interface DynamicInputManifest {
 //     desired side is to the LEFT of (B - A) in metric Y-up — i.e.,
 //     CCW perp points toward it.
 //   - `angle-arc` is drawn `from baseAngleRad sweeping sweepAngleRad`
-//     at radius `radiusCssPx`. Sign of sweep determines arc direction:
+//     at radius `radiusMetric`. Sign of sweep determines arc direction:
 //     positive = visually CCW (above-baseline if base = 0); negative =
 //     visually CW (below-baseline if base = 0). Pivot is the vertex of
-//     the angle; baseline extends from pivot at `baseAngleRad`. For
-//     line/polyline this means pivot = LINE START (not cursor) so the
-//     wedge measures the line angle from horizontal-right.
+//     the angle; baseline extends from pivot at `baseAngleRad` with the
+//     SAME length so the arc terminates on the baseline endpoint. For
+//     line/polyline this means pivot = LINE START (not cursor) and
+//     `radiusMetric` = full segment length, so the arc passes through
+//     the cursor (per ADR-025).
 export type DimensionGuide =
   | {
       kind: 'linear-dim';
@@ -87,12 +89,15 @@ export type DimensionGuide =
        *   radiusMetric = hypot(cursor - p1)
        */
       radiusMetric: number;
-    }
-  | {
-      kind: 'radius-line';
-      pivot: Point2D;
-      endpoint: Point2D;
     };
+// `radius-line` variant removed in M1.3 Round 6 Remediation Round-3
+// (Codex Round-3 dead-variant gate finding). Original ADR-024 wired
+// the circle's radius prompt to a `radius-line` guide; ADR-025 §5
+// migrated circle to `linear-dim` along center→cursor. With no
+// production consumer, the variant is removed per GR-1 clean-break
+// (no compatibility shims, no forward-extensibility placeholders).
+// Future operators that need a radius-tick visual add a new variant
+// when their concrete need lands.
 
 /**
  * In-flight visualisation a tool yields alongside a Prompt. The tool

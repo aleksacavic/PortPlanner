@@ -1,7 +1,9 @@
 // M1.3 Round 6 — paintDimensionGuides per-shape dispatch tests per
 // plan §11. Asserts each variant emits the expected primitive calls
-// (witness + dim line + arrow ticks for linear-dim; ctx.arc for
-// angle-arc; tick mark for radius-line). Plan §10 audit C3.8.
+// (witness + dim line + filled-square end-caps for linear-dim;
+// ctx.arc for angle-arc). The `radius-line` variant was removed in
+// Remediation Round-3 (ADR-025 follow-up) since circle migrated to
+// `linear-dim`; no consumer remained.
 //
 // Records ctx calls via a Proxy recorder (same pattern as
 // paintCrosshair.test.ts).
@@ -163,22 +165,6 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
       expect(r.sweep).toBeCloseTo(0, 6);
       expect(r.end).toBeCloseTo(r.start, 6);
     });
-  });
-
-  it("'radius-line' is a visual no-op (AC parity — paintPreview's circle arm draws the radius line; pill sits on its midpoint)", () => {
-    const guide: DimensionGuide = {
-      kind: 'radius-line',
-      pivot: { x: 0, y: 0 },
-      endpoint: { x: 10, y: 0 },
-    };
-    const { ctx, calls } = makeCtxRecorder();
-    paintDimensionGuides(ctx, [guide], viewport, dark);
-    // Painter draws ONLY the ctx.save/setLineDash/setStroke setup (from
-    // the outer paintDimensionGuides scope) — no moveTo/lineTo/arc from
-    // the radius-line case. Plan §3 A2 explicitly allowed the no-op.
-    expect(calls.filter((c) => c.method === 'moveTo')).toHaveLength(0);
-    expect(calls.filter((c) => c.method === 'lineTo')).toHaveLength(0);
-    expect(calls.filter((c) => c.method === 'arc')).toHaveLength(0);
   });
 
   it('empty guide array is a no-op (no save/restore noise)', () => {

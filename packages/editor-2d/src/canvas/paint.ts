@@ -127,10 +127,10 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
       paintPreview(ctx, overlay.previewShape, viewport, dark, suppressEmbeddedLabels);
       applyToCanvasContext(ctx, viewport);
     }
-    // M1.3 Round 6 — dimension guides (linear-dim / angle-arc /
-    // radius-line) painted AFTER paintPreview so the witness/dim/arc
-    // strokes render on top of the rubber-band geometry. Plan §7
-    // Phase 1 step 5 + §10 audit C3.8.
+    // M1.3 Round 6 — dimension guides (linear-dim / angle-arc) painted
+    // AFTER paintPreview so the witness/dim/arc strokes render on top
+    // of the rubber-band geometry. Plan §7 Phase 1 step 5 + §10 audit
+    // C3.8; per ADR-025.
     if (overlay.dimensionGuides && overlay.dimensionGuides.length > 0) {
       paintDimensionGuides(ctx, overlay.dimensionGuides, viewport, dark);
       applyToCanvasContext(ctx, viewport);

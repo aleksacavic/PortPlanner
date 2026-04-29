@@ -1,14 +1,15 @@
 // paintDimensionGuides — overlay-pass painter for the M1.3 Round 6
-// Dynamic Input dimension guides:
+// Dynamic Input dimension guides (per ADR-025):
 //   - `linear-dim` FULL mode: witness + dim lines + filled-square
 //     end-caps (NO arrow ticks — AC uses end-caps INSTEAD of arrows).
 //   - `linear-dim` INLINE mode (offsetCssPx === 0): perpendicular
 //     ticks at each segment endpoint (the segment itself is the dim).
 //   - `angle-arc`: dotted polar reference baseline + dotted arc at
-//     `radiusCssPx`. Pivot = vertex of the angle.
-//   - `radius-line`: visual no-op (paintPreview's circle arm draws
-//     the radius line; pill anchors on its midpoint).
-// Plan §3 A2 + A2.1.
+//     metric `radiusMetric`. Pivot = vertex of the angle. Arc and
+//     baseline are the same length so the arc terminates on the
+//     baseline endpoint.
+// (`radius-line` variant existed in ADR-024 but was removed in
+// Remediation Round-3 — circle now uses `linear-dim`.)
 //
 // I-DTP-9 / Gate DTP-T6: this painter MUST NOT import or read
 // projectStore. Guides are UI-only state; each guide arm fully
@@ -79,9 +80,6 @@ export function paintDimensionGuides(
         break;
       case 'angle-arc':
         paintAngleArc(ctx, guide, metricToPx);
-        break;
-      case 'radius-line':
-        paintRadiusLine(ctx, guide, metricToPx);
         break;
     }
   }
@@ -223,27 +221,4 @@ function paintAngleArc(
   ctx.arc(pivot.x, pivot.y, radiusMetric, baseAngleRad, endAngleRad, counterclockwise);
   ctx.stroke();
   ctx.restore();
-}
-
-/**
- * Radius-line: visual no-op. AC's circle DI shows the radius value pill
- * directly on the existing `paintPreview` circle-arm radius line — no
- * additional tick or witness mark. The guide carries the pivot +
- * endpoint coords so `DynamicInputPills.derivePillAnchorMetric` can
- * place the pill on the radius midpoint, but the painter itself draws
- * nothing here. Plan §3 A2 explicitly allowed the radius-line variant
- * to be a no-op: "the radius line is already drawn by paintPreview's
- * circle arm, so this guide may be a no-op visual marker; decide at
- * execution time."
- */
-function paintRadiusLine(
-  _ctx: CanvasRenderingContext2D,
-  _guide: {
-    kind: 'radius-line';
-    pivot: { x: number; y: number };
-    endpoint: { x: number; y: number };
-  },
-  _metricToPx: number,
-): void {
-  // Intentional no-op (AC parity).
 }

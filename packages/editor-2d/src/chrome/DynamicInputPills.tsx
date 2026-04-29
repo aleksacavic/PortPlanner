@@ -1,14 +1,15 @@
 // Dynamic Input pills — multi-pill chrome for the M1.3 Round 6 DI
-// manifest. Plan §4.1 Pills row + §3 A2.1.
+// manifest. Plan §4.1 Pills row + §3 A2.1; ADR-025 §7 (angle-pill
+// placement at arc midpoint).
 //
 // Renders one of three modes based on store state:
 //   1. 0 pills if `toggles.dynamicInput` is false.
 //   2. N pills if `commandBar.dynamicInput.manifest !== null` AND
 //      `overlay.dimensionGuides` is populated. Each pill anchors to a
-//      derivation of `overlay.dimensionGuides[N]` (linear-dim midpoint /
-//      angle-arc midpoint / radius-line midpoint) converted to screen
-//      via `metricToScreen` + small screen-px offset. Focused pill
-//      (`activeFieldIdx`) gets a glow ring + animated caret.
+//      derivation of `overlay.dimensionGuides[N]` (linear-dim midpoint
+//      or angle-arc midpoint) converted to screen via `metricToScreen`.
+//      Focused pill (`activeFieldIdx`) gets a glow ring + animated
+//      caret.
 //   3. 1 fallback pill at `cursor.screen + offset` if no manifest but
 //      `inputBuffer` / `accumulator` / `activePrompt` is non-empty —
 //      preserves M1.3d-Remediation-4 G2 single-pill behavior for
@@ -126,9 +127,6 @@ export function DynamicInputPills(): ReactElement | null {
  *     (cos midAngle, sin midAngle) projected through metricToScreen.
  *     Since the arc radius is the full line length, the midpoint sits
  *     halfway along the arc, dead center of the wedge.
- *   - radius-line: pill on the segment midpoint between pivot and
- *     endpoint (paintPreview's circle arm draws the actual line; the
- *     pill sits on its midpoint).
  */
 function derivePillScreenAnchor(guide: DimensionGuide, viewport: Viewport): Point2D {
   switch (guide.kind) {
@@ -173,14 +171,6 @@ function derivePillScreenAnchor(guide: DimensionGuide, viewport: Viewport): Poin
         y: guide.pivot.y + Math.sin(midAngleRad) * guide.radiusMetric,
       };
       return metricToScreen(midpointMetric, viewport);
-    }
-    case 'radius-line': {
-      const pivot = metricToScreen(guide.pivot, viewport);
-      const endpoint = metricToScreen(guide.endpoint, viewport);
-      return {
-        x: (pivot.x + endpoint.x) / 2,
-        y: (pivot.y + endpoint.y) / 2,
-      };
     }
   }
 }
