@@ -210,7 +210,11 @@ export function EditorRoot(): ReactElement {
           if (b.length > 0) return b;
           return placeholders[i] ?? '';
         });
-        const input = combineDynamicInputBuffers(manifest, effectiveBuffers, anchor ?? { x: 0, y: 0 });
+        const input = combineDynamicInputBuffers(
+          manifest,
+          effectiveBuffers,
+          anchor ?? { x: 0, y: 0 },
+        );
         if (input === null) {
           // Empty / un-parseable buffers — ignore submit (buffers stay
           // intact so the user can edit). Plan §3 A7.
