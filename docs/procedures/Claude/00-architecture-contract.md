@@ -47,15 +47,19 @@ All files in `docs/adr/` are binding.
 | 020 | Project Sync and Offline Model v2 | `docs/adr/020-project-sync.md` |
 | 021 | 2D Rendering Pipeline v2 | `docs/adr/021-2d-rendering-pipeline.md` |
 | 023 | Tool State Machine and Command Bar (v2) | `docs/adr/023-tool-state-machine-and-command-bar.md` |
-| 024 | Dynamic Input Manifest | `docs/adr/024-dynamic-input-manifest.md` |
+| 025 | Dynamic Input Manifest v2 (geometry contract refinement) | `docs/adr/025-dynamic-input-manifest-v2.md` |
 
-> Previously bound ADRs 002, 010, 013, and 022 have been superseded by
-> ADR-019, ADR-020, ADR-021, and ADR-023 respectively (latest
-> supersession 2026-04-25). Superseded ADRs live in the
-> `docs/adr/superseded/` folder for historical context and are not
-> binding. See `docs/adr/README.md` §Superseded ADRs for the
-> supersession map. The operator shortcut SSOT moved out of the ADR
-> body to `docs/operator-shortcuts.md` registry per ADR-023.
+> Previously bound ADRs 002, 010, 013, 022, and 024 have been
+> superseded by ADR-019, ADR-020, ADR-021, ADR-023, and ADR-025
+> respectively (latest supersession 2026-04-29 — ADR-024 superseded by
+> ADR-025 for DI geometry contract refinement). Superseded ADRs 002,
+> 010, 013, and 022 live in the `docs/adr/superseded/` folder; ADR-024
+> stays at its original path with `Status: SUPERSEDED` and a link to
+> ADR-025 (partial supersession: ADR-024's ground architecture carries
+> forward unchanged; ADR-025 records ONLY the schema/scope deltas). See
+> `docs/adr/README.md` §Superseded ADRs for the supersession map. The
+> operator shortcut SSOT moved out of the ADR body to
+> `docs/operator-shortcuts.md` registry per ADR-023.
 
 **ADR rules:**
 - ADRs MUST NOT be edited. If a decision changes, a new ADR MUST be written

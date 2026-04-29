@@ -255,7 +255,7 @@ describe('ToolRunner — M1.3 Round 6 Dynamic Input substrate', () => {
         pivot: { x: 0, y: 0 },
         baseAngleRad: 0,
         sweepAngleRad: Math.atan2(2, 5),
-        radiusCssPx: 40,
+        radiusMetric: 5,
       },
     ];
     async function* g(): ToolGenerator {

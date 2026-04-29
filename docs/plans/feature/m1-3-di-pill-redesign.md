@@ -856,3 +856,95 @@ Rev-6 adapts the plan to the actual codebase architecture. Once Codex Round-7 re
 **Cost of the gap:** ~3 hours of plan revision rounds (Rev-1 through Rev-5) polishing plan text against an architecture that did not exist; ~30 minutes of Pre-Phase-1 audit + Rev-6 patch + Post-execution notes; ~10 minutes of procedure tightening. Net cost is contained; the procedure tightening prevents future plans from incurring this in the first place.
 
 **Lesson source for future plans:** when an author finds themselves describing an architecture in code-pseudocode (class declarations, method signatures, etc.) without having read the actual file, that is a §1.4.1 violation regardless of how plausible the pseudocode looks. The act of writing pseudocode without grounding it should trip the author's "am I making this up?" instinct.
+
+---
+
+## Post-commit remediation Round 2 — 2026-04-29
+
+**Trigger:** Codex post-commit Round-2 audit memo (chat, 2026-04-29). Audited the visual-remediation chain `3708fbc..0d3d84f` (the five follow-up commits after ADR-024 / Codex Round-8 GO that attempted to fix visual issues). Memo classified 1 Blocker + 2 High-risk + 2 Quality findings; user-locked geometric intent in parallel chat (arc radius = full line length, witness offset = 40 CSS-px SSOT, angle pill on arc midpoint, circle gets dim treatment without angle, xline gets polar witness only).
+
+### Findings + fixes
+
+**Blocker — angle-arc geometry contract semantically wrong.**
+- **Finding:** [draw-line.ts](packages/editor-2d/src/tools/draw/draw-line.ts) + [draw-polyline.ts](packages/editor-2d/src/tools/draw/draw-polyline.ts) wired `pivot: cursor` + `sweepAngleRad: atan2(p1 - cursor)`, producing the supplementary angle (≈ 180° − line angle). Diagonal lines rendered a huge half-circle wedge instead of a small wedge at the line start.
+- **Fix:** Restored the contract documented in ADR-024 §A9: pivot at line start (p1 / lastVertex), sweep = `atan2(cursor.y - pivot.y, cursor.x - pivot.x)`. After user geometric clarification, also locked `radiusMetric` to the FULL line length so the arc passes through the cursor and terminates on the polar baseline.
+- **Verification:** Quadrant orientation tests in [paintDimensionGuides.test.ts](packages/editor-2d/tests/paintDimensionGuides.test.ts) (NE / SE / NW / SW / east) lock the visual-semantic contract. 400 / 400 workspace tests pass; `pnpm typecheck` clean; `pnpm check` clean.
+
+**High-risk — `radiusCssPx` contract drift.**
+- **Finding:** Type required `radiusCssPx`; tools set it to `120` (or `60` after intermediate fix); painter overrode it with the clamped polar baseline length. Field was effectively dead.
+- **Fix:** Replaced `radiusCssPx` + optional `polarRefLengthMetric` with a single authoritative `radiusMetric` field. Painter draws the arc AND the polar baseline at this length so the arc baseline endpoint coincides with the baseline endpoint. Tools set `radiusMetric = Math.hypot(cursor - pivot)`.
+- **Verification:** Painter unit test in [paintDimensionGuides.test.ts](packages/editor-2d/tests/paintDimensionGuides.test.ts) asserts `r === guide.radiusMetric` with no derivation drift.
+
+**High-risk — quadrant orientation test blind-spot.**
+- **Finding:** Existing tests asserted call shape (radius / start / end) but not visual-semantic side / orientation; could false-pass with wrong-side wedge.
+- **Fix:** Added `angle-arc quadrant orientation` describe block with five tests (NE / SE / NW / SW / east). Each computes `sweep = atan2(cursor)` for a representative quadrant and asserts `start = baseAngleRad`, `end = baseAngleRad + sweepAngleRad`, and the `ccw` flag matches the visual expectation under the Y-flipped transform.
+- **Verification:** Five new tests pass.
+
+**Quality — `paintLinearDim` doc drift.**
+- **Finding:** Doc comments mentioned arrow ticks; implementation used filled-square end-caps.
+- **Fix:** Updated comments in [paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts) to align with end-cap implementation.
+
+**Quality — `mirrorWitness` dead field.**
+- **Finding:** `linear-dim.mirrorWitness?: boolean` declared in type + handled in painter, never set by any tool.
+- **Fix:** Removed from both type ([types.ts](packages/editor-2d/src/tools/types.ts)) and painter ([paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts)). GR-1 dead-code purge.
+
+### User-locked geometric refinements (chat, 2026-04-29)
+
+In parallel with the Codex memo, the user locked four additional geometric properties:
+
+1. **Arc passes through cursor.** "I WANT A FUCKING ARC TO BE CENTERED AT THE LINE START AND TO START AT THE CURSOR AND THEN ARC UNTIL HORIZONTAL LINE." → `radiusMetric = Math.hypot(cursor - pivot)` so the arc and polar baseline are the same length.
+2. **Witness-offset SSOT bumped 20 → 40.** "make witness lines 40px away ... make sure this space is ssot for all primitives." → `DIM_OFFSET_CSS = 40` in [paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts); consumed by all five migrated tools.
+3. **Angle pill at arc midpoint.** "CENTER THE ANGLE PILL INPUT TO THE MIDDLE OF THE ARC." → pill anchor in [DynamicInputPills.tsx](packages/editor-2d/src/chrome/DynamicInputPills.tsx) computes the metric arc midpoint and projects through `metricToScreen`, replacing the prior fixed CSS-px offset.
+4. **Tool-scope expansion.** "we need to apply to circle too. there is line too which should have only polar witness line." + "circle has angle notation remove that" →
+   - **xline migration** (was deferred per ADR-024 §A10): 1-field `[Angle]` DI (`combineAs: 'angle'`) + angle-arc guide only (no distance dim, since xline is infinite).
+   - **circle simplification:** keep single-field `[Radius]` (circle is rotationally symmetric — angle is meaningless), but switch the guide from `radius-line` (visual no-op) to `linear-dim` along center→cursor with full witness + dim line + end-caps. Adds the measured-dim feel of the line / rectangle siblings.
+
+### Rectangle anchor fix (also landed this round)
+
+Previous code used `corner1` + `bottomRight = (effective.x, corner1.y)` which placed the dim line OUTSIDE the rectangle for only 2 of 4 drag directions. Replaced with min/max-based corner derivation (`sw / se / ne` from min/max of corner1 + cursor in metric Y-up) so the dim line lands outside regardless of drag direction. See [draw-rectangle.ts](packages/editor-2d/src/tools/draw/draw-rectangle.ts). Bug fix to existing code; not a contract change.
+
+### Approved deviation (§0.7)
+
+Schema changes 1–4 below deviate from ADR-024 (ACCEPTED on the same day). Per §0.7 Approved Deviation Protocol:
+
+- **Deviations named:** (1) `DimensionGuide.angle-arc` `radiusCssPx` + `polarRefLengthMetric` collapsed into single `radiusMetric`; (2) `DimensionGuide.linear-dim.mirrorWitness` removed; (3) `CombineAsPolicy` gains `'angle'` arm; (4) ADR-024 §A10 xline-deferred classification revisited — xline migrated this round.
+- **Justification:** The original ADR-024 schema produced a Codex-Round-2 Blocker (radius drift) + High-risk (dead field) + dead-code via `mirrorWitness`. The user geometric intent (arc passes through cursor, fixed-CSS-px decoupling unnecessary) requires the metric unification. The xline scope expansion was a direct user request in the same chat session; postponing would split the natural measurement-guide rollout.
+- **Replacement:** [ADR-025](docs/adr/025-dynamic-input-manifest-v2.md) written, ACCEPTED 2026-04-29, supersedes ADR-024 (ground architecture preserved verbatim; only schema/scope deltas recorded).
+- **User approval:** Recorded in this section. User (`aleksacavic@gmail.com`) approved each refinement directly in chat during the remediation session — Codex audit findings + four geometric clarifications + xline scope expansion + circle simplification + 40 CSS-px SSOT bump. Approval date 2026-04-29.
+- **Spec update committed in same commit as code.** ADR-025 + ADR-024 status edit + arch-contract §0.2 ADR table update + ADR README index update + this plan section all land alongside the source / test changes.
+
+### Workspace verification
+
+- `pnpm typecheck` — clean (no errors across all packages).
+- `pnpm check` (biome) — clean (1 pre-existing-style fix applied to a test file tuple type formatting).
+- `pnpm --filter @portplanner/editor-2d test` — 400 / 400 pass.
+- Visual verification — user direct verification in browser at http://localhost:7000 across multiple iterations during the remediation session.
+
+### Files changed
+
+**Modified (source):**
+- [packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts](packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts)
+- [packages/editor-2d/src/chrome/DynamicInputPills.tsx](packages/editor-2d/src/chrome/DynamicInputPills.tsx)
+- [packages/editor-2d/src/tools/draw/draw-circle.ts](packages/editor-2d/src/tools/draw/draw-circle.ts)
+- [packages/editor-2d/src/tools/draw/draw-line.ts](packages/editor-2d/src/tools/draw/draw-line.ts)
+- [packages/editor-2d/src/tools/draw/draw-polyline.ts](packages/editor-2d/src/tools/draw/draw-polyline.ts)
+- [packages/editor-2d/src/tools/draw/draw-rectangle.ts](packages/editor-2d/src/tools/draw/draw-rectangle.ts)
+- [packages/editor-2d/src/tools/draw/draw-xline.ts](packages/editor-2d/src/tools/draw/draw-xline.ts)
+- [packages/editor-2d/src/tools/dynamic-input-combine.ts](packages/editor-2d/src/tools/dynamic-input-combine.ts)
+- [packages/editor-2d/src/tools/types.ts](packages/editor-2d/src/tools/types.ts)
+
+**Modified (tests):**
+- [packages/editor-2d/tests/DynamicInputPills.test.tsx](packages/editor-2d/tests/DynamicInputPills.test.tsx)
+- [packages/editor-2d/tests/draw-tools.test.ts](packages/editor-2d/tests/draw-tools.test.ts)
+- [packages/editor-2d/tests/paintDimensionGuides.test.ts](packages/editor-2d/tests/paintDimensionGuides.test.ts)
+- [packages/editor-2d/tests/smoke-e2e.test.tsx](packages/editor-2d/tests/smoke-e2e.test.tsx)
+- [packages/editor-2d/tests/tool-runner.test.ts](packages/editor-2d/tests/tool-runner.test.ts)
+
+**Modified (docs):**
+- [docs/adr/024-dynamic-input-manifest.md](docs/adr/024-dynamic-input-manifest.md) — Status: ACCEPTED → SUPERSEDED + link to ADR-025
+- [docs/adr/README.md](docs/adr/README.md) — index entry for ADR-025; supersession map entry for ADR-024
+- [docs/procedures/Claude/00-architecture-contract.md](docs/procedures/Claude/00-architecture-contract.md) — §0.2 ADR table row 024 → 025; supersession note updated
+
+**Created:**
+- [docs/adr/025-dynamic-input-manifest-v2.md](docs/adr/025-dynamic-input-manifest-v2.md)
+- this plan section

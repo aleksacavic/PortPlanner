@@ -27,6 +27,7 @@ changes, a new ADR is written that references and supersedes the old one.
 | [020](020-project-sync.md) | Project Sync and Offline Model v2 | ACCEPTED |
 | [021](021-2d-rendering-pipeline.md) | 2D Rendering Pipeline v2 | ACCEPTED |
 | [023](023-tool-state-machine-and-command-bar.md) | Tool State Machine and Command Bar (v2) | ACCEPTED |
+| [025](025-dynamic-input-manifest-v2.md) | Dynamic Input Manifest v2 (geometry contract refinement) | ACCEPTED |
 
 ## Format
 
@@ -76,6 +77,7 @@ repository for historical traceability but are not binding.
 | [010 Project Sync and Offline Model](superseded/010-project-sync-superseded.md) | [020 Project Sync and Offline Model v2](020-project-sync.md) | 2026-04-23 |
 | [013 2D Rendering Pipeline](superseded/013-2d-rendering-pipeline-superseded.md) | [021 2D Rendering Pipeline v2](021-2d-rendering-pipeline.md) | 2026-04-23 |
 | [022 Tool State Machine and Command Bar](superseded/022-tool-state-machine-and-command-bar-superseded.md) | [023 Tool State Machine and Command Bar (v2)](023-tool-state-machine-and-command-bar.md) | 2026-04-25 |
+| [024 Dynamic Input Manifest](024-dynamic-input-manifest.md) | [025 Dynamic Input Manifest v2](025-dynamic-input-manifest-v2.md) | 2026-04-29 |
 
 See [`superseded/README.md`](superseded/README.md) for the supersession
 procedure and folder purpose.

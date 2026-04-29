@@ -85,7 +85,7 @@ describe('DynamicInputPills — multi-pill chrome', () => {
         pivot: { x: 0, y: 0 },
         baseAngleRad: 0,
         sweepAngleRad: Math.PI / 6,
-        radiusCssPx: 40,
+        radiusMetric: 5,
       },
     ]);
     editorUiActions.setDynamicInputActiveField(1);
@@ -111,7 +111,7 @@ describe('DynamicInputPills — multi-pill chrome', () => {
         pivot: { x: 0, y: 0 },
         baseAngleRad: 0,
         sweepAngleRad: 0,
-        radiusCssPx: 40,
+        radiusMetric: 5,
       },
     ]);
     editorUiActions.setDynamicInputFieldBuffer(0, '5');

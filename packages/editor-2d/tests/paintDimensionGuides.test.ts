@@ -71,13 +71,13 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     expect(calls.filter((c) => c.method === 'stroke').length).toBeGreaterThanOrEqual(1);
   });
 
-  it("'angle-arc' emits ctx.arc with pivot + base + sweep; radius matches the clamped polar baseline length", () => {
+  it("'angle-arc' emits ctx.arc with pivot + base + sweep; radius is the AUTHORITATIVE radiusMetric field (= line length per Round-2 user spec)", () => {
     const guide: DimensionGuide = {
       kind: 'angle-arc',
       pivot: { x: 5, y: 5 },
       baseAngleRad: 0,
       sweepAngleRad: Math.PI / 6,
-      radiusCssPx: 40, // legacy hint — overridden by the polar-baseline-derived radius.
+      radiusMetric: 7,
     };
     const { ctx, calls } = makeCtxRecorder();
     paintDimensionGuides(ctx, [guide], viewport, dark);
@@ -88,11 +88,81 @@ describe('paintDimensionGuides — per-shape dispatch', () => {
     const [cx, cy, r, start, end] = arc.args as [number, number, number, number, number];
     expect(cx).toBeCloseTo(5, 6);
     expect(cy).toBeCloseTo(5, 6);
-    // No polarRefLengthMetric supplied → painter uses POLAR_REF_DEFAULT_CSS (100)
-    // which clamps to MIN(100). radius = 100 / metricToPx (zoom 10 * dpr 1 = 10) = 10 metric.
-    expect(r).toBeCloseTo(10, 6);
+    // Round-2 user spec: radiusMetric is the arc radius directly (no
+    // CSS-px ↔ metric conversion needed in the painter).
+    expect(r).toBeCloseTo(7, 6);
     expect(start).toBeCloseTo(0, 6);
     expect(end).toBeCloseTo(Math.PI / 6, 6);
+  });
+
+  // Round-2 remediation Blocker fix: angle-arc geometry must produce
+  // visually-correct wedge orientation in all four quadrants of the
+  // (cursor - pivot) vector. Test asserts the SEMANTIC contract:
+  //   - sweep > 0 → ccw=false (visually CCW under Y-flipped transform)
+  //   - sweep < 0 → ccw=true  (visually CW under Y-flipped transform)
+  //   - end angle = baseAngleRad + sweepAngleRad
+  // Each quadrant uses pivot at line start (origin) + a representative
+  // cursor in that quadrant; sweep = atan2(cursor.y - p1.y, cursor.x - p1.x)
+  // matches what draw-line.ts emits.
+  describe('angle-arc quadrant orientation (Round-2 Blocker fix — wedge side correctness)', () => {
+    function arcCallFor(cursor: { x: number; y: number }) {
+      const sweep = Math.atan2(cursor.y, cursor.x);
+      const guide: DimensionGuide = {
+        kind: 'angle-arc',
+        pivot: { x: 0, y: 0 },
+        baseAngleRad: 0,
+        sweepAngleRad: sweep,
+        radiusMetric: Math.hypot(cursor.x, cursor.y),
+      };
+      const { ctx, calls } = makeCtxRecorder();
+      paintDimensionGuides(ctx, [guide], viewport, dark);
+      const arc = calls.filter((c) => c.method === 'arc')[0];
+      if (!arc) throw new Error('no arc call');
+      const [, , , start, end, ccw] = arc.args as [number, number, number, number, number, boolean];
+      return { sweep, start, end, ccw };
+    }
+
+    it('NE quadrant (cursor up-right of pivot): sweep > 0, ccw=false → small wedge ABOVE baseline visually', () => {
+      const r = arcCallFor({ x: 10, y: 5 });
+      expect(r.sweep).toBeGreaterThan(0);
+      expect(r.sweep).toBeLessThan(Math.PI / 2);
+      expect(r.start).toBeCloseTo(0, 6);
+      expect(r.end).toBeCloseTo(r.sweep, 6);
+      expect(r.ccw).toBe(false);
+    });
+
+    it('SE quadrant (cursor down-right of pivot): sweep < 0, ccw=true → small wedge BELOW baseline visually', () => {
+      const r = arcCallFor({ x: 10, y: -5 });
+      expect(r.sweep).toBeLessThan(0);
+      expect(r.sweep).toBeGreaterThan(-Math.PI / 2);
+      expect(r.start).toBeCloseTo(0, 6);
+      expect(r.end).toBeCloseTo(r.sweep, 6);
+      expect(r.ccw).toBe(true);
+    });
+
+    it('NW quadrant (cursor up-left of pivot): sweep > π/2, ccw=false → wedge sweeps CCW past 90°', () => {
+      const r = arcCallFor({ x: -10, y: 5 });
+      expect(r.sweep).toBeGreaterThan(Math.PI / 2);
+      expect(r.sweep).toBeLessThan(Math.PI);
+      expect(r.start).toBeCloseTo(0, 6);
+      expect(r.end).toBeCloseTo(r.sweep, 6);
+      expect(r.ccw).toBe(false);
+    });
+
+    it('SW quadrant (cursor down-left of pivot): sweep < -π/2, ccw=true → wedge sweeps CW past -90°', () => {
+      const r = arcCallFor({ x: -10, y: -5 });
+      expect(r.sweep).toBeLessThan(-Math.PI / 2);
+      expect(r.sweep).toBeGreaterThan(-Math.PI);
+      expect(r.start).toBeCloseTo(0, 6);
+      expect(r.end).toBeCloseTo(r.sweep, 6);
+      expect(r.ccw).toBe(true);
+    });
+
+    it('horizontal-right (cursor exactly east of pivot): sweep = 0 → degenerate zero-sweep arc', () => {
+      const r = arcCallFor({ x: 10, y: 0 });
+      expect(r.sweep).toBeCloseTo(0, 6);
+      expect(r.end).toBeCloseTo(r.start, 6);
+    });
   });
 
   it("'radius-line' is a visual no-op (AC parity — paintPreview's circle arm draws the radius line; pill sits on its midpoint)", () => {

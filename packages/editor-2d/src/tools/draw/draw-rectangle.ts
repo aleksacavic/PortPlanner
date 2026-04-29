@@ -63,20 +63,32 @@ export async function* drawRectangleTool(): ToolGenerator {
     dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
       const shift = editorUiStore.getState().modifiers.shift;
       const effective = shift ? squareCorner(corner1, cursor) : cursor;
-      // Bottom-right corner of the rectangle preview = (effective.x, corner1.y).
-      const bottomRight = { x: effective.x, y: corner1.y };
-      // Anchor-order matters: paintLinearDim's perpendicular is the CCW
-      // rotation of (anchorB - anchorA). To put the dim line OUTSIDE
-      // the rectangle, the segment must traverse the edge such that
-      // the rectangle interior is to the RIGHT (i.e., go around the
-      // rectangle CW). So:
-      //  - W (bottom edge): anchorA = bottomRight, anchorB = corner1.
-      //    (rightward → leftward; CCW perp = downward = outside rect).
-      //  - H (right edge): anchorA = effective (top-right), anchorB = bottomRight.
-      //    (top → bottom; CCW perp = rightward = outside rect).
+      // The user can drag the second corner in any of the 4 directions
+      // relative to corner1, so identify the rectangle's compass corners
+      // by min/max in metric (Y-up) coords. Naming follows the
+      // VISUAL meaning under the canvas Y-flip transform: north = top
+      // of screen = larger metric Y; south = bottom of screen = smaller
+      // metric Y.
+      const minX = Math.min(corner1.x, effective.x);
+      const maxX = Math.max(corner1.x, effective.x);
+      const minY = Math.min(corner1.y, effective.y);
+      const maxY = Math.max(corner1.y, effective.y);
+      const sw: Point2D = { x: minX, y: minY };
+      const se: Point2D = { x: maxX, y: minY };
+      const ne: Point2D = { x: maxX, y: maxY };
+      // Anchor order: paintLinearDim's perpendicular is the CCW rotation
+      // of (anchorB - anchorA) in metric Y-up. CCW perp points to the
+      // LEFT of (B - A), i.e., the dim line lands on the LEFT side. To
+      // put the dim line OUTSIDE the rectangle:
+      //  - W along BOTTOM edge: A=SE, B=SW (B-A points -X). CCW perp
+      //    points -Y in metric = below visually = OUTSIDE the rect.
+      //  - H along RIGHT edge: A=NE, B=SE (B-A points -Y). CCW perp
+      //    points +X in metric = right visually = OUTSIDE the rect.
+      // This holds regardless of which direction the user drags from
+      // corner1 because the corners are derived from min/max.
       return [
-        { kind: 'linear-dim', anchorA: bottomRight, anchorB: corner1, offsetCssPx: DIM_OFFSET_CSS },
-        { kind: 'linear-dim', anchorA: effective, anchorB: bottomRight, offsetCssPx: DIM_OFFSET_CSS },
+        { kind: 'linear-dim', anchorA: se, anchorB: sw, offsetCssPx: DIM_OFFSET_CSS },
+        { kind: 'linear-dim', anchorA: ne, anchorB: se, offsetCssPx: DIM_OFFSET_CSS },
       ];
     },
   };

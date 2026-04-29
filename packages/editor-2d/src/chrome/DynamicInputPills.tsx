@@ -122,10 +122,10 @@ export function DynamicInputPills(): ReactElement | null {
  *   - linear-dim INLINE (offsetCssPx === 0): pill on the SEGMENT
  *     midpoint (no perpendicular offset). The line itself is the
  *     dim reference.
- *   - angle-arc: pill on the ARC MIDPOINT — pivot + radiusCssPx
- *     (cos(midAngle), sin(midAngle)) in screen space (radius is
- *     screen-px, so screen-space placement avoids zoom-distortion
- *     of the offset).
+ *   - angle-arc: pill at the ARC MIDPOINT — pivot + radiusMetric ×
+ *     (cos midAngle, sin midAngle) projected through metricToScreen.
+ *     Since the arc radius is the full line length, the midpoint sits
+ *     halfway along the arc, dead center of the wedge.
  *   - radius-line: pill on the segment midpoint between pivot and
  *     endpoint (paintPreview's circle arm draws the actual line; the
  *     pill sits on its midpoint).
@@ -164,15 +164,15 @@ function derivePillScreenAnchor(guide: DimensionGuide, viewport: Viewport): Poin
       };
     }
     case 'angle-arc': {
-      const pivot = metricToScreen(guide.pivot, viewport);
+      // Pill at the arc midpoint — compute midpoint in metric, then
+      // project through metricToScreen so the canvas Y-flip is handled
+      // identically to the painter's metric→pixel transform.
       const midAngleRad = guide.baseAngleRad + guide.sweepAngleRad / 2;
-      // Screen-Y is flipped relative to metric-Y, so negate the sin
-      // term when projecting from the (positive-CCW) angle into screen
-      // space.
-      return {
-        x: pivot.x + Math.cos(midAngleRad) * guide.radiusCssPx,
-        y: pivot.y - Math.sin(midAngleRad) * guide.radiusCssPx,
+      const midpointMetric = {
+        x: guide.pivot.x + Math.cos(midAngleRad) * guide.radiusMetric,
+        y: guide.pivot.y + Math.sin(midAngleRad) * guide.radiusMetric,
       };
+      return metricToScreen(midpointMetric, viewport);
     }
     case 'radius-line': {
       const pivot = metricToScreen(guide.pivot, viewport);

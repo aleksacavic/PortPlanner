@@ -86,5 +86,16 @@ export function combineDynamicInputBuffers(
       const [value] = parsed as [number];
       return { kind: 'number', value };
     }
+    case 'angle': {
+      // Round-2: xline direction angle. Single-field [Angle] manifest;
+      // typed value is in DEGREES (AC parity, same convention as the
+      // 'point' arm's angle component). Helper converts deg→rad and
+      // emits { kind: 'angle', radians } so the xline tool can derive
+      // the through-point at any unit length along that direction.
+      if (parsed.length !== 1) return null;
+      const [angleDeg] = parsed as [number];
+      const angleRad = (angleDeg * Math.PI) / 180;
+      return { kind: 'angle', radians: angleRad };
+    }
   }
 }

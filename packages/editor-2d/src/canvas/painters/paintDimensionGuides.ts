@@ -1,7 +1,14 @@
 // paintDimensionGuides — overlay-pass painter for the M1.3 Round 6
-// Dynamic Input dimension guides (witness lines + dim lines + arrow
-// ticks for `linear-dim`; arcs for `angle-arc`; tick markers for
-// `radius-line`). Plan §3 A2 + A2.1.
+// Dynamic Input dimension guides:
+//   - `linear-dim` FULL mode: witness + dim lines + filled-square
+//     end-caps (NO arrow ticks — AC uses end-caps INSTEAD of arrows).
+//   - `linear-dim` INLINE mode (offsetCssPx === 0): perpendicular
+//     ticks at each segment endpoint (the segment itself is the dim).
+//   - `angle-arc`: dotted polar reference baseline + dotted arc at
+//     `radiusCssPx`. Pivot = vertex of the angle.
+//   - `radius-line`: visual no-op (paintPreview's circle arm draws
+//     the radius line; pill anchors on its midpoint).
+// Plan §3 A2 + A2.1.
 //
 // I-DTP-9 / Gate DTP-T6: this painter MUST NOT import or read
 // projectStore. Guides are UI-only state; each guide arm fully
@@ -32,32 +39,19 @@ const ARROW_TICK_CSS = 6;
 const WITNESS_OVERSHOOT_CSS = 3;
 /**
  * SSOT for the dim-line perpendicular offset distance (in CSS pixels).
- * Used by all tools that emit a `linear-dim` guide — rectangle W/H,
- * line/polyline distance, and any future operators. Tools import this
- * constant rather than hard-coding magic numbers per call-site.
+ * Used by ALL primitives that emit a `linear-dim` guide — rectangle
+ * W/H, line/polyline distance, and any future operators. Tools import
+ * this constant rather than hard-coding magic numbers per call-site
+ * (Round-2 remediation: user-locked SSOT, every primitive's witness
+ * offset MUST resolve through this constant).
  *
- * 20 CSS-px is a balance: large enough to clearly separate the dim
- * line from rectangle edges (which have a 2D body to clear), small
- * enough that line distance dim doesn't float far from the line.
+ * 40 CSS-px (Round-2 remediation: user requested explicit 40 px gap).
  */
-export const DIM_OFFSET_CSS = 20;
+export const DIM_OFFSET_CSS = 40;
 // Witness end-cap: small filled square at the witness endpoint
 // (away from the anchor). AC shows this consistently — see user
 // rectangle screenshot. Square is centered on the witness end.
 const WITNESS_ENDCAP_CSS = 4;
-// Polar reference baseline: default fallback length when the
-// angle-arc guide doesn't carry an explicit polarRefLengthMetric.
-const POLAR_REF_DEFAULT_CSS = 100;
-// Minimum polar baseline length (CSS-px) regardless of zoom. The
-// guide may pass a metric value (e.g. abs(cursor.x - pivot.x)) that
-// at low zoom maps to only a few device pixels — clamp upward so the
-// baseline is always visually substantial. AC parity (the polar
-// guide is a CSS-screen visual cue, not a metric measurement).
-const POLAR_REF_MIN_CSS = 100;
-// Minimum polar baseline length CAP — prevents extreme zoom-in cases
-// from drawing a baseline that overshoots the canvas. 400 CSS-px is
-// substantial enough to be readable on any reasonable canvas.
-const POLAR_REF_MAX_CSS = 400;
 // Dash pattern for witness + dim lines (AC dotted look).
 const DASHED_PATTERN_CSS: [number, number] = [2, 3];
 
@@ -98,18 +92,24 @@ export function paintDimensionGuides(
 /**
  * Linear dimension. Two render modes selected by `offsetCssPx`:
  *
- *   offsetCssPx > 0 — full AC-style measured-dim look (rectangle W/H):
+ *   offsetCssPx > 0 — FULL AC-style measured-dim look (rectangle W/H):
  *     - Witness lines from each anchor extending PAST the dim line by
- *       WITNESS_OVERSHOOT_CSS (mockup-measured 3 CSS-px overshoot).
- *     - Dim line parallel to segment at offsetCssPx perpendicular.
- *     - Arrow ticks at each end of the dim line.
+ *       WITNESS_OVERSHOOT_CSS, drawn DOTTED.
+ *     - Dim line parallel to segment at offsetCssPx perpendicular,
+ *       drawn DOTTED.
+ *     - Filled-square end-caps at the witness endpoints (NOT arrow
+ *       ticks — AC uses end-caps INSTEAD of arrows).
  *     - Pill consumer (DynamicInputPills) anchors on dim-line midpoint.
  *
- *   offsetCssPx === 0 — inline mode (line/polyline distance):
+ *   offsetCssPx === 0 — INLINE mode (line/polyline distance):
  *     - No witness lines, no separate dim line. The rubber-band line
  *       itself IS the dim reference.
  *     - Small perpendicular ticks at each segment endpoint.
  *     - Pill consumer anchors on segment midpoint.
+ *
+ * Sign convention: perpendicular = CCW rotation of (anchorB - anchorA)
+ * in metric Y-up. The dim line lands on the LEFT of (B - A); callers
+ * choose the (A, B) order accordingly.
  */
 function paintLinearDim(
   ctx: CanvasRenderingContext2D,
@@ -118,11 +118,10 @@ function paintLinearDim(
     anchorA: { x: number; y: number };
     anchorB: { x: number; y: number };
     offsetCssPx: number;
-    mirrorWitness?: boolean;
   },
   metricToPx: number,
 ): void {
-  const { anchorA, anchorB, offsetCssPx, mirrorWitness = false } = guide;
+  const { anchorA, anchorB, offsetCssPx } = guide;
   const dx = anchorB.x - anchorA.x;
   const dy = anchorB.y - anchorA.y;
   const len = Math.hypot(dx, dy);
@@ -131,11 +130,6 @@ function paintLinearDim(
   const perpX = -dy / len;
   const perpY = dx / len;
   const tickMetric = ARROW_TICK_CSS / metricToPx;
-  const dashMetric: [number, number] = [
-    DASHED_PATTERN_CSS[0] / metricToPx,
-    DASHED_PATTERN_CSS[1] / metricToPx,
-  ];
-  const endcapMetric = WITNESS_ENDCAP_CSS / metricToPx;
 
   if (offsetCssPx === 0) {
     // INLINE mode — perpendicular ticks at each endpoint of the segment.
@@ -149,29 +143,12 @@ function paintLinearDim(
     return;
   }
 
-  // FULL mode — paint primary side; if mirrorWitness, also paint mirror side.
-  paintWitnessSide(ctx, anchorA, anchorB, perpX, perpY, offsetCssPx, metricToPx, dashMetric, endcapMetric);
-  if (mirrorWitness) {
-    paintWitnessSide(ctx, anchorA, anchorB, -perpX, -perpY, offsetCssPx, metricToPx, dashMetric, endcapMetric);
-  }
-}
-
-/**
- * Paint a single side of witness + dim line + ticks + end-cap squares.
- * Called once for single-sided rectangles, twice for both-side line
- * tubes (with negated perpendicular for the mirror call).
- */
-function paintWitnessSide(
-  ctx: CanvasRenderingContext2D,
-  anchorA: { x: number; y: number },
-  anchorB: { x: number; y: number },
-  perpX: number,
-  perpY: number,
-  offsetCssPx: number,
-  metricToPx: number,
-  dashMetric: [number, number],
-  endcapMetric: number,
-): void {
+  // FULL mode — witness + dim lines + filled-square end-caps.
+  const dashMetric: [number, number] = [
+    DASHED_PATTERN_CSS[0] / metricToPx,
+    DASHED_PATTERN_CSS[1] / metricToPx,
+  ];
+  const endcapMetric = WITNESS_ENDCAP_CSS / metricToPx;
   const dimOffsetMetric = offsetCssPx / metricToPx;
   const witnessOffsetMetric = (offsetCssPx + WITNESS_OVERSHOOT_CSS) / metricToPx;
   const dimAx = anchorA.x + perpX * dimOffsetMetric;
@@ -183,7 +160,6 @@ function paintWitnessSide(
   const witBx = anchorB.x + perpX * witnessOffsetMetric;
   const witBy = anchorB.y + perpY * witnessOffsetMetric;
 
-  // Witness + dim lines drawn DOTTED (AC look).
   ctx.save();
   ctx.setLineDash(dashMetric);
   ctx.beginPath();
@@ -196,25 +172,28 @@ function paintWitnessSide(
   ctx.stroke();
   ctx.restore();
 
-  // Small filled-square end-caps at the witness endpoints (AC parity —
-  // AC shows end-caps INSTEAD of arrow ticks, not both. Earlier
-  // implementation drew both; that was incorrect — arrow ticks removed).
   const endcapHalf = endcapMetric * 0.5;
   ctx.fillRect(witAx - endcapHalf, witAy - endcapHalf, endcapMetric, endcapMetric);
   ctx.fillRect(witBx - endcapHalf, witBy - endcapHalf, endcapMetric, endcapMetric);
 }
 
 /**
- * Angle-arc with polar reference baseline (AC-style "angle from
- * horizontal"). Renders:
- *   1. A faint dotted horizontal "0° baseline" extending POLAR_REF_LENGTH_CSS
- *      from the pivot in the baseAngleRad direction (the reference the
- *      angle is measured FROM).
- *   2. The arc itself from baseAngleRad sweeping sweepAngleRad at radius
- *      radiusCssPx (converted to metric).
+ * Angle-arc with polar reference baseline. Round-2 user spec: the arc
+ * is centered at `pivot`, has radius = `radiusMetric` (set by the tool
+ * to the full line length), and sweeps from `baseAngleRad` to
+ * `baseAngleRad + sweepAngleRad`. The polar baseline extends from
+ * `pivot` along `baseAngleRad` direction with the SAME length, so the
+ * arc PASSES THROUGH the cursor and TERMINATES on the baseline (the
+ * baseline endpoint coincides with the arc endpoint at the baseline
+ * angle).
  *
- * The pill consumer (DynamicInputPills.derivePillAnchorMetric) anchors
- * on the arc midpoint at sweep/2.
+ * Sign convention (metric Y-up + canvas Y-flip transform):
+ *   - sweep > 0 → arc drawn visually COUNTERCLOCKWISE from baseline
+ *     to line direction (line is above-baseline). ctx.arc with
+ *     ccw=false under the Y-flipped transform.
+ *   - sweep < 0 → arc drawn visually CLOCKWISE (line below-baseline).
+ *     ctx.arc with ccw=true under Y-flip.
+ *   - sweep = 0 → degenerate zero-length arc.
  */
 function paintAngleArc(
   ctx: CanvasRenderingContext2D,
@@ -223,45 +202,23 @@ function paintAngleArc(
     pivot: { x: number; y: number };
     baseAngleRad: number;
     sweepAngleRad: number;
-    radiusCssPx: number;
-    polarRefLengthMetric?: number;
+    radiusMetric: number;
   },
   metricToPx: number,
 ): void {
-  const { pivot, baseAngleRad, sweepAngleRad, polarRefLengthMetric } = guide;
+  const { pivot, baseAngleRad, sweepAngleRad, radiusMetric } = guide;
+  if (radiusMetric <= 0) return;
   const endAngleRad = baseAngleRad + sweepAngleRad;
   const counterclockwise = sweepAngleRad < 0;
+  const polarEndX = pivot.x + Math.cos(baseAngleRad) * radiusMetric;
+  const polarEndY = pivot.y + Math.sin(baseAngleRad) * radiusMetric;
 
-  // Polar reference baseline length resolution:
-  //   1. Tool-supplied metric value (e.g. abs(cursor.x - p1.x)) maps
-  //      naturally to "spans the horizontal projection of the line"
-  //      at HIGH zoom — but at LOW zoom that metric distance maps to
-  //      only a few CSS-px and the baseline becomes invisible.
-  //   2. Clamp to [POLAR_REF_MIN_CSS, POLAR_REF_MAX_CSS] in CSS pixels
-  //      so the baseline is always visually substantial regardless of
-  //      zoom. AC's polar baseline is fundamentally a CHROME visual
-  //      cue, not a metric measurement.
-  const requestedMetric =
-    polarRefLengthMetric !== undefined && polarRefLengthMetric > 0
-      ? polarRefLengthMetric
-      : POLAR_REF_DEFAULT_CSS / metricToPx;
-  const requestedCss = requestedMetric * metricToPx;
-  const clampedCss = Math.max(POLAR_REF_MIN_CSS, Math.min(POLAR_REF_MAX_CSS, requestedCss));
-  const polarRefLenMetric = clampedCss / metricToPx;
-  // Arc radius matches the clamped polar baseline length so baseline +
-  // arc visually scale together (user feedback: "polar should be biggest
-  // possible arc on the line end"). The guide's radiusCssPx field is
-  // now an unused legacy hint — the arc always uses polarRefLenMetric.
-  const radiusMetric = polarRefLenMetric;
-  const polarEndX = pivot.x + Math.cos(baseAngleRad) * polarRefLenMetric;
-  const polarEndY = pivot.y + Math.sin(baseAngleRad) * polarRefLenMetric;
   ctx.save();
   ctx.setLineDash([DASHED_PATTERN_CSS[0] / metricToPx, DASHED_PATTERN_CSS[1] / metricToPx]);
   ctx.beginPath();
   ctx.moveTo(pivot.x, pivot.y);
   ctx.lineTo(polarEndX, polarEndY);
   ctx.stroke();
-  // The arc itself, also dotted.
   ctx.beginPath();
   ctx.arc(pivot.x, pivot.y, radiusMetric, baseAngleRad, endAngleRad, counterclockwise);
   ctx.stroke();

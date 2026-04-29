@@ -119,7 +119,7 @@ const SCENARIOS = [
   // populate on canvas-focus digit typing.
   'rectangle DI: type 6 Tab 4 Enter commits 6×4',
   'line DI: type 5 Tab 30 Enter commits a 5m line at 30°',
-  'circle DI: type 7 Enter commits a radius-7 circle',
+  'circle DI: single-field [Radius] manifest + per-field digit routing (Round-2)',
   'click is eaten while DI buffer non-empty (multi-field DI parity)',
   'first-frame DI coherence',
 ] as const;
@@ -1197,11 +1197,12 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     expect(buffers).toEqual(['5', '30']);
   });
 
-  it('circle DI: type 7 Enter commits a radius-7 circle', async () => {
-    // Verifies circle's single-field DI manifest (Radius, combineAs
-    // number) + per-field digit routing. DI-commit (number → radius
-    // scalar) is unit-covered by combiner test ['7'] → {kind:'number',
-    // value:7} + draw-tools.test.ts circle.kind='number' branch.
+  it('circle DI: single-field [Radius] manifest + per-field digit routing (Round-2)', async () => {
+    // Round-2 remediation: circle keeps the single-field [Radius] DI
+    // (combineAs 'number') because a circle is rotationally symmetric —
+    // the radius angle is meaningless. The linear-dim guide along
+    // center→cursor still gets the full dim treatment via the
+    // DIM_OFFSET_CSS SSOT (witness + dim line + end-caps).
     const { container } = render(<EditorRoot />);
     createNewProject(makeProject());
     const canvas = getCanvasOrThrow(container);

@@ -34,24 +34,27 @@ export async function* drawLineTool(): ToolGenerator {
     // right with sweep = atan2(cursor-p1) (angle pill).
     dynamicInput: LINE_DI_MANIFEST,
     dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-      // Distance: SINGLE-side witness (CCW perpendicular off the line).
-      // Offset uses shared SSOT constant DIM_OFFSET_CSS so line +
-      // rectangle dim offsets stay in lockstep (user feedback: "isnt
-      // this ssot?").
+      // Distance: inline-mode dim (offsetCssPx === 0 → no witness/dim
+      // line, line itself is the dim reference). Pill anchors on
+      // segment midpoint. Offset uses shared SSOT constant
+      // DIM_OFFSET_CSS so line + rectangle stay in lockstep.
       { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
-      // Angle arc PIVOT IS AT THE CURSOR (the rubber-band end being
-      // dragged), not at p1 (user feedback: "polar arc just needs to
-      // start at the cursor position"). Polar baseline extends from
-      // cursor horizontally; arc sweeps from horizontal-right at cursor
-      // toward p1's direction. Painter clamps baseline to [100, 400]
-      // CSS-px and uses that same length as the arc radius.
+      // Angle arc — Round-2 user spec: arc centered at LINE START (p1),
+      // PASSES THROUGH cursor, terminates ON the horizontal baseline.
+      // Therefore radiusMetric = full line length; sweepAngleRad = line
+      // angle from horizontal-right; painter draws the polar baseline
+      // at the same length so the arc's baseline endpoint meets the
+      // baseline endpoint.
+      //
+      // Sign of sweep: positive = line above horizontal (arc visually
+      // CCW); negative = line below (arc visually CW). Painter selects
+      // arc direction from sign of sweep.
       {
         kind: 'angle-arc',
-        pivot: cursor,
+        pivot: p1,
         baseAngleRad: 0,
-        sweepAngleRad: Math.atan2(p1.y - cursor.y, p1.x - cursor.x),
-        radiusCssPx: 120,
-        polarRefLengthMetric: Math.abs(cursor.x - p1.x),
+        sweepAngleRad: Math.atan2(cursor.y - p1.y, cursor.x - p1.x),
+        radiusMetric: Math.hypot(cursor.x - p1.x, cursor.y - p1.y),
       },
     ],
   };

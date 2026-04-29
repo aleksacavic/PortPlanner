@@ -635,7 +635,7 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     await tool.done();
   });
 
-  it('circle: radius prompt yields single-field {fields: [Radius], combineAs: number} + radius-line guide', async () => {
+  it('circle: radius prompt yields single-field {fields: [Radius], combineAs: number} + linear-dim guide (Round-2: dim treatment, no angle since rotationally symmetric)', async () => {
     const tool = startTool('draw-circle', lookupTool('draw-circle')!);
     await tick();
     tool.feedInput({ kind: 'point', point: { x: 5, y: 5 } });
@@ -648,9 +648,30 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
       .dimensionGuides;
     expect(guides).toHaveLength(1);
-    expect(guides?.[0]?.kind).toBe('radius-line');
-    if (guides?.[0]?.kind === 'radius-line') {
-      expect(guides[0].pivot).toEqual({ x: 5, y: 5 });
+    expect(guides?.[0]?.kind).toBe('linear-dim');
+    if (guides?.[0]?.kind === 'linear-dim') {
+      expect(guides[0].anchorA).toEqual({ x: 5, y: 5 });
+    }
+    tool.abort();
+    await tool.done();
+  });
+
+  it('xline: direction prompt yields 1-field {fields: [Angle], combineAs: angle} + angle-arc guide only (polar witness, no distance dim) (Round-2)', async () => {
+    const tool = startTool('draw-xline', lookupTool('draw-xline')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 2, y: 3 } });
+    await tick();
+    const di = (await import('../src/ui-state/store')).editorUiStore.getState().commandBar
+      .dynamicInput;
+    expect(di?.manifest.fields).toHaveLength(1);
+    expect(di?.manifest.combineAs).toBe('angle');
+    expect(di?.manifest.fields[0]?.label).toBe('Angle');
+    const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
+      .dimensionGuides;
+    expect(guides).toHaveLength(1);
+    expect(guides?.[0]?.kind).toBe('angle-arc');
+    if (guides?.[0]?.kind === 'angle-arc') {
+      expect(guides[0].pivot).toEqual({ x: 2, y: 3 });
     }
     tool.abort();
     await tool.done();

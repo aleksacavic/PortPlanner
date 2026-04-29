@@ -31,7 +31,7 @@ export interface DynamicInputField {
   label?: string;
 }
 
-export type CombineAsPolicy = 'numberPair' | 'point' | 'number';
+export type CombineAsPolicy = 'numberPair' | 'point' | 'number' | 'angle';
 
 export interface DynamicInputManifest {
   fields: DynamicInputField[];
@@ -43,34 +43,50 @@ export interface DynamicInputManifest {
 // Painter `paintDimensionGuides` reads these flat coords; per-tool
 // cursor-effect handler (extended `previewBuilder` style via
 // `Prompt.dimensionGuidesBuilder`) writes them per cursor-tick.
+//
+// Sign conventions (Round-6 Remediation Round-2):
+//   - Metric Y is UP (mathematical convention; canvas transform applies
+//     the Y-flip — see `applyToCanvasContext` in view-transform.ts).
+//   - `linear-dim` perpendicular = CCW rotation of (anchorB - anchorA)
+//     in metric space. To put the dim line on a chosen side of a
+//     segment, choose the (anchorA, anchorB) order such that the
+//     desired side is to the LEFT of (B - A) in metric Y-up — i.e.,
+//     CCW perp points toward it.
+//   - `angle-arc` is drawn `from baseAngleRad sweeping sweepAngleRad`
+//     at radius `radiusCssPx`. Sign of sweep determines arc direction:
+//     positive = visually CCW (above-baseline if base = 0); negative =
+//     visually CW (below-baseline if base = 0). Pivot is the vertex of
+//     the angle; baseline extends from pivot at `baseAngleRad`. For
+//     line/polyline this means pivot = LINE START (not cursor) so the
+//     wedge measures the line angle from horizontal-right.
 export type DimensionGuide =
   | {
       kind: 'linear-dim';
       anchorA: Point2D;
       anchorB: Point2D;
       offsetCssPx: number;
-      /**
-       * When true, paint witness + dim lines on BOTH perpendicular sides
-       * of the segment (AC-style parallelogram "tube" around the line).
-       * Used by line/polyline distance. Rectangle W/H uses the default
-       * single-side witness pointing outward.
-       */
-      mirrorWitness?: boolean;
     }
   | {
       kind: 'angle-arc';
       pivot: Point2D;
       baseAngleRad: number;
       sweepAngleRad: number;
-      radiusCssPx: number;
       /**
-       * Optional metric length for the polar reference baseline (the
-       * dotted "0° guide" extending from pivot in baseAngleRad
-       * direction). When unset the painter uses a fixed CSS-px default.
-       * Tools set this to e.g. abs(cursor.x - pivot.x) so the polar
-       * baseline visually spans toward the line end (AC behaviour).
+       * Arc radius in METRIC units (= polar baseline length).
+       *
+       * Geometric contract (Round-2 user spec): the arc is centered at
+       * `pivot`, PASSES THROUGH the cursor, and TERMINATES on the polar
+       * baseline. To satisfy this, tools set `radiusMetric` to the full
+       * line length (distance from pivot to cursor); the painter draws
+       * the polar baseline at the same length so its endpoint
+       * coincides with the arc's endpoint on the baseline.
+       *
+       * For line / polyline:
+       *   pivot = line start (p1)
+       *   sweepAngleRad = atan2(cursor - p1)
+       *   radiusMetric = hypot(cursor - p1)
        */
-      polarRefLengthMetric?: number;
+      radiusMetric: number;
     }
   | {
       kind: 'radius-line';

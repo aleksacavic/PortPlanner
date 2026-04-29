@@ -63,17 +63,20 @@ export async function* drawPolylineTool(): ToolGenerator {
       // per cursor-tick. Per-loop yield resets buffers (Rev-1 R2-A5).
       dynamicInput: POLYLINE_DI_MANIFEST,
       dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-        // Same shape as draw-line: single-side witness using the SSOT
-        // DIM_OFFSET_CSS constant; angle pivot at the CURSOR (rubber-
-        // band end), not at the last committed vertex.
+        // Same shape as draw-line: distance dim from last committed
+        // vertex to cursor; angle arc PIVOT = LINE-SEGMENT START (the
+        // last committed vertex), so the wedge measures the in-flight
+        // segment's angle from horizontal-right at the segment's start.
         { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
         {
           kind: 'angle-arc',
-          pivot: cursor,
+          pivot: lastVertex,
           baseAngleRad: 0,
-          sweepAngleRad: Math.atan2(lastVertex.y - cursor.y, lastVertex.x - cursor.x),
-          radiusCssPx: 120,
-          polarRefLengthMetric: Math.abs(cursor.x - lastVertex.x),
+          sweepAngleRad: Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x),
+          // Arc radius = full segment length so the arc passes through
+          // the cursor and terminates on the horizontal baseline (same
+          // SSOT contract as draw-line.ts).
+          radiusMetric: Math.hypot(cursor.x - lastVertex.x, cursor.y - lastVertex.y),
         },
       ],
     };
