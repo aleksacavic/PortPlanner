@@ -2,11 +2,23 @@
 //   - endpoint (per primitive: line p1/p2, polyline ends, rect corners,
 //     arc start/end)
 //   - midpoint (line, polyline segments, rect edges)
-//   - intersection (line/line; line/circle, line/arc, circle/arc deferred)
+//   - intersection (line/line; line/circle, line/arc, circle/arc deferred
+//     — Phase 1 of the snap-engine-extension plan registers lineLine
+//     only; circle pairs land in Phase 2)
 //   - node (polyline vertices, point primitive position)
 // Remaining modes (center, perpendicular, tangent, etc.) → M1.3c.
+//
+// Phase 1 (snap-engine-extension) refactor: `intersectionsOf` now
+// delegates pairwise primitive intersection to the new
+// `packages/editor-2d/src/snap/intersection.ts` registry. The inline
+// `lineLineIntersection` helper that lived here has moved to that
+// module per I-SNAP-3 (intersection dispatcher SSOT). Composite
+// decomposition (rectangle, polyline) and self-intersection
+// (`selfIntersect`) are owned by the new module.
 
 import type { Point2D, Primitive } from '@portplanner/domain';
+
+import { intersect, selfIntersect } from './intersection';
 
 export type OsnapKind = 'endpoint' | 'midpoint' | 'intersection' | 'node';
 
@@ -93,42 +105,29 @@ function nodesOf(p: Primitive): Point2D[] {
   return [];
 }
 
-/** Line-line intersection in metric, or null if parallel / coincident. */
-function lineLineIntersection(a1: Point2D, a2: Point2D, b1: Point2D, b2: Point2D): Point2D | null {
-  const denom = (a1.x - a2.x) * (b1.y - b2.y) - (a1.y - a2.y) * (b1.x - b2.x);
-  if (Math.abs(denom) < 1e-12) return null;
-  const t = ((a1.x - b1.x) * (b1.y - b2.y) - (a1.y - b1.y) * (b1.x - b2.x)) / denom;
-  const u = -((a1.x - a2.x) * (a1.y - b1.y) - (a1.y - a2.y) * (a1.x - b1.x)) / denom;
-  if (t < 0 || t > 1 || u < 0 || u > 1) return null;
-  return { x: a1.x + t * (a2.x - a1.x), y: a1.y + t * (a2.y - a1.y) };
-}
-
-/** Pairwise line/line intersections within a candidate primitive list. */
+/**
+ * Pairwise primitive intersections via the dispatcher registry.
+ *
+ * Phase 1 refactor: replaces the prior flat-segment S² iteration
+ * (which hard-coded `lineLineIntersection` inline) with N + N(N-1)/2
+ * calls into the registry — `selfIntersect(p_i)` for composites'
+ * internal crossings + `intersect(p_i, p_j)` for distinct-primitive
+ * pairs. The dispatcher handles composite decomposition (rectangle,
+ * polyline) internally.
+ *
+ * Phase 1 only registers `lineLine` in the dispatcher table; circle
+ * and arc pairs return [] until Phase 2 populates them. Behaviour for
+ * line-line pairs (the only currently-supported intersection in
+ * `osnap.ts`) is bit-identical — locked by the F1–F4 parity fixtures
+ * in `tests/intersection.parity.test.ts`.
+ */
 function intersectionsOf(primitives: Primitive[]): Point2D[] {
-  const segments: Array<[Point2D, Point2D]> = [];
-  for (const p of primitives) {
-    if (p.kind === 'line') segments.push([p.p1, p.p2]);
-    else if (p.kind === 'polyline') {
-      const n = p.vertices.length;
-      const segCount = p.closed ? n : n - 1;
-      for (let k = 0; k < segCount; k++) {
-        // Bulge-arc intersections deferred to M1.3c.
-        if ((p.bulges[k] ?? 0) === 0) {
-          segments.push([p.vertices[k]!, p.vertices[(k + 1) % n]!]);
-        }
-      }
-    }
-  }
   const out: Point2D[] = [];
-  for (let i = 0; i < segments.length; i++) {
-    for (let j = i + 1; j < segments.length; j++) {
-      const ix = lineLineIntersection(
-        segments[i]![0],
-        segments[i]![1],
-        segments[j]![0],
-        segments[j]![1],
-      );
-      if (ix) out.push(ix);
+  for (let i = 0; i < primitives.length; i++) {
+    const p = primitives[i]!;
+    out.push(...selfIntersect(p));
+    for (let j = i + 1; j < primitives.length; j++) {
+      out.push(...intersect(p, primitives[j]!));
     }
   }
   return out;
