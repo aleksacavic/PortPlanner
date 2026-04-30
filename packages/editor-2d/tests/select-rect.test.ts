@@ -48,7 +48,7 @@ function makeProjectWith(prims: LinePrimitive[]): Project {
   for (const p of prims) primitives[p.id] = p;
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name: 'SR-test',
     createdAt: '2026-04-26T00:00:00.000Z',
     updatedAt: '2026-04-26T00:00:00.000Z',

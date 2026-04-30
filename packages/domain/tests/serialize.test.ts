@@ -8,7 +8,7 @@ function makeProject(): Project {
   const dl = defaultLayer();
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name: 'Test Port',
     createdAt: '2026-04-25T10:00:00.000Z',
     updatedAt: '2026-04-25T10:00:00.000Z',
@@ -84,5 +84,80 @@ describe('canonical serialize / deserialize', () => {
     expect(s1).toBe(s2);
     expect(Object.keys(p2.primitives)).toHaveLength(1);
     expect(Object.keys(p2.layers)).toHaveLength(1);
+  });
+
+  // M1.3 snap-engine-extension Phase 3 — schema version bump 1.1.0 → 1.2.0
+  // (clean-break per A9 / I-PT-1; no migration shim).
+  it('REM8-P3-LegacyReject: 1.1.0 saved project rejects with LoadFailure (clean-break per A9)', () => {
+    const oneOneOneShape = JSON.stringify({
+      id: newProjectId(),
+      schemaVersion: '1.1.0',
+      name: 'Legacy 1.1.0',
+      createdAt: '2026-04-22T10:00:00.000Z',
+      updatedAt: '2026-04-22T10:00:00.000Z',
+      coordinateSystem: null,
+      objects: {},
+      primitives: {},
+      layers: {},
+      grids: {},
+      scenarioId: null,
+    });
+    expect(() => deserialize(oneOneOneShape)).toThrow(LoadFailure);
+  });
+
+  it('REM8-P3-PointShapeDefault: 1.2.0 project with a Point that omits displayShape parses with the field defaulted to circle-dot', () => {
+    const primitiveId = newPrimitiveId();
+    const p = makeProject();
+    p.primitives[primitiveId] = {
+      id: primitiveId,
+      kind: 'point',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      position: { x: 0, y: 0 },
+      // Note: displayShape intentionally omitted to exercise the
+      // schema's `.default('circle-dot')`.
+    } as unknown as Project['primitives'][string];
+    const s1 = serialize(p);
+    // Strip the displayShape field that serialize would have written
+    // (via canonical key sort) so the wire payload matches an
+    // in-flight 1.2.0 save that omits the field. Hand-craft the
+    // payload instead.
+    const wirePayload = JSON.stringify({
+      ...JSON.parse(s1),
+      primitives: {
+        [primitiveId]: {
+          id: primitiveId,
+          kind: 'point',
+          layerId: LayerId.DEFAULT,
+          displayOverrides: {},
+          position: { x: 0, y: 0 },
+        },
+      },
+    });
+    const parsed = deserialize(wirePayload);
+    const point = parsed.primitives[primitiveId];
+    expect(point?.kind).toBe('point');
+    if (point?.kind !== 'point') throw new Error('expected point');
+    expect(point.displayShape).toBe('circle-dot');
+  });
+
+  it('REM8-P3-PointShapeExplicit: 1.2.0 project with displayShape: "x" round-trips bit-identically', () => {
+    const primitiveId = newPrimitiveId();
+    const p = makeProject();
+    p.primitives[primitiveId] = {
+      id: primitiveId,
+      kind: 'point',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      position: { x: 1, y: 2 },
+      displayShape: 'x',
+    };
+    const s1 = serialize(p);
+    const p2 = deserialize(s1);
+    const s2 = serialize(p2);
+    expect(s1).toBe(s2);
+    const point = p2.primitives[primitiveId];
+    if (point?.kind !== 'point') throw new Error('expected point');
+    expect(point.displayShape).toBe('x');
   });
 });

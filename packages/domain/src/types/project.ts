@@ -12,8 +12,10 @@ import type { Primitive } from './primitive';
 export interface Project {
   /** UUIDv7 primary key. */
   id: ProjectId;
-  /** Schema version. Bumped 1.0.0 → 1.1.0 in M1.3a (GR-1 clean break). */
-  schemaVersion: '1.1.0';
+  /** Schema version. Bumped 1.0.0 → 1.1.0 in M1.3a, 1.1.0 → 1.2.0 in
+   *  M1.3 snap-engine-extension Phase 3 (clean-break per GR-1; legacy
+   *  saves return LoadFailure on parse, no migration shim). */
+  schemaVersion: '1.2.0';
   /** Human-readable project name, shown in UI. */
   name: string;
   /** ISO-8601 timestamp of project creation. */

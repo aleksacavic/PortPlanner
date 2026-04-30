@@ -67,10 +67,17 @@ describe('emitCSSVars', () => {
     const output = emitCSSVars(dark);
     expect(output).toContain('--canvas-transient-preview-stroke:');
     expect(output).toContain('--canvas-transient-preview-dash:');
-    expect(output).toContain('--canvas-transient-label-padding:');
+    // M1.3 Round 7 backlog B3 wiped paintTransientLabel + 5 label_* tokens
+    // (label_text, label_bg, label_padding, label_font_size, label_radius).
+    // Asserting on `dim_witness_offset` instead — a top-level transient
+    // leaf added in M1.3 Round 7 Phase 1 that's currently in production.
+    expect(output).toContain('--canvas-transient-dim-witness-offset:');
     expect(output).toContain('--canvas-transient-selection-window-stroke:');
     expect(output).toContain('--canvas-transient-selection-crossing-fill:');
     expect(output).toContain('--canvas-transient-hover-highlight-dash:');
+    // M1.3 snap-engine-extension Phase 2 — quadrant_side leaf added
+    // for circle quadrant snap glyph.
+    expect(output).toContain('--canvas-transient-snap-glyph-quadrant-side:');
   });
 });
 

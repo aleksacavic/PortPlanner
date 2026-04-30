@@ -110,7 +110,7 @@ describe('ProjectObjectSchema (ADR-019)', () => {
 describe('ProjectSchema', () => {
   const validProject = () => ({
     id: newProjectId(),
-    schemaVersion: '1.1.0' as const,
+    schemaVersion: '1.2.0' as const,
     name: 'Test Port',
     createdAt: '2026-04-25T10:00:00.000Z',
     updatedAt: '2026-04-25T10:00:00.000Z',

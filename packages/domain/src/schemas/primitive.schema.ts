@@ -22,10 +22,17 @@ const BaseShape = {
   displayOverrides: DisplayOverridesShape,
 };
 
+// M1.3 snap-engine-extension Phase 3 — Point primitive display shape.
+// `.default('circle-dot')` fills the field for in-flight 1.2.0 saves
+// that omit it. NOT a backward-compat scaffold for 1.1.0 saves; those
+// are rejected by ProjectSchema's strict `z.literal('1.2.0')`.
+const PointDisplayShapeSchema = z.enum(['dot', 'x', 'circle-dot']);
+
 const PointPrimitiveSchema = z.object({
   ...BaseShape,
   kind: z.literal('point'),
   position: Point2DSchema,
+  displayShape: PointDisplayShapeSchema.default('circle-dot'),
 });
 
 const LinePrimitiveSchema = z.object({

@@ -17,7 +17,7 @@ import { SaveButton } from '../src/toolbar/SaveButton';
 function makeProject(name = 'Test Port'): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name,
     createdAt: '2026-04-22T10:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',

@@ -9,7 +9,7 @@ import { resetProjectStoreForTests } from '../src/test-utils';
 function makeProject(name: string): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name,
     createdAt: '2026-04-25T10:00:00.000Z',
     updatedAt: '2026-04-25T10:00:00.000Z',

@@ -13,7 +13,7 @@ import { DB_NAME, PROJECTS_STORE, type StoredProjectRecord } from '../src/persis
 function makeProject(name = 'Seeded Port'): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name,
     createdAt: '2026-04-22T10:00:00.000Z',
     updatedAt: '2026-04-22T10:00:00.000Z',

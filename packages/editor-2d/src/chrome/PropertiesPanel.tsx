@@ -1,7 +1,11 @@
 // Properties panel — read-only display + layer/displayOverrides edit.
 // Multi-select shows a placeholder.
+//
+// M1.3 snap-engine-extension Phase 3 — Point primitive `displayShape`
+// dropdown surfaces below the standard rows when a single Point is
+// selected.
 
-import type { LayerId, Primitive } from '@portplanner/domain';
+import type { LayerId, PointDisplayShape, Primitive } from '@portplanner/domain';
 import { updatePrimitive } from '@portplanner/project-store';
 import { useLayers, usePrimitive } from '@portplanner/project-store-react';
 import type { ReactElement } from 'react';
@@ -103,6 +107,24 @@ export function PropertiesPanel(): ReactElement {
           data-component="properties-color-input"
         />
       </div>
+      {single.kind === 'point' ? (
+        <div className={styles.row}>
+          <span className={styles.label}>display shape</span>
+          <select
+            value={single.displayShape ?? 'circle-dot'}
+            onChange={(e) =>
+              updatePrimitive(single.id, {
+                displayShape: e.target.value as PointDisplayShape,
+              } as never)
+            }
+            data-component="properties-point-display-shape-select"
+          >
+            <option value="circle-dot">circle + dot</option>
+            <option value="dot">dot</option>
+            <option value="x">×</option>
+          </select>
+        </div>
+      ) : null}
     </div>
   );
 }
