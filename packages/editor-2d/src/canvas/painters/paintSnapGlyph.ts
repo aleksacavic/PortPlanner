@@ -55,6 +55,7 @@ export function paintSnapGlyph(
   const NODE_RADIUS_CSS = parseNumericToken(sg.node_radius);
   const GRID_NODE_HALF_CSS = parseNumericToken(sg.grid_node_half);
   const GRID_LINE_HALF_CSS = parseNumericToken(sg.grid_line_half);
+  const QUADRANT_SIDE_CSS = parseNumericToken(sg.quadrant_side);
 
   const screen = metricToScreen(snapTarget.point, viewport);
   const dpr = viewport.dpr;
@@ -138,6 +139,21 @@ export function paintSnapGlyph(
       ctx.lineTo(cx + half, cy);
       ctx.moveTo(cx, cy - half);
       ctx.lineTo(cx, cy + half);
+      ctx.stroke();
+      break;
+    }
+    case 'quadrant': {
+      // M1.3 snap-engine-extension Phase 2 — outline-only diamond
+      // glyph for circle quadrant snap. AC convention: square rotated
+      // 45° (diamond pointing N/E/S/W). Per Round-7 backlog B1, no
+      // fill — stroke only.
+      const half = (QUADRANT_SIDE_CSS / 2) * dpr;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - half);
+      ctx.lineTo(cx + half, cy);
+      ctx.lineTo(cx, cy + half);
+      ctx.lineTo(cx - half, cy);
+      ctx.closePath();
       ctx.stroke();
       break;
     }

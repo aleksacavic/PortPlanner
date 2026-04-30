@@ -14,6 +14,7 @@ export type {
   ArcPrimitive,
   CirclePrimitive,
   LinePrimitive,
+  PointDisplayShape,
   PointPrimitive,
   PolylinePrimitive,
   Primitive,

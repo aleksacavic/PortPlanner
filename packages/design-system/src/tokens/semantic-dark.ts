@@ -123,6 +123,8 @@ export const dark: SemanticTokens = {
         node_radius: '5',
         grid_node_half: '4',
         grid_line_half: '3',
+        // M1.3 snap-engine-extension Phase 2 — circle quadrant snap.
+        quadrant_side: '8',
         stroke_width: '1.5',
       },
       pill_placeholder_opacity: '0.45',

@@ -85,7 +85,12 @@ describe('OSNAP candidates (M1.3a subset)', () => {
     expect(ix?.point.y).toBeCloseTo(5, 6);
   });
 
-  it('node candidates from polyline vertices', () => {
+  it('node + endpoint candidates from polyline vertices (open polyline: first/last = endpoint, interior = node — SSOT semantics per snap-engine-extension Phase 2 / I-SNAP-1)', () => {
+    // 3-vertex open polyline. Pre-Phase-2 semantics emitted ALL
+    // vertices as node candidates AND first/last as endpoint
+    // candidates (duplicate-emit). Post-Phase-2 SSOT: each grip-
+    // position has exactly one OSNAP kind. v0 / v2 → endpoint;
+    // v1 → node. Locked by I-SNAP-1.
     const poly: Primitive = {
       id: newPrimitiveId(),
       kind: 'polyline',
@@ -100,8 +105,67 @@ describe('OSNAP candidates (M1.3a subset)', () => {
       closed: false,
     };
     const cands = gatherOsnapCandidates([poly]);
+    const endpoints = cands.filter((c) => c.kind === 'endpoint');
     const nodes = cands.filter((c) => c.kind === 'node');
-    expect(nodes).toHaveLength(3);
+    expect(endpoints).toHaveLength(2);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.point).toEqual({ x: 5, y: 0 });
+  });
+});
+
+// Phase 2 (snap-engine-extension) — circle snap candidates per
+// I-SNAP-1 (gripsOf SSOT). Circle yields 5 grips: center (node) +
+// 4 quadrants (E/N/W/S). All flow into the OSNAP candidate list.
+describe('OSNAP candidates — circle quadrants + center (Phase 2)', () => {
+  it('circle quadrants: 4 candidates (kind quadrant) at the compass points', () => {
+    const circle: Primitive = {
+      id: newPrimitiveId(),
+      kind: 'circle',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      center: { x: 0, y: 0 },
+      radius: 5,
+    };
+    const cands = gatherOsnapCandidates([circle]);
+    const quads = cands.filter((c) => c.kind === 'quadrant');
+    expect(quads).toHaveLength(4);
+    const sortedX = [...quads].map((q) => q.point).sort((a, b) => a.x - b.x);
+    // West (-5, 0), South (0, -5), North (0, 5), East (5, 0).
+    expect(sortedX[0]?.x).toBeCloseTo(-5, 9);
+    expect(sortedX[3]?.x).toBeCloseTo(5, 9);
+  });
+
+  it('circle center: 1 candidate (kind node) at the centre', () => {
+    const circle: Primitive = {
+      id: newPrimitiveId(),
+      kind: 'circle',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      center: { x: 7, y: -3 },
+      radius: 4,
+    };
+    const cands = gatherOsnapCandidates([circle]);
+    const nodes = cands.filter((c) => c.kind === 'node');
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.point).toEqual({ x: 7, y: -3 });
+  });
+});
+
+// Codex Round-1 B2 fix: point primitive's `position` snaps as kind
+// 'endpoint' (NOT 'node'). Locked by I-SNAP-5.
+describe('OSNAP candidates — point primitive endpoint kind preserved (Phase 2 / I-SNAP-5)', () => {
+  it('point primitive position emits kind endpoint, NOT node', () => {
+    const point: Primitive = {
+      id: newPrimitiveId(),
+      kind: 'point',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      position: { x: 3, y: 4 },
+    };
+    const cands = gatherOsnapCandidates([point]);
+    expect(cands).toHaveLength(1);
+    expect(cands[0]?.kind).toBe('endpoint');
+    expect(cands[0]?.point).toEqual({ x: 3, y: 4 });
   });
 });
 

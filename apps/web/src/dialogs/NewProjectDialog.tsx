@@ -25,7 +25,7 @@ function buildProject(name: string): Project {
   const coordinateSystem: CoordinateSystem | null = null;
   return {
     id: newProjectId() as ProjectId,
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name,
     createdAt: now,
     updatedAt: now,

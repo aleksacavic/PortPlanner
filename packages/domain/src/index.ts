@@ -20,6 +20,7 @@ export type {
   TargetKind,
   TargetSnapshot,
   Point2D,
+  PointDisplayShape,
   PointPrimitive,
   PolylinePrimitive,
   Primitive,

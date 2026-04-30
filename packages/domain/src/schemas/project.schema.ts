@@ -14,10 +14,16 @@ import { PrimitiveSchema } from './primitive.schema';
 // schemaVersion bumped 1.0.0 → 1.1.0 in M1.3a per GR-1 clean break:
 // adds `primitives`, `layers`, `grids` maps. Old `1.0.0` projects
 // fail to load with LoadFailure; no migration shim per GR-1.
+//
+// M1.3 snap-engine-extension Phase 3: bumped 1.1.0 → 1.2.0 (clean-
+// break per A9 / I-PT-1). Adds optional `displayShape` field on Point
+// primitives with `.default('circle-dot')`. Old 1.1.0 projects fail
+// to load with LoadFailure — no migration shim per GR-1 +
+// architecture-contract §0.6 preproduction posture.
 
 export const ProjectSchema = z.object({
   id: z.string(),
-  schemaVersion: z.literal('1.1.0'),
+  schemaVersion: z.literal('1.2.0'),
   name: z.string().min(1).max(100),
   createdAt: z.string(),
   updatedAt: z.string(),

@@ -28,7 +28,7 @@ function buildDefaultProject(): Project {
   const gridId = newGridId();
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name: 'Untitled',
     createdAt: now,
     updatedAt: now,

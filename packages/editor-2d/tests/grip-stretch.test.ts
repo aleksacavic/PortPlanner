@@ -34,7 +34,7 @@ const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 function makeProjectWith<T extends { id: string }>(p: T): Project {
   return {
     id: newProjectId(),
-    schemaVersion: '1.1.0',
+    schemaVersion: '1.2.0',
     name: 'GS-test',
     createdAt: '2026-04-26T00:00:00.000Z',
     updatedAt: '2026-04-26T00:00:00.000Z',

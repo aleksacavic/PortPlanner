@@ -31,7 +31,7 @@ export function deserialize(raw: string): Project {
       result.error,
     );
   }
-  return result.data as Project;
+  return result.data as unknown as Project;
 }
 
 /**
