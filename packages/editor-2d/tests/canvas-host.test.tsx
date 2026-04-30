@@ -35,7 +35,6 @@ function makeOverlay(): OverlayState {
     selectionHandles: [],
     previewShape: null,
     hoverEntity: null,
-    transientLabels: [],
     grips: null,
     suppressEntityPaint: null,
   };

@@ -506,61 +506,44 @@ Total net-new: ~33. Final count target ≥ 432 (baseline 399). `pnpm --filter @p
 
 **Why dropped rather than reworked into auto-show on overflow:** AC has no equivalent feature and there are zero current consumers that benefit (DI fields are all numeric — short by nature). Building speculative scaffolding violates GR-1 §1 ("no features beyond what was asked"). Captured as backlog item #B0 below in case a future text-input DI field surfaces and revives the need.
 
-### Post-execution backlog — items raised by the user during Phase-3 manual smoke test (2026-04-30)
+### Backlog — items raised by the user during Phase-3 manual smoke test (2026-04-30)
 
-The user surfaced 8 separate items during manual smoke testing and asked them to be documented in this plan rather than implemented inline. Most are interconnected (snap engine, polar input semantics, DI pill behaviour) and deserve their own plan session per the architecture-first discipline. Captured here as discovered, in user order:
+The user surfaced 4 polish items during manual smoke testing and asked them to be folded into this round before the Codex remediation review. All four landed in this session tail (commits `02d0d3e` and `<this commit>`).
 
-#### B1 — Snap glyph outline-only ✅ DONE (2026-04-30, this session tail)
+#### B1 — Snap glyph outline-only ✅ DONE
 
-Was: `paintSnapGlyph.ts` filled + stroked the endpoint (square), midpoint (triangle), and node (circle) glyphs. Now: outline-only (no `ctx.fill()` for those three cases) per AC convention, so the snap glyphs are visually distinct from filled vertex markers. Intersection (`×`) and grid-node / grid-line (`+`) unchanged — already line-based. Existing `paintSnapGlyph.test.ts` 'endpoint'/'midpoint'/'node' assertions updated: now assert `stroke` is called and `fill` is NOT.
+Was: `paintSnapGlyph.ts` filled + stroked the endpoint (square), midpoint (triangle), and node (circle) glyphs. Now: outline-only (no `ctx.fill()` for those three cases) per AC convention so the snap glyphs are visually distinct from filled vertex markers. Intersection (`×`) and grid-node / grid-line (`+`) unchanged — already line-based. Existing `paintSnapGlyph.test.ts` 'endpoint' / 'midpoint' / 'node' assertions updated to assert `stroke` is called and `fill` is NOT.
 
-#### B2 — Crosshair sizing default flip ✅ DONE (2026-04-30, this session tail)
+#### B2 — Crosshair sizing default flip ✅ DONE
 
-Was: `viewport.crosshairSizePct` initial state = 100 (full-canvas). Now: initial state = 5 (short pickbox), AC default. F7 handler logic unchanged (`current >= 50 ? 5 : 100`) — symmetric, so flipping the default automatically reverses the toggle direction without handler changes. Existing `ui-state.test.ts` default-value assertion updated from 100 → 5.
+Was: `viewport.crosshairSizePct` initial state = 100 (full-canvas). Now: initial state = 5 (short pickbox), AC default. F7 handler logic unchanged (`current >= 50 ? 5 : 100`) — symmetric, so flipping the default automatically reverses the toggle direction. `ui-state.test.ts` default-value assertion updated 100 → 5.
 
-#### B3 — Arc tool DI migration to multi-pill
+#### B3 — Old canvas-painted label wiped wholesale ✅ DONE
 
-The arc tool's DI manifest still routes through the single-pill fallback path (per the user, "current pill should be the new one — one on rubber band — it is still using the old component"). Need to: (a) audit who consumes the single-pill fallback, (b) move arc to the new multi-pill path with proper `dimensionGuidesBuilder`, (c) check no other tools depend on the single-pill fallback that should also be migrated, (d) remove the single-pill fallback wholesale once empty. **Belongs to a separate plan session because it intersects with the deferred arc-detail work the user has flagged for later.**
+The "old component" — `paintTransientLabel` — was the canvas-painted rounded blue pill embedded by `paintPreview` for line length / W×H / radius readouts. With every draw tool that has DI (line, rect, circle, polyline) those readouts now come exclusively from `DynamicInputPills` (DOM chrome) on top of `overlay.dimensionGuides`, the embedded canvas labels were redundant noise the user wanted gone.
 
-#### B4 — Selection rectangle click-release-click flow
+Wipe scope:
+- Deleted `packages/editor-2d/src/canvas/painters/paintTransientLabel.ts` and `tests/paintTransientLabel.test.ts`.
+- Removed all 6 `paintTransientLabel(...)` call sites in `paintPreview.ts` (line / polyline / rectangle / circle / arc-2pt / arc-3pt) plus the `suppressEmbeddedLabels` parameter that gated them.
+- Removed the `for (const label of overlay.transientLabels) paintTransientLabel(...)` loop in `paint.ts`.
+- Removed the `transientLabels: TransientLabel[]` slice field, the `TransientLabel` interface, and the `setTransientLabels` action from `editorUiStore` (no production writer ever existed — confirmed by `rg setTransientLabels packages/editor-2d/src` returning zero hits before the wipe).
+- Removed five now-orphan tokens from `TransientTokens` interface + `semantic-dark.ts`: `label_text`, `label_bg`, `label_padding`, `label_font_size`, `label_radius`.
+- Updated paintPreview.test.ts (5 cases) to assert `methods.not.toContain('fillText')` instead of the old embedded-label text. Removed the now-obsolete "per-arm element-aligned label rotation (R6)" describe block (6 cases) — paintPreview no longer rotates anything.
+- Removed the `paintTransientLabel font size = label_font_size × dpr` case from `painter-token-migration.test.ts`.
 
-Currently mouse-down → drag → mouse-up creates the selection rectangle. AC also accepts: click-release first corner, move (rubber-band rectangle shows), click-release second corner. Both flows should coexist (mouse-down-drag stays as-is). Touches the `select-rect` tool's input semantics — small but needs a careful test pass (the existing smoke scenario only exercises the drag flow). **Belongs to a separate plan session — interacts with the selection / grip-stretch test surface.**
+Side effect: the Arc tool currently has no DI manifest, so its rubber-band loses its embedded radius readout temporarily. Acceptable per user direction — Arc's DI migration is tracked separately from this round.
 
-#### B5 — Circle snapping (intersection + 4 quadrants)
+#### B4 — Selection rectangle click-release-click flow ✅ DONE
 
-User question: "why circle does not get any snapping, not on the intersection not on its 4 quadrants". Quadrants = the 4 compass points on the circumference (0°, 90°, 180°, 270° in metric Y-up). Intersections = where the circle crosses other primitives. Both require new snap providers in the snap-priority engine. **Belongs to a separate plan session — intersects with the M1.3-snap engine architecture (priority cascade + per-kind snap helpers).**
+AC accepts both the existing mouse-down-drag-mouseup gesture AND a click-release-click flow (click first corner, release, move cursor with rubber-band rect showing, click second corner). Both now coexist.
 
-#### B6 — DI pills live-update with cursor
+Mechanics:
+- `EditorRoot.handleSelectRectStart` hit-tests at mousedown BEFORE spawning the tool. Hit → `setSelection([hit])` inline, no tool. Miss → tool spawns with first corner; the mousedown screen position is captured into `selectRectStartScreenRef` (a new useRef on EditorRoot).
+- `EditorRoot.handleCanvasMouseUp` consults `selectRectStartScreenRef`. If displacement ≤ 2 CSS-px (matching `select-rect.ts`'s existing `CLICK_VS_DRAG_TOLERANCE_CSS`), the mouseup is a "click-release" — DON'T feed the second-corner input, leave the tool alive. Larger displacement = drag-to-end (existing path preserved).
+- For the click-release-click flow, the next mousedown's `handleCanvasClick` feeds the second corner via the existing `tool.feedInput({kind:'point',point})` path. canvas-host fires `onCanvasClick` BEFORE `onSelectRectStart` on the same mousedown, and `runningToolRef.current` stays non-null until the tool's `.finally()` microtask runs, so the second `onSelectRectStart` correctly bails on the active-tool guard.
+- The select-rect tool's pre-existing click-without-drag → single-entity-hit-test branch (line 67 in `select-rect.ts`) becomes dead code at the new entry point (entity hit-tests are caught by `handleSelectRectStart` first), but stays in place as defensive degradation if the tool is ever spawned outside the EditorRoot path.
 
-While DI is active and the user hasn't typed/locked anything, the pills should auto-fill with current cursor-derived values (X/Y or distance/angle) so the user reads what the rubber-band is showing in real time. The values get pre-served as the user starts typing. **Belongs to a separate plan session — interacts with B7 (input direction inversion + per-pill locking) which is the natural pair.**
-
-#### B7 — Polar input direction inversion + per-pill locking
-
-Two interlocking changes that AC implements but the current DI does not:
-
-1. **Direction inversion via cursor + sign:** typing `Distance = 5` while the cursor is in Q3 should keep the rubber-band in Q3 with length 5 (cursor direction wins, ignoring global sign). Typing `Distance = -5` flips 180°. Current behaviour: positive distance always shoots in global +X; this breaks AC muscle memory.
-2. **Per-pill locking on Tab:** typing into a pill + Tab freezes that field's value. Cursor only affects the un-frozen field. Lock breaks only on Escape. Examples (user-supplied):
-   - Line, Tab past Distance, type Angle=50, Tab → angle locked at 50°, distance follows cursor along that ray.
-   - Line, cursor in Q3, type Distance=-4, Tab → flips to Q1, distance locked at 4.
-   - Rectangle, type W=4, Tab → W locked at 4, only H follows cursor.
-
-**Belongs to a separate plan session — touches the runner / input-combiner / DI manifest contract surface deeply.**
-
-#### B8 — Buffer persistence redesign (Arrow Up triggered, separate pill near cursor)
-
-Items B6 + B7 effectively wipe the value of the current Phase-2 buffer-persistence design (the dim-placeholder pre-fill becomes redundant once cursor live-updates the empty pills). User proposal:
-
-- Drop the current "pill seeds placeholder from `lastSubmittedBuffers[promptKey]`" path.
-- Replace with an **Arrow Up trigger**: when active, an extra pill renders **next to the cursor** containing the previously-submitted values (e.g. `Distance:3434, Angle:33` — comma-separated, single pill, label-prefixed). The existing per-field pills dim (lose focus). User can: Tab back to per-field pills (cancels the buffer pill), Space/Enter to accept the buffered values (commits as if typed). While the buffer pill is active the rubber-band stays frozen at the current cursor position — does NOT preview the buffered values.
-
-**Belongs to a separate plan session — supersedes the Phase 2 design.** When that plan lands, the current `lastSubmittedBuffers` slice + `placeholders` field on `commandBar.dynamicInput` + dim-placeholder rendering all get reworked. The slice itself can stay (renamed if needed) since the data is the same — it's the consumption pattern that changes.
-
-#### Recommended split for next plan session
-
-- **Quick polish (this session tail or small follow-up):** B1, B2.
-- **Single-feature follow-up plans (each its own session):** B5 (circle snap), B4 (selection click-release-click), B3 (arc DI migration).
-- **One large interconnected plan:** B6 + B7 + B8 (DI live-update + per-pill locking + polar inversion + buffer-redesign). Touches runner contract + DI manifest + pill chrome simultaneously; should be planned together to avoid contract churn.
-
-#### B0 — Hover overflow tooltip (re-entry placeholder)
-
-Reserved slot for if a future text-input DI field surfaces and revives the need for an overflow surface. Note that the `useLayoutEffect` auto-show-on-overflow pattern (no hover) is the correct UX shape — hover doesn't work for moving pill targets.
+Tests updated / added:
+- `tests/smoke-e2e.test.tsx` 'window vs crossing selection': fixture coordinates shifted (450,250 → 480,250) so the R→L mousedown lands on empty space, since (5,5) was on idB's path (line y=x) and would now trigger the inline single-select and skip the rect tool.
+- `tests/smoke-e2e.test.tsx` 'select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits' — new scenario, locks the new flow.
+- `tests/smoke-e2e.test.tsx` 'select-rect click-on-entity: mousedown on a line selects it inline without spawning the tool' — new scenario, locks the AC-parity inline-select path.

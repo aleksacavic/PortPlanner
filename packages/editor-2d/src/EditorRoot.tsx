@@ -56,6 +56,18 @@ export function EditorRoot(): ReactElement {
   const runningToolRef = useRef<RunningTool | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasHostRef = useRef<CanvasHostHandle | null>(null);
+  // Round 7 backlog B4 — screen-space anchor of the active select-rect
+  // tool's first corner. Captured by handleSelectRectStart on the
+  // mousedown that spawns the tool; consulted by handleCanvasMouseUp
+  // to decide between "drag-to-end" (large displacement → feed second
+  // corner immediately) and "click-release-click" (small displacement
+  // → leave tool alive, wait for the next mousedown to commit). Reset
+  // to null when the tool finishes.
+  const selectRectStartScreenRef = useRef<ScreenPoint | null>(null);
+  // Round 7 backlog B4 — click-vs-drag tolerance shared between the
+  // EditorRoot mouseup handler and the select-rect tool's internal
+  // detection. Mirrors the constant exported from select-rect.ts.
+  const SELECT_RECT_CLICK_TOLERANCE_CSS = 2;
   // Stable callback: returns the latest overlay snapshot via a one-shot
   // getState read. Passing this to canvas-host as `getOverlay` lets
   // canvas-host's paint rAF read overlay without subscribing to the
@@ -651,15 +663,36 @@ export function EditorRoot(): ReactElement {
   // M1.3d Phase 7 — selection-rect autostart on left-mousedown when
   // no tool is active. canvas-host fires onSelectRectStart on EVERY
   // mousedown; we gate on activeToolId === null here.
+  //
+  // Round 7 backlog B4 — entity hit-test moved up here (was previously
+  // performed inside select-rect's click-without-drag branch). When
+  // mousedown lands on an entity, do a single-entity selection inline
+  // and DO NOT spawn the tool — that way "click an entity to select
+  // it" stays a one-shot click-and-release, identical to AC. When
+  // mousedown lands on empty space the tool spawns, and the new
+  // click-release-click flow (handleCanvasMouseUp small-displacement
+  // → no feed → tool stays alive for second click) applies.
   const handleSelectRectStart = (metric: Point2D, screen: ScreenPoint): void => {
     // M1.3d-Rem-4 G2 + M1.3 Round 6 — click-eat (see handleCanvasClick).
     if (hasNonEmptyTypingBuffer()) return;
     if (runningToolRef.current !== null) return;
+    const project = projectStore.getState().project;
+    if (project) {
+      const idx = new PrimitiveSpatialIndex();
+      for (const p of Object.values(project.primitives)) idx.insert(p);
+      const hit = hitTest(screen, viewport, idx, project.primitives);
+      if (hit) {
+        editorUiActions.setSelection([hit]);
+        return;
+      }
+    }
+    selectRectStartScreenRef.current = screen;
     const factory = selectRectTool(metric, screen);
     const running = startTool('select-rect', factory);
     runningToolRef.current = running;
     running.done().finally(() => {
       if (runningToolRef.current === running) runningToolRef.current = null;
+      selectRectStartScreenRef.current = null;
     });
   };
 
@@ -687,9 +720,23 @@ export function EditorRoot(): ReactElement {
   // copied via commitSnappedVertex per I-39) instead of the raw cursor
   // metric. Without this, the visible snap glyph mid-drag was misleading:
   // glyph rendered, click committed at the raw cursor — Phase 7 oversight.
-  const handleCanvasMouseUp = (metric: Point2D, _screen: ScreenPoint): void => {
+  const handleCanvasMouseUp = (metric: Point2D, screen: ScreenPoint): void => {
     const id = editorUiStore.getState().activeToolId;
     if (id !== 'select-rect') return;
+    // Round 7 backlog B4 — click-release-click flow. If mouseup is
+    // within tolerance of the original mousedown screen position,
+    // treat the gesture as "click and release" and leave the tool
+    // alive waiting for the next mousedown to commit the second
+    // corner. Larger displacement = drag-to-end (preserved current
+    // behaviour: feed the second corner now).
+    const startScreen = selectRectStartScreenRef.current;
+    if (startScreen) {
+      const dx = screen.x - startScreen.x;
+      const dy = screen.y - startScreen.y;
+      if (Math.hypot(dx, dy) <= SELECT_RECT_CLICK_TOLERANCE_CSS) {
+        return;
+      }
+    }
     const snap = editorUiStore.getState().overlay.snapTarget;
     const point = snap ? commitSnappedVertex(snap.point) : metric;
     runningToolRef.current?.feedInput({ kind: 'point', point });

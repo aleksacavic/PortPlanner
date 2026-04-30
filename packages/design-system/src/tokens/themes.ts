@@ -92,18 +92,6 @@ export interface TransientTokens {
   /** Stroke width (CSS px, stringified) for live-preview shape outlines.
    *  Consumed by `paintPreview`. */
   preview_stroke_width: Color;
-  /** Foreground color for transient label text. */
-  label_text: Color;
-  /** Translucent background for transient label rounded-pill backdrop. */
-  label_bg: Color;
-  /** Padding (px) inside the label pill background, stringified (e.g. "4"). */
-  label_padding: Color;
-  /** Font size (CSS px, stringified) for transient label text. Consumed
-   *  by `paintTransientLabel`. */
-  label_font_size: Color;
-  /** Corner radius (CSS px, stringified) for the transient label pill
-   *  backdrop. Consumed by `paintTransientLabel`. */
-  label_radius: Color;
   /** Stroke color for the cursor crosshair. */
   crosshair: Color;
   /** Crosshair dash pattern. The literal `'solid'` sentinel means "no

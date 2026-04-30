@@ -59,7 +59,6 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(o.snapTarget).toBeNull();
     expect(o.previewShape).toBeNull();
     expect(o.hoverEntity).toBeNull();
-    expect(o.transientLabels).toEqual([]);
     expect(o.grips).toBeNull();
     expect(o.suppressEntityPaint).toBeNull();
     // Existing fields retained.
@@ -104,13 +103,6 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(editorUiStore.getState().overlay.hoverEntity).toBe(id);
     editorUiActions.setHoverEntity(null);
     expect(editorUiStore.getState().overlay.hoverEntity).toBeNull();
-  });
-
-  it('setTransientLabels replaces the labels array', () => {
-    editorUiActions.setTransientLabels([{ anchor: { metric: { x: 1, y: 2 } }, text: '5.000 m' }]);
-    expect(editorUiStore.getState().overlay.transientLabels).toHaveLength(1);
-    editorUiActions.setTransientLabels([]);
-    expect(editorUiStore.getState().overlay.transientLabels).toEqual([]);
   });
 
   it('setGrips stores grip records and clears via null', () => {
@@ -158,7 +150,6 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(o.hoverEntity).toBe(id);
     expect(o.cursor).not.toBeNull();
     expect(o.previewShape).toBeNull();
-    expect(o.transientLabels).toEqual([]);
   });
 });
 

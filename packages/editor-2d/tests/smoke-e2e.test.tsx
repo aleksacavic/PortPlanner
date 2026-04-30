@@ -123,6 +123,8 @@ const SCENARIOS = [
   'click is eaten while DI buffer non-empty (multi-field DI parity)',
   'first-frame DI coherence',
   'line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults (Round 7 Phase 2 buffer persistence)',
+  'select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits (Round 7 backlog B4)',
+  'select-rect click-on-entity: mousedown on a line selects it inline without spawning the tool (Round 7 backlog B4)',
 ] as const;
 
 function makeProject(): Project {
@@ -536,9 +538,16 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     expect(sel).toContain(idA);
     expect(sel).not.toContain(idB);
 
-    // Clear and try R→L drag (crossing). Same metric area but reversed.
+    // Clear and try R→L drag (crossing). Round 7 backlog B4: the
+    // R→L mousedown must land on EMPTY space — `handleSelectRectStart`
+    // now hit-tests at mousedown and selects the entity inline if hit
+    // (single-click select, AC parity), bypassing the rect tool. The
+    // original (5, 5) start was on idB's path (line y=x). Shifted to
+    // (8, 5) which is ~2.12 metric off line B (above hit-test tolerance
+    // of 0.6 metric at zoom=10). The crossing rect (0,0)-(8,5) still
+    // catches A fully + B's near end so the assertion contract holds.
     editorUiActions.setSelection([]);
-    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 250 });
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 480, clientY: 250 });
     await wait(20);
     fireEvent.mouseUp(canvas, { button: 0, clientX: 400, clientY: 300 });
     await wait(20);
@@ -1338,6 +1347,73 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     expect(anglePill?.getAttribute('data-pill-placeholder')).toBe('true');
     expect(distPill?.textContent).toContain('Distance: 5');
     expect(anglePill?.textContent).toContain('Angle: 30');
+  });
+
+  it('select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits (Round 7 backlog B4)', async () => {
+    // AC parity: clicking on empty space then clicking again at a
+    // different empty point commits the rect selection — no need to
+    // hold the mouse down through the drag. mousedown-with-drag still
+    // works (covered by 'window vs crossing selection').
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const idA = newPrimitiveId();
+    addPrimitive({
+      id: idA,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 1, y: 1 },
+      p2: { x: 4, y: 4 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // Click 1 — mousedown + mouseup at (400, 300) = metric (0, 0).
+    // Empty space (line A's nearest endpoint at (1,1) is √2 metric
+    // away, far above the 0.6-metric hit-test tolerance). Tool spawns
+    // and stays alive after the small-displacement mouseup.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBe('select-rect');
+
+    // Click 2 — mousedown at (450, 250) = metric (5, 5). Window rect
+    // (start.x=0 < end.x=5) over (0,0)-(5,5) fully encloses line A.
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 250 });
+    await wait(20);
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    expect(editorUiStore.getState().selection).toContain(idA);
+  });
+
+  it('select-rect click-on-entity: mousedown on a line selects it inline without spawning the tool (Round 7 backlog B4)', async () => {
+    // AC parity: a single click on an entity is a one-shot select —
+    // no rect tool involvement, no second-click required. EditorRoot
+    // hit-tests at mousedown and selects inline; the select-rect tool
+    // is reserved for empty-space starts.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const id = newPrimitiveId();
+    addPrimitive({
+      id,
+      kind: 'line',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      p1: { x: 0, y: 0 },
+      p2: { x: 10, y: 0 },
+    });
+    const canvas = getCanvasOrThrow(container);
+
+    // Mousedown on the line at metric (5, 0) → screen (450, 300).
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 450, clientY: 300 });
+    await wait(20);
+    // Tool MUST NOT spawn — entity selected inline.
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    expect(editorUiStore.getState().selection).toContain(id);
+    fireEvent.mouseUp(canvas, { button: 0, clientX: 450, clientY: 300 });
+    await wait(20);
+    // Mouseup is a no-op (no select-rect tool was alive).
+    expect(editorUiStore.getState().activeToolId).toBeNull();
+    expect(editorUiStore.getState().selection).toContain(id);
   });
 });
 

@@ -70,16 +70,12 @@ export const dark: SemanticTokens = {
       preview_fill: 'rgba(125, 143, 163, 0.05)',
       preview_dash: '6 4',
       preview_stroke_width: '1',
-      // M1.3d-Remediation-2 R6 — small blue rounded pill for in-flight
-      // measurements. blue matches selection_window.stroke / accent.primary
-      // for consistent "selection / accent" visual vocabulary across
-      // overlay surfaces. White text on blue for max contrast on the
-      // dark canvas background. Padding shrunk 4 → 3 for compactness.
-      label_text: '#ffffff',
-      label_bg: 'rgba(42, 127, 255, 0.9)',
-      label_padding: '3',
-      label_font_size: '11',
-      label_radius: '4',
+      // M1.3 Round 7 backlog B3 — paintTransientLabel wiped along with
+      // all five `label_*` tokens it consumed. Length / W×H / radius
+      // readouts now come exclusively from DynamicInputPills (DOM
+      // chrome) on top of overlay.dimensionGuides. Arc's inline
+      // readout is temporarily lost until a future DI manifest lands
+      // for it; tracked outside this round.
       crosshair: 'rgba(180, 200, 255, 0.35)',
       crosshair_dash: 'solid',
       crosshair_stroke_width: '1',

@@ -20,7 +20,6 @@ import { paintPreview } from '../src/canvas/painters/paintPreview';
 import { paintSelection } from '../src/canvas/painters/paintSelection';
 import { paintSelectionRect } from '../src/canvas/painters/paintSelectionRect';
 import { paintSnapGlyph } from '../src/canvas/painters/paintSnapGlyph';
-import { paintTransientLabel } from '../src/canvas/painters/paintTransientLabel';
 import { resolveEffectiveStyle } from '../src/canvas/style';
 import type { Viewport } from '../src/canvas/view-transform';
 
@@ -133,14 +132,6 @@ describe('painter-token-migration — every overlay painter consumes numeric chr
     const { ctx, calls } = makeCtxRecorder();
     paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
     expect(lastLineWidth(calls)).toBeCloseTo(1, 6);
-  });
-
-  it('paintTransientLabel font size = label_font_size × dpr (11 × 1 = "11px ...")', () => {
-    const { ctx, calls } = makeCtxRecorder();
-    paintTransientLabel(ctx, { metric: { x: 0, y: 0 } }, '5.0', viewport, dark);
-    const fontCall = calls.find((c) => c.method === 'set:font');
-    if (!fontCall) throw new Error('no font set call recorded');
-    expect(fontCall.args[0]).toMatch(/^11px /);
   });
 
   it('paintSelection outline lineWidth = selection_outline_width / metricToPx (1.5 / 10 = 0.15)', () => {

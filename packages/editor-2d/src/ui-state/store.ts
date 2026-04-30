@@ -8,7 +8,7 @@
 //
 // M1.3d Phase 1 extends `viewport` (crosshairSizePct lives on Viewport
 // itself in view-transform.ts) and `overlay` (cursor / previewShape /
-// hoverEntity / transientLabels / grips / suppressEntityPaint), adds
+// hoverEntity / grips / suppressEntityPaint), adds
 // per-field setters, and re-exports the local-to-overlay forward types
 // `Grip`, `TransientLabel`, and `SnapTarget` (alias for SnapHit). The
 // `PreviewShape` discriminated union is owned by `../tools/types` to
@@ -50,18 +50,6 @@ export interface Grip {
    *  decide which patch field to update on commit. */
   gripKind: string;
   position: Point2D;
-}
-
-/**
- * Transient label record (length / radius / angle / dimension readouts
- * a tool wants painted near an anchor point). Painted by
- * `paintTransientLabel` (Phase 4). Anchor is metric so the renderer can
- * place the label after applying the current view transform; an
- * optional screen-space offset nudges the label off the anchor.
- */
-export interface TransientLabel {
-  anchor: { metric: Point2D; screenOffset?: { dx: number; dy: number } };
-  text: string;
 }
 
 export type FocusHolder = 'canvas' | 'bar' | 'dialog';
@@ -214,13 +202,6 @@ export interface OverlayState {
    */
   hoverEntity: PrimitiveId | null;
   /**
-   * Tool-yielded transient labels rendered via `paintTransientLabel`
-   * (Phase 4). `paintTransientLabel` is the SOLE source of transient
-   * text on canvas (I-DTP-8, Gate DTP-T2 — other painters never call
-   * `ctx.fillText` / `ctx.strokeText`).
-   */
-  transientLabels: TransientLabel[];
-  /**
    * Click-select grip squares for entities currently in `selection`.
    * `null` when no entity is selected (Phase 5 sets after computing
    * `gripsOf` for each selected primitive). Grips appear ONLY on
@@ -352,7 +333,6 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     selectionHandles: [],
     previewShape: null,
     hoverEntity: null,
-    transientLabels: [],
     grips: null,
     suppressEntityPaint: null,
     hoveredGrip: null,
@@ -483,11 +463,6 @@ export const editorUiActions = {
   setHoverEntity(id: PrimitiveId | null): void {
     editorUiStore.setState((s) => {
       s.overlay.hoverEntity = id;
-    });
-  },
-  setTransientLabels(labels: TransientLabel[]): void {
-    editorUiStore.setState((s) => {
-      s.overlay.transientLabels = labels;
     });
   },
   setGrips(grips: Grip[] | null): void {
