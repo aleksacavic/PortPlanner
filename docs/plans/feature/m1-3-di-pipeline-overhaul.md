@@ -374,7 +374,7 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | Gate | Command | Expected |
 |------|---------|----------|
 | DI-P1-NoLastSubmittedBuffersRef | `rg -n "lastSubmittedBuffers" packages/editor-2d/src packages/editor-2d/tests` | zero matches (everything renamed to `dynamicInputRecall`) |
-| DI-P1-RenamedFieldExists | `rg -n "dynamicInputRecall" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches in `store.ts` (interface field declaration line + initial state line) |
+| DI-P1-RenamedFieldExists | `rg -n "^\s*dynamicInputRecall:" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches in `store.ts` (interface field declaration line + initial state line). [§3.10 patch 2026-05-01: regex tightened from `rg -n "dynamicInputRecall"` after Phase 1 execution discovered the un-anchored regex picks up JSDoc + body reads, producing 8 matches; the slice-shape contract under enforcement is the 2 declarative sites only. `-E` flag dropped — local rg build interprets it as encoding; rg is extended-regex by default.] |
 | DI-P1-LockFieldExists | `rg -n "locked: boolean\[\]" packages/editor-2d/src/ui-state/store.ts` | exactly 1 match (in `dynamicInput` interface) |
 | DI-P1-LockMutatorExists | `rg -n "setDynamicInputFieldLocked\|unlockAllDynamicInputFields" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches (one declaration line per action) |
 | DI-P1-Typecheck | `pnpm typecheck` | exit code 0; zero TypeScript errors |
@@ -756,3 +756,17 @@ References §4.0.1 per-field semantics matrix as the canonical scope statement.
 > Bundling: B6 + B7 + B8 land together because they share the slice contract, manifest pipeline, and recall map. Splitting means three contract migrations. Phase 1 establishes the contract; Phase 2 = B6; Phase 3 = B7; Phase 4 = B8 + retires the Round 7 Phase 2 placeholder design via GR-1 clean-break.
 >
 > Done Criteria references §4.0.1 supported per-field semantics matrix as the canonical scope statement (5 tools × per-field semantics × 4 phases).
+
+---
+
+## Post-execution notes (§3.7)
+
+Live record of mid-execution patches per Procedure 03 §3.7. Entries are append-only.
+
+### 2026-05-01 — Phase 1 §3.10 gate-command tightening
+
+During Phase 1 execution, gate `DI-P1-RenamedFieldExists` (originally `rg -n "dynamicInputRecall" packages/editor-2d/src/ui-state/store.ts` → "exactly 2 matches") produced 8 matches in `store.ts`: the 2 declarative sites the gate intended to assert (interface field declaration + initial state), plus 4 JSDoc references and 2 body reads in `setDynamicInputManifest` / `recordSubmittedBuffers` action bodies. The un-anchored regex picks up every textual occurrence; the gate intent is the 2 declarative sites only.
+
+**Patch applied:** regex tightened to `rg -nE "^\s*dynamicInputRecall:" packages/editor-2d/src/ui-state/store.ts` (matches only object-property colons in declarative position). Expected count "exactly 2" preserved. Gate now passes literally.
+
+User acknowledged via "ok" 2026-05-01 before patch was committed. Other 3 Phase 1 grep gates (`NoLastSubmittedBuffersRef`, `LockFieldExists`, `LockMutatorExists`) passed as originally written.

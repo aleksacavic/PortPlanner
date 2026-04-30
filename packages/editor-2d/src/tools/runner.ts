@@ -150,7 +150,7 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         // R2-A5). When the prompt has no manifest, clear any leftover.
         // Round 7 Phase 2 extends this with a runner-derived promptKey
         // so the slice can seed dim placeholders from
-        // `lastSubmittedBuffers[promptKey]` if a previous submit
+        // `dynamicInputRecall[promptKey]` if a previous submit
         // recorded values under that key (canonical expression per A16).
         if (prompt.dynamicInput) {
           const promptKey = `${toolId}:${prompt.persistKey ?? promptIndex}`;

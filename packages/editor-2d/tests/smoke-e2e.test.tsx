@@ -1318,7 +1318,7 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     fireEvent.keyDown(window, { key: 'Enter' });
     await wait(60);
     // Buffer persistence map should have an entry for draw-line.
-    const persistedAfterCommit = editorUiStore.getState().commandBar.lastSubmittedBuffers;
+    const persistedAfterCommit = editorUiStore.getState().commandBar.dynamicInputRecall;
     const lineKey = Object.keys(persistedAfterCommit).find((k) => k.startsWith('draw-line:'));
     expect(lineKey).toBeDefined();
     expect(persistedAfterCommit[lineKey as string]).toEqual(['5', '30']);

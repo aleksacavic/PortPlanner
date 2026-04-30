@@ -371,13 +371,13 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
     resetEditorUiStoreForTests();
   });
 
-  it('lastSubmittedBuffers defaults to {}', () => {
-    expect(editorUiStore.getState().commandBar.lastSubmittedBuffers).toEqual({});
+  it('dynamicInputRecall defaults to {}', () => {
+    expect(editorUiStore.getState().commandBar.dynamicInputRecall).toEqual({});
   });
 
   it('recordSubmittedBuffers stores the array under the given promptKey', () => {
     editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
-    expect(editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:0']).toEqual([
+    expect(editorUiStore.getState().commandBar.dynamicInputRecall['draw-line:0']).toEqual([
       '5',
       '30',
     ]);
@@ -386,7 +386,7 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
   it('recordSubmittedBuffers replaces an existing entry under the same promptKey', () => {
     editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
     editorUiActions.recordSubmittedBuffers('draw-line:0', ['7', '45']);
-    expect(editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:0']).toEqual([
+    expect(editorUiStore.getState().commandBar.dynamicInputRecall['draw-line:0']).toEqual([
       '7',
       '45',
     ]);
@@ -395,20 +395,20 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
   it('recordSubmittedBuffers preserves entries under other promptKeys', () => {
     editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
     editorUiActions.recordSubmittedBuffers('draw-circle:0', ['7']);
-    const map = editorUiStore.getState().commandBar.lastSubmittedBuffers;
+    const map = editorUiStore.getState().commandBar.dynamicInputRecall;
     expect(map['draw-line:0']).toEqual(['5', '30']);
     expect(map['draw-circle:0']).toEqual(['7']);
   });
 
-  it('reading lastSubmittedBuffers via editorUiStore.getState() returns the stored array (no helper function — A15 lock)', () => {
+  it('reading dynamicInputRecall via editorUiStore.getState() returns the stored array (no helper function — A15 lock)', () => {
     editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
-    const persisted = editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:0'];
+    const persisted = editorUiStore.getState().commandBar.dynamicInputRecall['draw-line:0'];
     expect(persisted).toEqual(['5', '30']);
-    const missing = editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:99'];
+    const missing = editorUiStore.getState().commandBar.dynamicInputRecall['draw-line:99'];
     expect(missing).toBeUndefined();
   });
 
-  it('setDynamicInputManifest seeds placeholders from lastSubmittedBuffers[promptKey] when present', () => {
+  it('setDynamicInputManifest seeds placeholders from dynamicInputRecall[promptKey] when present', () => {
     editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
     editorUiActions.setDynamicInputManifest(
       {
@@ -440,5 +440,62 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
     const di = editorUiStore.getState().commandBar.dynamicInput;
     expect(di?.placeholders).toEqual(['', '']);
     expect(di?.promptKey).toBe('draw-line:0');
+  });
+
+  // M1.3 DI pipeline overhaul Phase 1 — locked field initialization +
+  // setDynamicInputFieldLocked + unlockAllDynamicInputFields mutators.
+
+  it('setDynamicInputManifest initializes locked: [false, false] for a 2-field manifest (I-DI-1)', () => {
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di?.locked).toEqual([false, false]);
+  });
+
+  it('setDynamicInputFieldLocked(0, true) locks field 0; getState reflects', () => {
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setDynamicInputFieldLocked(0, true);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([true, false]);
+  });
+
+  it('unlockAllDynamicInputFields resets every entry to false', () => {
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setDynamicInputFieldLocked(0, true);
+    editorUiActions.setDynamicInputFieldLocked(1, true);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([true, true]);
+    editorUiActions.unlockAllDynamicInputFields();
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+  });
+
+  it('setDynamicInputFieldLocked is a no-op when dynamicInput is null', () => {
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+    editorUiActions.setDynamicInputFieldLocked(0, true);
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
   });
 });

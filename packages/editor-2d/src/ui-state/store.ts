@@ -138,21 +138,38 @@ export interface CommandBarState {
      * Round 7 Phase 2 — buffer-persistence identity for the active
      * prompt. Computed by the runner per A16:
      * `${toolId}:${prompt.persistKey ?? promptIndex}`. Used by the
-     * pill chrome to look up `lastSubmittedBuffers[promptKey]` for
-     * placeholder seeding and by EditorRoot.onSubmitDynamicInput to
-     * record the submitted buffers under this key.
+     * pill chrome to look up `dynamicInputRecall[promptKey]` for
+     * placeholder seeding (Phase 1-3) / ArrowUp recall (Phase 4) and
+     * by EditorRoot.onSubmitDynamicInput to record the submitted
+     * buffers under this key.
      */
     promptKey: string;
     /**
      * Round 7 Phase 2 — dim placeholder values pre-filled from the
-     * `lastSubmittedBuffers` map at manifest publication time. One
+     * `dynamicInputRecall` map at manifest publication time. One
      * entry per manifest field (parallel to `buffers`). Empty string
      * means "no persisted value for this field — render the pill
      * label only". When the active buffer for a field is empty AND
      * `placeholders[idx]` is non-empty, the pill renders the
      * placeholder dim (per `pill_placeholder_opacity` token).
+     *
+     * **M1.3 DI pipeline overhaul Phase 1 note:** This field stays in
+     * the slice for now (Phases 1-3); Phase 4 retires it together with
+     * the dim-placeholder render branch in pill chrome and the
+     * EditorRoot fallback path, replacing the design with the ArrowUp
+     * recall pill. See `docs/plans/feature/m1-3-di-pipeline-overhaul.md`.
      */
     placeholders: string[];
+    /**
+     * **M1.3 DI pipeline overhaul Phase 1** — per-field lock state.
+     * Parallel to `buffers`; `true` when the field's value is frozen
+     * via Tab (set by router when Tab transitions a typed field).
+     * Live-cursor read on the pill is suppressed for locked fields
+     * (Phase 2 chrome behavior). Initialized to
+     * `Array(N).fill(false)` on every manifest publish (sibling to
+     * the `buffers: Array(N).fill('')` reset). Plan invariant I-DI-1.
+     */
+    locked: boolean[];
   } | null;
   /**
    * Round 7 Phase 2 — buffer persistence within tab. Key =
@@ -160,10 +177,14 @@ export interface CommandBarState {
    * plan A16). Value = the per-field buffer array submitted on the
    * most recent successful `onSubmitDynamicInput` for that prompt
    * key. Cleared on page reload (lives only in editorUiStore;
-   * never written to IndexedDB / project-store / API per
-   * I-BPER-1 + REM7-P2-NoPersistenceLeak gate).
+   * never written to IndexedDB / project-store / API per I-DI-13).
+   *
+   * **M1.3 DI pipeline overhaul Phase 1** — slice renamed at this
+   * round to force every consumer to acknowledge the consumption-
+   * pattern change (placeholder pre-fill in Phases 1-3 → ArrowUp
+   * recall pill in Phase 4). Map shape unchanged.
    */
-  lastSubmittedBuffers: Record<string, string[]>;
+  dynamicInputRecall: Record<string, string[]>;
 }
 
 export interface OverlayState {
@@ -322,7 +343,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     lastToolId: null,
     accumulator: '',
     dynamicInput: null,
-    lastSubmittedBuffers: {},
+    dynamicInputRecall: {},
   },
   focusHolder: 'canvas',
   focusStack: [],
@@ -517,13 +538,16 @@ export const editorUiActions = {
    * Round 7 Phase 2 — manifest publication takes the runner-derived
    * `promptKey` (canonical expression per plan A16:
    * `${toolId}:${prompt.persistKey ?? promptIndex}`). The placeholder
-   * array is seeded from `commandBar.lastSubmittedBuffers[promptKey]`
+   * array is seeded from `commandBar.dynamicInputRecall[promptKey]`
    * if a previous submit recorded values under that key; otherwise
    * empty strings. Buffers always start empty (Rev-1 R2-A5).
+   *
+   * **M1.3 DI pipeline overhaul Phase 1** — also initializes `locked`
+   * parallel to `buffers` (`Array(N).fill(false)`). I-DI-1 invariant.
    */
   setDynamicInputManifest(manifest: DynamicInputManifest, promptKey: string): void {
     editorUiStore.setState((s) => {
-      const persisted = s.commandBar.lastSubmittedBuffers[promptKey];
+      const persisted = s.commandBar.dynamicInputRecall[promptKey];
       const placeholders =
         persisted && persisted.length === manifest.fields.length
           ? [...persisted]
@@ -534,6 +558,7 @@ export const editorUiActions = {
         activeFieldIdx: 0,
         promptKey,
         placeholders,
+        locked: Array<boolean>(manifest.fields.length).fill(false),
       };
     });
   },
@@ -542,12 +567,45 @@ export const editorUiActions = {
    * the given key (canonical expression — see plan A16). Replaces any
    * previous entry for the key. Called by EditorRoot.onSubmitDynamicInput
    * BEFORE clearDynamicInput on a successful combiner result. Locks
-   * I-BPER-1: writes only to editorUiStore; never reaches the
+   * I-DI-13: writes only to editorUiStore; never reaches the
    * project-store / IndexedDB / API.
+   *
+   * **M1.3 DI pipeline overhaul Phase 1** — write-target slice renamed
+   * to `dynamicInputRecall` at this round. Action name + signature
+   * unchanged.
    */
   recordSubmittedBuffers(promptKey: string, buffers: string[]): void {
     editorUiStore.setState((s) => {
-      s.commandBar.lastSubmittedBuffers[promptKey] = [...buffers];
+      s.commandBar.dynamicInputRecall[promptKey] = [...buffers];
+    });
+  },
+  /**
+   * **M1.3 DI pipeline overhaul Phase 1** — set `locked[idx]` to the
+   * given value. No-op when `dynamicInput` is null OR `idx` out of
+   * range. Sole writer (apart from `setDynamicInputManifest` which
+   * initializes the array): the keyboard router's Tab handler (Phase 3
+   * lock-on-typed semantic) and `unlockAllDynamicInputFields` (Esc
+   * step 1). Plan invariant I-DI-4.
+   */
+  setDynamicInputFieldLocked(idx: number, locked: boolean): void {
+    editorUiStore.setState((s) => {
+      if (s.commandBar.dynamicInput && idx >= 0 && idx < s.commandBar.dynamicInput.locked.length) {
+        s.commandBar.dynamicInput.locked[idx] = locked;
+      }
+    });
+  },
+  /**
+   * **M1.3 DI pipeline overhaul Phase 1** — reset every entry of
+   * `locked` to `false`. No-op when `dynamicInput` is null. Sole
+   * writer: the keyboard router's Esc handler (Phase 3 two-step
+   * unwind: first press unlocks all; second press aborts). Plan
+   * invariant I-DI-6 (later refined by I-DI-12 in Phase 4).
+   */
+  unlockAllDynamicInputFields(): void {
+    editorUiStore.setState((s) => {
+      if (s.commandBar.dynamicInput) {
+        s.commandBar.dynamicInput.locked = s.commandBar.dynamicInput.locked.map(() => false);
+      }
     });
   },
   setDynamicInputActiveField(idx: number): void {

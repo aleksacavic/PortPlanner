@@ -214,9 +214,11 @@ export function EditorRoot(): ReactElement {
         // boundary. For each empty buffer slot, substitute the
         // persisted placeholder value (if any). This keeps the
         // combiner pure (it still receives a flat string[] and
-        // doesn't know about lastSubmittedBuffers); empty-buffer +
+        // doesn't know about the recall map); empty-buffer +
         // empty-placeholder still produces null per the combiner's
         // existing parse-failure semantics.
+        // (Recall slice is `commandBar.dynamicInputRecall`; placeholder
+        // fallback path retired in Phase 4.)
         const placeholders = cb.dynamicInput?.placeholders ?? [];
         const effectiveBuffers = buffers.map((b, i) => {
           if (b.length > 0) return b;
