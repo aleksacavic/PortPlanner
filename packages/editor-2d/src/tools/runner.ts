@@ -19,7 +19,28 @@
 //     overlay.previewShape, never to projectStore.
 
 import { type EditorUiState, editorUiActions, editorUiStore } from '../ui-state/store';
+import { computeEffectiveCursor } from './dynamic-input-combine';
 import type { DimensionGuide, Input, Prompt, ToolGenerator, ToolResult } from './types';
+
+import type { Point2D } from '@portplanner/domain';
+
+/**
+ * **M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance)** —
+ * resolve the anchor for `computeEffectiveCursor`. Reads from the
+ * runner-published `commandBar.directDistanceFrom`; falls back to the
+ * first dimensionGuide's anchorA / pivot.
+ */
+function resolveEffectiveCursorAnchor(state: EditorUiState): Point2D | null {
+  const dd = state.commandBar.directDistanceFrom;
+  if (dd) return dd;
+  const guides = state.overlay.dimensionGuides;
+  if (guides && guides.length > 0) {
+    const g0 = guides[0];
+    if (g0?.kind === 'linear-dim') return g0.anchorA;
+    if (g0?.kind === 'angle-arc') return g0.pivot;
+  }
+  return null;
+}
 
 // M1.3d-Remediation-3 F6 — modeless / system tools never user-invoked
 // via shortcut. Excluded from `lastToolId` tracking so spacebar's
@@ -84,14 +105,34 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         lastCursorSeen = null;
         return;
       }
+      // Dedup on RAW cursor (existing semantics). Phase 5's effective
+      // cursor is then derived from the deduped raw cursor. Caveat:
+      // if the user types a digit without moving the mouse, the raw
+      // cursor stays the same, dedup blocks, and the rubber-band
+      // doesn't update until the next mousemove. Acceptable trade-off
+      // (verified empirically: dedup-on-effective causes a subscription
+      // cascade in some scenarios).
       const last = lastCursorSeen;
       if (last && last.x === cursor.metric.x && last.y === cursor.metric.y) return;
       lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+      // M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance) —
+      // compute effective cursor honoring DI buffers + anchor, so
+      // rubber-band preview + dim guides + B6 live pill values reflect
+      // locked / typed values during draft. Combiner uses the same
+      // math at commit time; this hoists it to the per-frame draft path.
+      const di = state.commandBar.dynamicInput;
+      let effectiveCursor = cursor.metric;
+      if (di) {
+        const anchor = resolveEffectiveCursorAnchor(state);
+        if (anchor) {
+          effectiveCursor = computeEffectiveCursor(di.manifest, di.buffers, anchor, cursor.metric);
+        }
+      }
       if (previewBuilder) {
-        editorUiActions.setPreviewShape(previewBuilder(cursor.metric));
+        editorUiActions.setPreviewShape(previewBuilder(effectiveCursor));
       }
       if (guidesBuilder) {
-        editorUiActions.setDimensionGuides(guidesBuilder(cursor.metric));
+        editorUiActions.setDimensionGuides(guidesBuilder(effectiveCursor));
       }
     });
   }
@@ -178,12 +219,31 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           if (cursor) {
             inSyncBootstrap = true;
             try {
+              // Phase 5: at sync bootstrap buffers are always empty
+              // (Rev-1 R2-A5 reset on prompt yield), so effective ===
+              // raw — but we route through the helper for symmetry +
+              // future-proofing (any future opt-in to non-empty
+              // initial buffers would be honored automatically).
+              const stateNow = editorUiStore.getState();
+              const di = stateNow.commandBar.dynamicInput;
+              let effectiveCursor = cursor.metric;
+              if (di) {
+                const anchor = resolveEffectiveCursorAnchor(stateNow);
+                if (anchor) {
+                  effectiveCursor = computeEffectiveCursor(
+                    di.manifest,
+                    di.buffers,
+                    anchor,
+                    cursor.metric,
+                  );
+                }
+              }
               if (prompt.previewBuilder) {
-                editorUiActions.setPreviewShape(prompt.previewBuilder(cursor.metric));
-                lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+                editorUiActions.setPreviewShape(prompt.previewBuilder(effectiveCursor));
+                lastCursorSeen = { x: effectiveCursor.x, y: effectiveCursor.y };
               }
               if (prompt.dimensionGuidesBuilder) {
-                const guides: DimensionGuide[] = prompt.dimensionGuidesBuilder(cursor.metric);
+                const guides: DimensionGuide[] = prompt.dimensionGuidesBuilder(effectiveCursor);
                 editorUiActions.setDimensionGuides(guides);
               } else if (!prompt.dynamicInput) {
                 // Manifest absent → no guides expected; clear leftover.

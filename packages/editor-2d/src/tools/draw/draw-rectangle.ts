@@ -50,6 +50,13 @@ export async function* drawRectangleTool(): ToolGenerator {
     // rectangle directly without going through the [Dimensions] sub-
     // option. AC parity for canvas-focus typing.
     acceptedInputKinds: ['point', 'subOption', 'numberPair'],
+    // M1.3 DI pipeline overhaul Phase 5 — corner1 anchors the B7
+    // effective-cursor calculation in the runner subscription so
+    // locked W/H buffers freeze the rubber-band visually relative to
+    // the user's first click. Also feeds the F1 typed-distance entry
+    // path: typing a single number at the bottom command bar (without
+    // a comma) commits a rectangle with diagonal=N along cursor angle.
+    directDistanceFrom: corner1,
     previewBuilder: (cursor) => {
       const shift = editorUiStore.getState().modifiers.shift;
       const effectiveCursor = shift ? squareCorner(corner1, cursor) : cursor;

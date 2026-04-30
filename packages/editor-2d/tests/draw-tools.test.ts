@@ -380,12 +380,13 @@ describe('draw tools yield directDistanceFrom (M1.3d-Rem-3 F1)', () => {
     await gen.return({ committed: false, reason: 'aborted' });
   });
 
-  it('draw-rectangle does NOT yield directDistanceFrom (F3 D-sub-option handles its typed dims)', async () => {
+  it('draw-rectangle YIELDS directDistanceFrom = corner1 (Phase 5 — anchors B7 effective-cursor calc + enables F1 typed-distance entry)', async () => {
     const factory = lookupTool('draw-rectangle')!;
     const gen = factory();
     await gen.next();
-    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
-    expect((second.value as { directDistanceFrom?: unknown }).directDistanceFrom).toBeUndefined();
+    const corner1 = { x: 7, y: 9 };
+    const second = await gen.next({ kind: 'point', point: corner1 });
+    expect((second.value as { directDistanceFrom?: unknown }).directDistanceFrom).toEqual(corner1);
     await gen.return({ committed: false, reason: 'aborted' });
   });
 });

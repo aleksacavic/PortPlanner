@@ -148,6 +148,89 @@ export function combineDynamicInputBuffers(
   }
 }
 
+/**
+ * **M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance)** —
+ * compute the effective cursor point honoring DI buffers, used by the
+ * runner subscription so previewBuilder + dimensionGuidesBuilder
+ * receive a cursor that already reflects locked / typed values. Same
+ * math as `combineDynamicInputBuffers` for 'point' / 'numberPair' arms;
+ * 'number' (circle radius) and 'angle' (xline) get analogous one-axis
+ * fixes. Always returns a Point2D (returns rawCursor on parse failure
+ * or arity mismatch — graceful degradation).
+ */
+export function computeEffectiveCursor(
+  manifest: DynamicInputManifest,
+  buffers: string[],
+  anchor: Point2D,
+  rawCursor: Point2D,
+): Point2D {
+  if (buffers.length !== manifest.fields.length) return rawCursor;
+  switch (manifest.combineAs) {
+    case 'point': {
+      if (buffers.length !== 2) return rawCursor;
+      const distBuf = (buffers[0] ?? '').trim();
+      const angleBuf = (buffers[1] ?? '').trim();
+      let angleRad: number;
+      if (angleBuf.length > 0) {
+        const angleDeg = Number(angleBuf);
+        if (!Number.isFinite(angleDeg)) return rawCursor;
+        angleRad = (angleDeg * Math.PI) / 180;
+      } else {
+        angleRad = Math.atan2(rawCursor.y - anchor.y, rawCursor.x - anchor.x);
+      }
+      let distance: number;
+      if (distBuf.length > 0) {
+        const d = Number(distBuf);
+        if (!Number.isFinite(d)) return rawCursor;
+        distance = d;
+      } else {
+        distance = Math.hypot(rawCursor.x - anchor.x, rawCursor.y - anchor.y);
+      }
+      return {
+        x: anchor.x + Math.cos(angleRad) * distance,
+        y: anchor.y + Math.sin(angleRad) * distance,
+      };
+    }
+    case 'numberPair': {
+      if (buffers.length !== 2) return rawCursor;
+      const wRaw = parseSignedFloat(buffers[0] ?? '');
+      const hRaw = parseSignedFloat(buffers[1] ?? '');
+      const w = resolveSignedComponent(wRaw, rawCursor.x - anchor.x);
+      const h = resolveSignedComponent(hRaw, rawCursor.y - anchor.y);
+      if (w === null || h === null) return rawCursor;
+      return { x: anchor.x + w, y: anchor.y + h };
+    }
+    case 'number': {
+      if (buffers.length !== 1) return rawCursor;
+      const buf = (buffers[0] ?? '').trim();
+      if (buf.length === 0) return rawCursor;
+      const value = Number(buf);
+      if (!Number.isFinite(value)) return rawCursor;
+      const dx = rawCursor.x - anchor.x;
+      const dy = rawCursor.y - anchor.y;
+      const len = Math.hypot(dx, dy);
+      if (len === 0) return { x: anchor.x + value, y: anchor.y };
+      return {
+        x: anchor.x + (dx / len) * value,
+        y: anchor.y + (dy / len) * value,
+      };
+    }
+    case 'angle': {
+      if (buffers.length !== 1) return rawCursor;
+      const buf = (buffers[0] ?? '').trim();
+      if (buf.length === 0) return rawCursor;
+      const angleDeg = Number(buf);
+      if (!Number.isFinite(angleDeg)) return rawCursor;
+      const angleRad = (angleDeg * Math.PI) / 180;
+      const len = Math.hypot(rawCursor.x - anchor.x, rawCursor.y - anchor.y);
+      return {
+        x: anchor.x + Math.cos(angleRad) * len,
+        y: anchor.y + Math.sin(angleRad) * len,
+      };
+    }
+  }
+}
+
 /** Parse a typed buffer into a signed float; returns null when empty
  *  or un-parseable (so caller can fall back to cursor-derived). */
 function parseSignedFloat(buf: string): number | null {
