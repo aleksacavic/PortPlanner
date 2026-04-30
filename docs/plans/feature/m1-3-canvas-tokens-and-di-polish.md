@@ -510,13 +510,13 @@ Total net-new: ~33. Final count target ≥ 432 (baseline 399). `pnpm --filter @p
 
 The user surfaced 8 separate items during manual smoke testing and asked them to be documented in this plan rather than implemented inline. Most are interconnected (snap engine, polar input semantics, DI pill behaviour) and deserve their own plan session per the architecture-first discipline. Captured here as discovered, in user order:
 
-#### B1 — Snap glyph outline-only
+#### B1 — Snap glyph outline-only ✅ DONE (2026-04-30, this session tail)
 
-Currently `paintSnapGlyph.ts` fills + strokes the endpoint (square), midpoint (triangle), and node (circle) glyphs. AC convention is to render these as **outline-only** so they're visually distinct from filled vertex markers. Intersection (`×`) and grid-node / grid-line (`+`) are already line-based — no change needed. Quick fix (2-line change per case in `paintSnapGlyph.ts`: remove the `ctx.fill()` calls). **Could be done in this plan's tail or moved to a follow-up — small enough either way.**
+Was: `paintSnapGlyph.ts` filled + stroked the endpoint (square), midpoint (triangle), and node (circle) glyphs. Now: outline-only (no `ctx.fill()` for those three cases) per AC convention, so the snap glyphs are visually distinct from filled vertex markers. Intersection (`×`) and grid-node / grid-line (`+`) unchanged — already line-based. Existing `paintSnapGlyph.test.ts` 'endpoint'/'midpoint'/'node' assertions updated: now assert `stroke` is called and `fill` is NOT.
 
-#### B2 — Crosshair sizing default flip
+#### B2 — Crosshair sizing default flip ✅ DONE (2026-04-30, this session tail)
 
-Currently F7 toggles `viewport.crosshairSizePct` between 100 (full-canvas) and 5 (pickbox). AC defaults to the **shorter pickbox** style; full-canvas is the toggled-on state. Change initial `crosshairSizePct: 100` → `5` in `editorUiStore` initial state. Also flip the F7 handler so first press → 100, second → 5. **Trivial.** Could be done in this plan's tail.
+Was: `viewport.crosshairSizePct` initial state = 100 (full-canvas). Now: initial state = 5 (short pickbox), AC default. F7 handler logic unchanged (`current >= 50 ? 5 : 100`) — symmetric, so flipping the default automatically reverses the toggle direction without handler changes. Existing `ui-state.test.ts` default-value assertion updated from 100 → 5.
 
 #### B3 — Arc tool DI migration to multi-pill
 

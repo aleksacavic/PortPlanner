@@ -75,15 +75,18 @@ export function paintSnapGlyph(
 
   switch (snapTarget.kind) {
     case 'endpoint': {
+      // Round 7 backlog B1 — outline-only square (AC convention:
+      // snap glyphs are unfilled to distinguish from filled vertex
+      // markers).
       const half = (ENDPOINT_SIDE_CSS / 2) * dpr;
       ctx.beginPath();
       ctx.rect(cx - half, cy - half, half * 2, half * 2);
-      ctx.fill();
       ctx.stroke();
       break;
     }
     case 'midpoint': {
       // Equilateral triangle pointing up, side ≈ MIDPOINT_SIDE_CSS.
+      // Round 7 backlog B1 — outline-only (AC convention).
       const side = MIDPOINT_SIDE_CSS * dpr;
       const half = side / 2;
       const h = (Math.sqrt(3) / 2) * side;
@@ -94,7 +97,6 @@ export function paintSnapGlyph(
       ctx.lineTo(cx - half, baseY);
       ctx.lineTo(cx + half, baseY);
       ctx.closePath();
-      ctx.fill();
       ctx.stroke();
       break;
     }
@@ -109,10 +111,10 @@ export function paintSnapGlyph(
       break;
     }
     case 'node': {
+      // Round 7 backlog B1 — outline-only circle (AC convention).
       const r = NODE_RADIUS_CSS * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
       ctx.stroke();
       break;
     }

@@ -315,7 +315,10 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
     canvasWidthCss: 800,
     canvasHeightCss: 600,
-    crosshairSizePct: 100,
+    // Round 7 backlog B2 — short pickbox is the AC default; full-canvas
+    // (100) is the toggled-on state via F7. Was 100 prior to backlog
+    // sweep (M1.3 Round 7).
+    crosshairSizePct: 5,
   },
   selection: [],
   activeToolId: null,

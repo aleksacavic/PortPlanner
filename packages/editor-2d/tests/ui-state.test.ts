@@ -165,8 +165,8 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
 describe('editorUiStore — viewport.crosshairSizePct (I-DTP-3 / I-DTP-18)', () => {
   afterEach(() => resetEditorUiStoreForTests());
 
-  it('default crosshairSizePct is 100 (full-canvas, AutoCAD default)', () => {
-    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(100);
+  it('default crosshairSizePct is 5 (short pickbox, AC default per Round 7 backlog B2)', () => {
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(5);
   });
 
   it('setCrosshairSizePct stores in-range values verbatim', () => {
