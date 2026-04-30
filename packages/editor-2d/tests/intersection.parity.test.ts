@@ -136,20 +136,23 @@ describe('intersection parity fixtures (Phase 1 refactor preserves osnap.ts:inte
     expect(intersect(a, b)).toEqual([]);
   });
 
-  // F5 is the Phase 1 → Phase 2 transition marker. The line and circle
-  // would intersect at two points under a populated dispatcher, but
-  // Phase 1 registers only `lineLine`, so `intersect(line, circle)`
-  // falls through to the table fallback and returns []. Phase 2 will
-  // flip this assertion to expect [X1, X2] when `lineCircle` is
-  // registered. Locking F5 here forces an explicit, audited transition
-  // — Phase 2's REM8-P2-ParityF5Flipped gate will replace this test.
-  it('F5 — Phase 1 SKIP-marker: line ∩ circle returns [] (lineCircle not yet registered; Phase 2 flips this)', () => {
+  // F5 — flipped at Phase 2 commit per REM8-P2-ParityF5Flipped gate.
+  // Phase 1 asserted [] (lineCircle not yet registered); Phase 2 has
+  // lineCircle registered and a chord-crossing line returns the two
+  // entry/exit points. The flip is the explicit transition marker —
+  // any future regression that loses Phase 2's lineCircle wiring
+  // surfaces here.
+  it('F5 — Phase 2 (lineCircle registered): line crossing a circle as a chord returns the 2 intersection points', () => {
+    // Line from (-5, 0) to (5, 0); circle center (0, 0) radius 3.
+    // Chord crosses the circle at (-3, 0) and (3, 0).
     const line = makeLine({ x: -5, y: 0 }, { x: 5, y: 0 });
     const circle = makeCircle({ x: 0, y: 0 }, 3);
-    // At Phase 1 commit: dispatcher table has only `lineLine`. The
-    // line-circle pair falls through; both forward and swap lookups
-    // miss; returns [].
     const result = intersect(line, circle);
-    expect(result).toEqual([]);
+    expect(result).toHaveLength(2);
+    const sorted = [...result].sort((a, b) => a.x - b.x);
+    expect(sorted[0]?.x).toBeCloseTo(-3, 9);
+    expect(sorted[0]?.y).toBeCloseTo(0, 9);
+    expect(sorted[1]?.x).toBeCloseTo(3, 9);
+    expect(sorted[1]?.y).toBeCloseTo(0, 9);
   });
 });

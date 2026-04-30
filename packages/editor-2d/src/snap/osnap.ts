@@ -18,9 +18,10 @@
 
 import type { Point2D, Primitive } from '@portplanner/domain';
 
+import { gripsOf } from '../canvas/grip-positions';
 import { intersect, selfIntersect } from './intersection';
 
-export type OsnapKind = 'endpoint' | 'midpoint' | 'intersection' | 'node';
+export type OsnapKind = 'endpoint' | 'midpoint' | 'intersection' | 'node' | 'quadrant';
 
 export interface OsnapCandidate {
   kind: OsnapKind;
@@ -31,42 +32,62 @@ function midpoint(a: Point2D, b: Point2D): Point2D {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
 }
 
-/** Endpoints of a primitive (excluding closed polylines, which loop). */
-function endpointsOf(p: Primitive): Point2D[] {
-  switch (p.kind) {
-    case 'point':
-      return [p.position];
+/**
+ * Phase 2 SSOT (I-SNAP-1): map a `gripsOf(primitive)` entry's
+ * `gripKind` string to its OSNAP kind. Returns null for grip kinds
+ * that are not snap targets (e.g. xline `'pivot'`/`'direction'` per
+ * A2). The Rev-3 / Codex Round-1 B2 fix: point primitive's
+ * `'position'` maps to `'endpoint'` (preserves the prior osnap.ts
+ * behaviour where `endpointsOf(point)` returned the position; locked
+ * by REM8-P2-PointKindPreserved + I-SNAP-5).
+ */
+function gripKindToOsnapKind(
+  primitiveKind: Primitive['kind'],
+  gripKind: string,
+  isClosedPolyline: boolean,
+): OsnapKind | null {
+  switch (primitiveKind) {
     case 'line':
-      return [p.p1, p.p2];
-    case 'polyline':
-      if (p.closed) return [];
-      return [p.vertices[0]!, p.vertices[p.vertices.length - 1]!];
-    case 'rectangle': {
-      const cos = Math.cos(p.localAxisAngle);
-      const sin = Math.sin(p.localAxisAngle);
-      return [
-        { x: p.origin.x, y: p.origin.y },
-        { x: p.origin.x + p.width * cos, y: p.origin.y + p.width * sin },
-        {
-          x: p.origin.x + p.width * cos - p.height * sin,
-          y: p.origin.y + p.width * sin + p.height * cos,
-        },
-        { x: p.origin.x - p.height * sin, y: p.origin.y + p.height * cos },
-      ];
+      return gripKind === 'p1' || gripKind === 'p2' ? 'endpoint' : null;
+    case 'rectangle':
+      // 4 corners → endpoint.
+      return gripKind.startsWith('corner-') ? 'endpoint' : null;
+    case 'polyline': {
+      // Open polyline: first / last vertex → endpoint; interior → node.
+      // Closed polyline: every vertex is a node (no endpoints by I-DTP-7
+      // logic in `endpointsOf`).
+      if (!gripKind.startsWith('vertex-')) return null;
+      const idx = Number.parseInt(gripKind.slice('vertex-'.length), 10);
+      if (Number.isNaN(idx)) return null;
+      if (isClosedPolyline) return 'node';
+      // Open: idx === 0 OR idx === N-1 → endpoint; otherwise node.
+      // We don't know N here — caller injects it. Use a sentinel pair
+      // resolved at the call site (see gatherOsnapCandidates below).
+      return null;
     }
-    case 'arc': {
-      const startX = p.center.x + p.radius * Math.cos(p.startAngle);
-      const startY = p.center.y + p.radius * Math.sin(p.startAngle);
-      const endX = p.center.x + p.radius * Math.cos(p.endAngle);
-      const endY = p.center.y + p.radius * Math.sin(p.endAngle);
-      return [
-        { x: startX, y: startY },
-        { x: endX, y: endY },
-      ];
-    }
+    case 'arc':
+      if (gripKind === 'start' || gripKind === 'end') return 'endpoint';
+      if (gripKind === 'mid') return 'midpoint';
+      return null;
     case 'circle':
+      if (gripKind === 'center') return 'node';
+      if (
+        gripKind === 'east' ||
+        gripKind === 'north' ||
+        gripKind === 'west' ||
+        gripKind === 'south'
+      )
+        return 'quadrant';
+      return null;
+    case 'point':
+      // Codex Round-1 B2 fix: point primitive's `'position'` snaps as
+      // `'endpoint'`, NOT `'node'`. Locked by I-SNAP-5 +
+      // REM8-P2-PointKindPreserved.
+      return gripKind === 'position' ? 'endpoint' : null;
     case 'xline':
-      return [];
+      // A2: xline gets no snap glyph — both `'pivot'` and `'direction'`
+      // grip kinds map to null.
+      return null;
   }
 }
 
@@ -85,24 +106,21 @@ function midpointsOf(p: Primitive): Point2D[] {
       return out;
     }
     case 'rectangle': {
-      const corners = endpointsOf(p);
-      return [
-        midpoint(corners[0]!, corners[1]!),
-        midpoint(corners[1]!, corners[2]!),
-        midpoint(corners[2]!, corners[3]!),
-        midpoint(corners[3]!, corners[0]!),
-      ];
+      const cos = Math.cos(p.localAxisAngle);
+      const sin = Math.sin(p.localAxisAngle);
+      const corner = (du: number, dv: number): Point2D => ({
+        x: p.origin.x + du * cos - dv * sin,
+        y: p.origin.y + du * sin + dv * cos,
+      });
+      const sw = corner(0, 0);
+      const se = corner(p.width, 0);
+      const ne = corner(p.width, p.height);
+      const nw = corner(0, p.height);
+      return [midpoint(sw, se), midpoint(se, ne), midpoint(ne, nw), midpoint(nw, sw)];
     }
     default:
       return [];
   }
-}
-
-/** Polyline vertices (node osnap) + standalone point primitives. */
-function nodesOf(p: Primitive): Point2D[] {
-  if (p.kind === 'polyline') return p.vertices.slice();
-  if (p.kind === 'point') return [p.position];
-  return [];
 }
 
 /**
@@ -133,14 +151,45 @@ function intersectionsOf(primitives: Primitive[]): Point2D[] {
   return out;
 }
 
-/** Returns all OSNAP candidates for the given primitive list (M1.3a subset). */
+/**
+ * Returns all OSNAP candidates for the given primitive list.
+ *
+ * Phase 2 (snap-engine-extension): endpoint / node / quadrant
+ * candidates source from `gripsOf(primitive)` per I-SNAP-1 SSOT.
+ * Midpoints are produced separately via `midpointsOf()` (per A4
+ * carveout — line/rect-edge/polyline-segment midpoints are NOT
+ * grips today). Intersections route through the dispatcher via
+ * `intersectionsOf`.
+ */
 export function gatherOsnapCandidates(primitives: Primitive[]): OsnapCandidate[] {
   const out: OsnapCandidate[] = [];
   for (const p of primitives) {
-    for (const pt of endpointsOf(p)) out.push({ kind: 'endpoint', point: pt });
+    // Endpoint / node / quadrant — via gripsOf SSOT.
+    const grips = gripsOf(p);
+    const isClosedPoly = p.kind === 'polyline' && p.closed;
+    const polyN = p.kind === 'polyline' ? p.vertices.length : 0;
+    for (const grip of grips) {
+      // Polyline endpoints (open) need the per-vertex index handled at
+      // the call site since `gripKindToOsnapKind` doesn't know N.
+      if (p.kind === 'polyline' && grip.gripKind.startsWith('vertex-')) {
+        const idx = Number.parseInt(grip.gripKind.slice('vertex-'.length), 10);
+        if (Number.isNaN(idx)) continue;
+        if (isClosedPoly) {
+          out.push({ kind: 'node', point: grip.position });
+        } else if (idx === 0 || idx === polyN - 1) {
+          out.push({ kind: 'endpoint', point: grip.position });
+        } else {
+          out.push({ kind: 'node', point: grip.position });
+        }
+        continue;
+      }
+      const kind = gripKindToOsnapKind(p.kind, grip.gripKind, isClosedPoly);
+      if (kind) out.push({ kind, point: grip.position });
+    }
+    // Midpoints — A4 carveout, separate path.
     for (const pt of midpointsOf(p)) out.push({ kind: 'midpoint', point: pt });
-    for (const pt of nodesOf(p)) out.push({ kind: 'node', point: pt });
   }
+  // Intersections via dispatcher (Phase 1 refactor preserved).
   for (const pt of intersectionsOf(primitives)) {
     out.push({ kind: 'intersection', point: pt });
   }

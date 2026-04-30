@@ -142,6 +142,19 @@ describe('paintSnapGlyph — kind dispatch + screen-space transform (I-DTP-6)', 
     expect(methods).not.toContain('fill');
   });
 
+  it("'quadrant' draws an OUTLINE-ONLY diamond (1 moveTo + 3 lineTo + closePath + stroke; no fill — M1.3 snap-engine-extension Phase 2; Round 7 B1)", () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintSnapGlyph(ctx, { kind: 'quadrant', point: { x: 0, y: 0 } }, viewport, dark);
+    const methods = calls.map((c) => c.method);
+    // Diamond: moveTo (north apex) + 3 × lineTo (east, south, west)
+    // + closePath + stroke. No fill.
+    expect(methods.filter((m) => m === 'moveTo')).toHaveLength(1);
+    expect(methods.filter((m) => m === 'lineTo')).toHaveLength(3);
+    expect(methods).toContain('closePath');
+    expect(methods).toContain('stroke');
+    expect(methods).not.toContain('fill');
+  });
+
   it("'grid-node' and 'grid-line' both draw a + with 2 moveTo + 2 lineTo (grid-line is smaller)", () => {
     const { ctx: ctxN, calls: callsN } = makeCtxRecorder();
     paintSnapGlyph(ctxN, { kind: 'grid-node', point: { x: 0, y: 0 } }, viewport, dark);

@@ -69,6 +69,153 @@ function lineLine(a: Primitive, b: Primitive): Point2D[] {
 }
 
 /**
+ * line ∩ circle — Phase 2.
+ *
+ * Algebra: parametric line `P(t) = p1 + t*(p2 - p1)`; circle
+ * `|P - center|² = r²`. Substitute, expand to a quadratic in `t`:
+ *   At² + Bt + C = 0
+ * where:
+ *   A = dx² + dy²       (with dx = p2.x - p1.x, dy = p2.y - p1.y)
+ *   B = 2 * (dx*(p1.x - cx) + dy*(p1.y - cy))
+ *   C = (p1.x - cx)² + (p1.y - cy)² - r²
+ * Discriminant Δ = B² - 4AC. Δ < 0 → no intersection. Δ = 0 → 1
+ * point (tangent). Δ > 0 → 2 points. Each `t` is segment-clamped
+ * to [0, 1] (so a chord that ends inside the circle returns only
+ * the entry point, not the algebraic exit beyond the segment).
+ */
+function lineCircleAlg(line: Segment, circle: Primitive & { kind: 'circle' }): Point2D[] {
+  const dx = line.p2.x - line.p1.x;
+  const dy = line.p2.y - line.p1.y;
+  const fx = line.p1.x - circle.center.x;
+  const fy = line.p1.y - circle.center.y;
+  const A = dx * dx + dy * dy;
+  if (A < 1e-24) return []; // degenerate zero-length line.
+  const B = 2 * (dx * fx + dy * fy);
+  const C = fx * fx + fy * fy - circle.radius * circle.radius;
+  const disc = B * B - 4 * A * C;
+  if (disc < 0) return [];
+  const sqrtDisc = Math.sqrt(disc);
+  const out: Point2D[] = [];
+  for (const t of [(-B - sqrtDisc) / (2 * A), (-B + sqrtDisc) / (2 * A)]) {
+    if (t < 0 || t > 1) continue;
+    out.push({ x: line.p1.x + t * dx, y: line.p1.y + t * dy });
+  }
+  // Tangent case: disc === 0 produces two equal roots — dedupe so the
+  // tangent point isn't returned twice.
+  if (
+    out.length === 2 &&
+    Math.abs(out[0]!.x - out[1]!.x) < 1e-12 &&
+    Math.abs(out[0]!.y - out[1]!.y) < 1e-12
+  ) {
+    return [out[0]!];
+  }
+  return out;
+}
+
+function lineCircle(a: Primitive, b: Primitive): Point2D[] {
+  if (a.kind !== 'line' || b.kind !== 'circle') return [];
+  return lineCircleAlg({ p1: a.p1, p2: a.p2 }, b);
+}
+
+/**
+ * circle ∩ circle — Phase 2.
+ *
+ * Standard two-circle solution: let d = |c2 - c1| be the centre
+ * distance. Cases:
+ *   d > r1 + r2 → disjoint, no intersection.
+ *   d < |r1 - r2| → one circle inside the other, no intersection.
+ *   d = 0 AND r1 = r2 → coincident, infinite intersections — return [].
+ *   d = r1 + r2 OR d = |r1 - r2| → tangent, 1 intersection.
+ *   otherwise → 2 intersections.
+ *
+ * For the 2-intersection case: midpoint along the line of centres
+ * is at distance `a = (d² + r1² - r2²) / (2d)` from c1; perpendicular
+ * offset is `h = sqrt(r1² - a²)`.
+ */
+function circleCircle(a: Primitive, b: Primitive): Point2D[] {
+  if (a.kind !== 'circle' || b.kind !== 'circle') return [];
+  const dx = b.center.x - a.center.x;
+  const dy = b.center.y - a.center.y;
+  const d = Math.hypot(dx, dy);
+  const r1 = a.radius;
+  const r2 = b.radius;
+  if (d > r1 + r2 + 1e-12) return []; // disjoint.
+  if (d < Math.abs(r1 - r2) - 1e-12) return []; // one inside other.
+  if (d < 1e-12) return []; // coincident centres — infinite intersections; return none.
+  const aOffset = (d * d + r1 * r1 - r2 * r2) / (2 * d);
+  const h2 = r1 * r1 - aOffset * aOffset;
+  const h = h2 > 0 ? Math.sqrt(h2) : 0;
+  const px = a.center.x + (dx * aOffset) / d;
+  const py = a.center.y + (dy * aOffset) / d;
+  // Tangent case: h = 0.
+  if (h < 1e-12) return [{ x: px, y: py }];
+  return [
+    { x: px + (dy * h) / d, y: py - (dx * h) / d },
+    { x: px - (dy * h) / d, y: py + (dx * h) / d },
+  ];
+}
+
+/**
+ * Filter a list of points to those that lie within an arc's angular
+ * sweep. The arc is defined by (center, radius, startAngle, endAngle).
+ * We check whether each point's angle from `center` falls within the
+ * sweep [startAngle, endAngle] modulo 2π.
+ *
+ * Convention: startAngle and endAngle in radians; sweep is from start
+ * to end going CCW (the canonical Y-up math convention; the canvas
+ * Y-flip is handled by the renderer, not here).
+ */
+function pointsOnArcSweep(points: Point2D[], arc: Primitive & { kind: 'arc' }): Point2D[] {
+  const { center, startAngle, endAngle } = arc;
+  // Normalise sweep to [0, 2π). If endAngle < startAngle (wrapping
+  // backwards), shift by 2π so the inclusive range works modulo.
+  let sweepEnd = endAngle;
+  while (sweepEnd < startAngle) sweepEnd += Math.PI * 2;
+  return points.filter((pt) => {
+    let theta = Math.atan2(pt.y - center.y, pt.x - center.x);
+    while (theta < startAngle) theta += Math.PI * 2;
+    return theta <= sweepEnd + 1e-12;
+  });
+}
+
+/**
+ * Treat an arc as a partial circle for intersection algebra. Returns
+ * a synthetic `CirclePrimitive`-shaped object reusing the arc's center
+ * and radius. Used internally by lineArc / circleArc / arcArc.
+ */
+function arcAsCircle(arc: Primitive & { kind: 'arc' }): Primitive & { kind: 'circle' } {
+  return {
+    id: arc.id,
+    kind: 'circle',
+    layerId: arc.layerId,
+    displayOverrides: arc.displayOverrides,
+    center: arc.center,
+    radius: arc.radius,
+  };
+}
+
+/** line ∩ arc — Phase 2. lineCircle filtered by arc sweep. */
+function lineArc(a: Primitive, b: Primitive): Point2D[] {
+  if (a.kind !== 'line' || b.kind !== 'arc') return [];
+  const candidates = lineCircleAlg({ p1: a.p1, p2: a.p2 }, arcAsCircle(b));
+  return pointsOnArcSweep(candidates, b);
+}
+
+/** circle ∩ arc — Phase 2. circleCircle filtered by arc sweep. */
+function circleArc(a: Primitive, b: Primitive): Point2D[] {
+  if (a.kind !== 'circle' || b.kind !== 'arc') return [];
+  const candidates = circleCircle(a, arcAsCircle(b));
+  return pointsOnArcSweep(candidates, b);
+}
+
+/** arc ∩ arc — Phase 2. circleCircle filtered by both arcs' sweeps. */
+function arcArc(a: Primitive, b: Primitive): Point2D[] {
+  if (a.kind !== 'arc' || b.kind !== 'arc') return [];
+  const candidates = circleCircle(arcAsCircle(a), arcAsCircle(b));
+  return pointsOnArcSweep(pointsOnArcSweep(candidates, a), b);
+}
+
+/**
  * Per-pair dispatcher table. Phase 1 registers `lineLine` only;
  * Phase 2 will populate circle / arc entries. Lookup is
  * `TABLE[a.kind]?.[b.kind]`. Swap-symmetry handled at the dispatcher
@@ -78,6 +225,15 @@ function lineLine(a: Primitive, b: Primitive): Point2D[] {
 const TABLE: Partial<Record<Kind, Partial<Record<Kind, IntersectAlgo>>>> = {
   line: {
     line: lineLine,
+    circle: lineCircle,
+    arc: lineArc,
+  },
+  circle: {
+    circle: circleCircle,
+    arc: circleArc,
+  },
+  arc: {
+    arc: arcArc,
   },
 };
 
@@ -195,9 +351,24 @@ export function intersect(a: Primitive, b: Primitive): Point2D[] {
       // Each rect/poly segment vs the line.
       return segmentsCross(aSegs, [{ p1: b.p1, p2: b.p2 }]);
     }
-    // a-composite vs other atomic (circle / arc / point / xline).
-    // Phase 1: only line is registered. Future phases register circle
-    // / arc and the per-segment dispatch lands here naturally.
+    if (b.kind === 'circle') {
+      // Each rect/poly segment vs the circle (lineCircleAlg per segment).
+      const out: Point2D[] = [];
+      for (const seg of aSegs) out.push(...lineCircleAlg(seg, b));
+      return out;
+    }
+    if (b.kind === 'arc') {
+      // Each rect/poly segment vs the arc (lineCircleAlg + sweep filter
+      // per segment).
+      const out: Point2D[] = [];
+      const arcAsCirc = arcAsCircle(b);
+      for (const seg of aSegs) {
+        const segHits = lineCircleAlg(seg, arcAsCirc);
+        out.push(...pointsOnArcSweep(segHits, b));
+      }
+      return out;
+    }
+    // a-composite vs point / xline → no intersection (per A2 + A3).
     return [];
   }
   // Symmetric: b-composite vs a-atomic. Swap and recurse.

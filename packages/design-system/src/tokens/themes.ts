@@ -181,6 +181,11 @@ export interface TransientTokens {
     /** Half-arm length for the small + shape used by grid-line snaps
      *  (degraded fallback per `paintSnapGlyph` header note). */
     grid_line_half: Color;
+    /** Side length (CSS px, stringified) of the diamond glyph used
+     *  for circle quadrant snaps (M1.3 snap-engine-extension Phase 2).
+     *  Diamond = unit square rotated 45°; rendered outline-only per
+     *  Round-7 backlog B1. */
+    quadrant_side: Color;
     /** Stroke width applied to every snap-glyph shape. */
     stroke_width: Color;
   };
