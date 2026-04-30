@@ -39,6 +39,35 @@ const FALLBACK_PILL_OFFSET_Y_PX = 28;
 // Inline-mode (offsetCssPx === 0) pills sit on the segment midpoint with
 // no perpendicular offset.
 
+/**
+ * **M1.3 DI pipeline overhaul Phase 2 (B6) — live cursor read.**
+ *
+ * Compute the displayed value for an empty + unlocked pill from its
+ * matching dimension guide. This is the live cursor-derived value the
+ * user sees update per cursor frame: linear-dim → distance (length of
+ * anchorB - anchorA), angle-arc → degrees (sweepAngleRad converted).
+ *
+ * Per plan A6, no unit suffix appended (recall pill in Phase 4 also
+ * suppresses units). Per plan A15, distance uses 3 decimals; angle
+ * uses 2 decimals.
+ *
+ * Single argument (per plan Phase 2 step 1): the guide carries
+ * everything needed (kind + numeric inputs). The field-kind → format
+ * mapping is bijective with `guide.kind` for the 5-tool matrix.
+ */
+function deriveLivePillValue(guide: DimensionGuide): string {
+  switch (guide.kind) {
+    case 'linear-dim': {
+      const len = Math.hypot(guide.anchorB.x - guide.anchorA.x, guide.anchorB.y - guide.anchorA.y);
+      return len.toFixed(3);
+    }
+    case 'angle-arc': {
+      const deg = (guide.sweepAngleRad * 180) / Math.PI;
+      return deg.toFixed(2);
+    }
+  }
+}
+
 export function DynamicInputPills(): ReactElement | null {
   const cursor = useEditorUi((s) => s.overlay.cursor);
   const inputBuffer = useEditorUi((s) => s.commandBar.inputBuffer);
@@ -69,28 +98,41 @@ export function DynamicInputPills(): ReactElement | null {
           const screen = derivePillScreenAnchor(guide, viewport);
           const focused = idx === dynamicInput.activeFieldIdx;
           const buffer = dynamicInput.buffers[idx] ?? '';
-          // Round 7 Phase 2 — dim placeholder. When the active buffer
-          // for this field is empty AND a previously-submitted value
-          // was recorded under the current promptKey, render the
-          // persisted value with reduced opacity. Typing replaces; if
-          // the user hits Enter without typing, the placeholder is
-          // used as the effective buffer (fallback applied at the
-          // EditorRoot.onSubmitDynamicInput boundary).
-          const placeholder = dynamicInput.placeholders[idx] ?? '';
-          const showPlaceholder = buffer.length === 0 && placeholder.length > 0;
+          const isLocked = dynamicInput.locked[idx] ?? false;
+          // M1.3 DI pipeline overhaul Phase 2 (B6) — live-value render.
+          // Render-path priority: typed buffer → typed display (abs)
+          // > locked + empty → blank (degenerate state)
+          // > unlocked + empty → live cursor read from guide.
+          // Phase 4 retires the placeholder slice field; Phase 2 stops
+          // reading it here so the placeholder mechanic is unreachable.
+          let valueText: string;
+          if (buffer.length > 0) {
+            // Plan A1: pill displays absolute value of typed buffer
+            // (typed `-5` → `5`; sign retained in buffer for combiner).
+            valueText = buffer.startsWith('-') ? buffer.slice(1) : buffer;
+          } else if (isLocked) {
+            // Empty + locked: degenerate edge case (Backspace-on-locked
+            // or programmatic setDynamicInputFieldLocked on empty). Pill
+            // renders empty value (label only); user can re-type and
+            // lock stays on. Plan §13 risk row + I-DI-2.
+            valueText = '';
+          } else {
+            // Empty + unlocked: live cursor read from the matching
+            // dimension guide (B6). Updates per cursor frame because
+            // dimensionGuides is rewritten by the runner subscription.
+            valueText = deriveLivePillValue(guide);
+          }
           const labelPrefix = field.label ? `${field.label}: ` : '';
-          const valueText = showPlaceholder ? placeholder : buffer;
           const text = `${labelPrefix}${valueText}`;
           const focusClass = focused ? styles.pillFocused : styles.pillDimmed;
-          const placeholderClass = showPlaceholder ? styles.pillPlaceholder : '';
           return (
             <div
               key={`di-pill-${idx}`}
-              className={`${styles.pill} ${styles.pillCentered} ${focusClass} ${placeholderClass}`}
+              className={`${styles.pill} ${styles.pillCentered} ${focusClass}`}
               data-component="dynamic-input-pill"
               data-pill-index={idx}
               data-pill-focused={focused ? 'true' : 'false'}
-              data-pill-placeholder={showPlaceholder ? 'true' : 'false'}
+              data-pill-locked={isLocked ? 'true' : 'false'}
               style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
             >
               {text}

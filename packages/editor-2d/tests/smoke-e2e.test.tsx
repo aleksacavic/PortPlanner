@@ -122,7 +122,10 @@ const SCENARIOS = [
   'circle DI: single-field [Radius] manifest + per-field digit routing (Round-2)',
   'click is eaten while DI buffer non-empty (multi-field DI parity)',
   'first-frame DI coherence',
-  'line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults (Round 7 Phase 2 buffer persistence)',
+  // M1.3 DI pipeline overhaul Phase 2 — Round 7 Phase 2 placeholder
+  // smoke scenario removed per §3.10 patch 2026-05-01 (Phase 2's
+  // live-cursor render path makes the placeholder assertions invalid;
+  // Phase 4 will add a new ArrowUp recall pill scenario).
   'select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits (Round 7 backlog B4)',
   'select-rect click-on-entity: mousedown on a line selects it inline without spawning the tool (Round 7 backlog B4)',
 ] as const;
@@ -1293,61 +1296,15 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     }
   });
 
-  it('line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults (Round 7 Phase 2 buffer persistence)', async () => {
-    // Round 7 Phase 2 — buffer persistence within tab. After a successful
-    // line submit with Distance=5, Angle=30, re-invoking the line tool
-    // should pre-fill the dim placeholders (per pill_placeholder_opacity
-    // + data-pill-placeholder='true'). Locks I-BPER-1 + I-BPER-4 +
-    // REM7-P2-SmokeRoundtrip.
-    const { container } = render(<EditorRoot />);
-    createNewProject(makeProject());
-    const canvas = getCanvasOrThrow(container);
-
-    // First invocation — type 5 / 30 / Enter to commit.
-    fireEvent.keyDown(window, { key: 'L' });
-    fireEvent.keyDown(window, { key: 'Enter' });
-    await wait(20);
-    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
-    await wait(20);
-    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
-    await wait(40);
-    fireEvent.keyDown(window, { key: '5' });
-    fireEvent.keyDown(window, { key: 'Tab' });
-    fireEvent.keyDown(window, { key: '3' });
-    fireEvent.keyDown(window, { key: '0' });
-    fireEvent.keyDown(window, { key: 'Enter' });
-    await wait(60);
-    // Buffer persistence map should have an entry for draw-line.
-    const persistedAfterCommit = editorUiStore.getState().commandBar.dynamicInputRecall;
-    const lineKey = Object.keys(persistedAfterCommit).find((k) => k.startsWith('draw-line:'));
-    expect(lineKey).toBeDefined();
-    expect(persistedAfterCommit[lineKey as string]).toEqual(['5', '30']);
-
-    // Re-invoke L — manifest publication should seed placeholders from
-    // the persisted entry under the same key.
-    fireEvent.keyDown(window, { key: 'L' });
-    fireEvent.keyDown(window, { key: 'Enter' });
-    await wait(20);
-    fireEvent.mouseDown(canvas, { button: 0, clientX: 200, clientY: 200 });
-    await wait(20);
-    fireEvent.mouseMove(canvas, { clientX: 260, clientY: 240 });
-    await wait(40);
-
-    const di = editorUiStore.getState().commandBar.dynamicInput;
-    expect(di).not.toBeNull();
-    expect(di?.placeholders).toEqual(['5', '30']);
-    expect(di?.buffers).toEqual(['', '']);
-
-    // Pill chrome reflects the placeholder state via data attribute.
-    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
-    expect(pills.length).toBeGreaterThanOrEqual(2);
-    const distPill = Array.from(pills).find((p) => /^Distance:/.test(p.textContent ?? ''));
-    const anglePill = Array.from(pills).find((p) => /^Angle:/.test(p.textContent ?? ''));
-    expect(distPill?.getAttribute('data-pill-placeholder')).toBe('true');
-    expect(anglePill?.getAttribute('data-pill-placeholder')).toBe('true');
-    expect(distPill?.textContent).toContain('Distance: 5');
-    expect(anglePill?.textContent).toContain('Angle: 30');
-  });
+  // M1.3 DI pipeline overhaul Phase 2: the previous smoke scenario
+  // ('line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim
+  // placeholder defaults') asserted the Round 7 Phase 2 dim-placeholder
+  // mechanic. Phase 2's live-cursor render path retires the placeholder
+  // attribute + display; Phase 4 will add a new scenario asserting the
+  // ArrowUp recall pill flow. Scenario removed here per §3.10 patch
+  // 2026-05-01 (sequencing fix — placeholder-test deletion moved from
+  // Phase 4 to Phase 2 because Phase 2's render change makes the
+  // assertions invalid immediately).
 
   it('select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits (Round 7 backlog B4)', async () => {
     // AC parity: clicking on empty space then clicking again at a

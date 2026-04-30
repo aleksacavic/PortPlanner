@@ -139,91 +139,128 @@ describe('DynamicInputPills — multi-pill chrome', () => {
   });
 });
 
-// Round 7 Phase 2 — dim-placeholder pill rendering. When the active
-// buffer for a field is empty AND a previously-submitted value is
-// available under the current promptKey, the pill renders the
-// placeholder text dim. Locks REM7-P2-Placeholder.
-describe('Round 7 Phase 2 — dim placeholder rendering (REM7-P2-Placeholder)', () => {
-  function seedTwoFieldGuides(): void {
+// M1.3 DI pipeline overhaul Phase 2 (B6) — live cursor pill values.
+// When a field's buffer is empty AND the field is not locked, the pill
+// renders a value derived from the matching dimension guide:
+//   linear-dim → distance (length of anchorB - anchorA, 3 decimals)
+//   angle-arc  → degrees (sweepAngleRad converted, 2 decimals)
+// Once the user types, the typed buffer (abs value per A1) replaces
+// the live read. Locked + empty stays blank (degenerate edge case).
+// Locks invariant I-DI-2.
+describe('M1.3 DI pipeline overhaul Phase 2 — live cursor pill values (B6)', () => {
+  function seedTwoFieldGuides(distance: number, sweepRad: number): void {
     editorUiActions.setCursor({ metric: { x: 0, y: 0 }, screen: { x: 100, y: 200 } });
     editorUiActions.setDimensionGuides([
       {
         kind: 'linear-dim',
         anchorA: { x: 0, y: 0 },
-        anchorB: { x: 5, y: 0 },
+        anchorB: { x: distance, y: 0 },
         offsetCssPx: 40,
       },
       {
         kind: 'angle-arc',
         pivot: { x: 0, y: 0 },
         baseAngleRad: 0,
-        sweepAngleRad: 0.5,
+        sweepAngleRad: sweepRad,
         radiusMetric: 5,
       },
     ]);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
   }
 
-  it('renders dim placeholder when buffer empty AND placeholder non-empty (data-pill-placeholder="true")', () => {
-    seedTwoFieldGuides();
-    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
-    editorUiActions.setDynamicInputManifest(
+  it('pill shows live distance from linear-dim guide when buffer empty + unlocked (3 decimals)', () => {
+    // anchorB = (3, 4) → hypot = 5 → "5.000".
+    seedTwoFieldGuides(3, 0);
+    editorUiActions.setDimensionGuides([
       {
-        fields: [
-          { kind: 'distance', label: 'D' },
-          { kind: 'angle', label: 'A' },
-        ],
-        combineAs: 'point',
+        kind: 'linear-dim',
+        anchorA: { x: 0, y: 0 },
+        anchorB: { x: 3, y: 4 },
+        offsetCssPx: 40,
       },
-      'draw-line:0',
-    );
+      {
+        kind: 'angle-arc',
+        pivot: { x: 0, y: 0 },
+        baseAngleRad: 0,
+        sweepAngleRad: 0,
+        radiusMetric: 5,
+      },
+    ]);
     const { container } = render(<DynamicInputPills />);
     const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
-    expect(pills).toHaveLength(2);
-    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBe('true');
-    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBe('true');
-    expect(pills[0]?.textContent).toContain('D: 5');
-    expect(pills[1]?.textContent).toContain('A: 30');
+    expect(pills[0]?.textContent).toBe('D: 5.000');
   });
 
-  it('typing replaces the placeholder (data-pill-placeholder="false" once buffer non-empty)', () => {
-    seedTwoFieldGuides();
-    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
-    editorUiActions.setDynamicInputManifest(
-      {
-        fields: [
-          { kind: 'distance', label: 'D' },
-          { kind: 'angle', label: 'A' },
-        ],
-        combineAs: 'point',
-      },
-      'draw-line:0',
-    );
-    editorUiActions.setDynamicInputFieldBuffer(0, '7');
+  it('pill shows live angle in degrees from angle-arc guide when buffer empty + unlocked (2 decimals)', () => {
+    // sweepAngleRad = π/4 → 45 degrees → "45.00".
+    seedTwoFieldGuides(5, Math.PI / 4);
     const { container } = render(<DynamicInputPills />);
     const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
-    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBe('false');
-    expect(pills[0]?.textContent).toContain('D: 7');
-    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBe('true');
-    expect(pills[1]?.textContent).toContain('A: 30');
+    expect(pills[1]?.textContent).toBe('A: 45.00');
   });
 
-  it('no placeholder rendered when no persisted value under the promptKey', () => {
-    seedTwoFieldGuides();
-    editorUiActions.setDynamicInputManifest(
-      {
-        fields: [
-          { kind: 'distance', label: 'D' },
-          { kind: 'angle', label: 'A' },
-        ],
-        combineAs: 'point',
-      },
-      'draw-line:0',
-    );
+  it('pill shows typed buffer (abs value per A1) overriding live cursor read', () => {
+    seedTwoFieldGuides(5, Math.PI / 4);
+    editorUiActions.setDynamicInputFieldBuffer(0, '-7');
     const { container } = render(<DynamicInputPills />);
     const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
-    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBe('false');
-    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBe('false');
+    // Pill displays absolute value; minus stripped from rendered text
+    // (buffer retains '-7' for combiner sign per A1).
+    expect(pills[0]?.textContent).toBe('D: 7');
+  });
+
+  it('pill empty + locked renders label only (degenerate edge case — Backspace-on-locked)', () => {
+    seedTwoFieldGuides(5, Math.PI / 4);
+    editorUiActions.setDynamicInputFieldLocked(0, true);
+    // Buffer empty + locked = degenerate; pill shows label only.
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
     expect(pills[0]?.textContent).toBe('D: ');
-    expect(pills[1]?.textContent).toBe('A: ');
+    expect(pills[0]?.getAttribute('data-pill-locked')).toBe('true');
+  });
+
+  it('pill non-empty buffer + locked renders typed value (abs) — locked freezes display', () => {
+    seedTwoFieldGuides(5, Math.PI / 4);
+    editorUiActions.setDynamicInputFieldBuffer(1, '30');
+    editorUiActions.setDynamicInputFieldLocked(1, true);
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    // Pill 1 shows typed "30" (NOT live cursor 45.00) because buffer
+    // takes precedence; locked just freezes display semantics.
+    expect(pills[1]?.textContent).toBe('A: 30');
+    expect(pills[1]?.getAttribute('data-pill-locked')).toBe('true');
+  });
+
+  it('data-pill-placeholder attribute is no longer rendered (Phase 2 retires the placeholder render path)', () => {
+    seedTwoFieldGuides(5, 0);
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['9', '99']);
+    // Re-publish manifest now that recall is set so placeholders array
+    // gets seeded (Phase 1-3 still seeds the slice; Phase 4 drops it).
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBeNull();
+    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBeNull();
+    // Pill text is the live cursor read, NOT the placeholder values
+    // (the placeholder slice still exists but is no longer rendered).
+    expect(pills[0]?.textContent).toBe('D: 5.000');
   });
 });
