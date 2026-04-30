@@ -98,15 +98,21 @@ export async function* drawRectangleTool(): ToolGenerator {
   // "30,40" + Enter at the bottom command line OR via the Dynamic
   // Input pill at canvas focus; EditorRoot.handleCommandSubmit parses
   // and feeds {kind:'numberPair', a, b}. AC parity for muscle-memory.
+  //
+  // M1.3 DI pipeline overhaul Phase 3 (B7) — signed-numberPair commit:
+  // drop Math.abs() and re-derive origin = min-corner so the rectangle
+  // extends in any quadrant relative to corner1. Width/height stay
+  // positive in the primitive (Math.abs at the addPrimitive site).
   if (c1.kind === 'subOption' && c1.optionLabel === 'Dimensions') {
     const dims = yield {
       text: 'Specify dimensions <width,height>',
       acceptedInputKinds: ['numberPair'],
     };
     if (dims.kind !== 'numberPair') return { committed: false, reason: 'aborted' };
-    const width = Math.abs(dims.a);
-    const height = Math.abs(dims.b);
-    if (width === 0 || height === 0) return { committed: false, reason: 'aborted' };
+    if (dims.a === 0 || dims.b === 0) return { committed: false, reason: 'aborted' };
+    const otherCorner: Point2D = { x: corner1.x + dims.a, y: corner1.y + dims.b };
+    const minX = Math.min(corner1.x, otherCorner.x);
+    const minY = Math.min(corner1.y, otherCorner.y);
 
     const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;
     addPrimitive({
@@ -114,9 +120,9 @@ export async function* drawRectangleTool(): ToolGenerator {
       kind: 'rectangle',
       layerId,
       displayOverrides: {},
-      origin: corner1,
-      width,
-      height,
+      origin: { x: minX, y: minY },
+      width: Math.abs(dims.a),
+      height: Math.abs(dims.b),
       localAxisAngle: 0,
     });
     return { committed: true, description: 'rectangle (typed dimensions)' };
@@ -125,19 +131,24 @@ export async function* drawRectangleTool(): ToolGenerator {
   // M1.3 Round 6 — primary-prompt numberPair (typed W,H via DI pill
   // + Enter). Same width/height application as the F3 sub-flow but
   // committed without the Dimensions sub-option round-trip.
+  //
+  // M1.3 DI pipeline overhaul Phase 3 (B7) — signed-numberPair commit:
+  // combiner produces signed a/b reflecting cursor's quadrant + typed
+  // sign per §4.0.2. Origin = min-corner; width/height = abs.
   if (c1.kind === 'numberPair') {
-    const width = Math.abs(c1.a);
-    const height = Math.abs(c1.b);
-    if (width === 0 || height === 0) return { committed: false, reason: 'aborted' };
+    if (c1.a === 0 || c1.b === 0) return { committed: false, reason: 'aborted' };
+    const otherCorner: Point2D = { x: corner1.x + c1.a, y: corner1.y + c1.b };
+    const minX = Math.min(corner1.x, otherCorner.x);
+    const minY = Math.min(corner1.y, otherCorner.y);
     const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;
     addPrimitive({
       id: newPrimitiveId(),
       kind: 'rectangle',
       layerId,
       displayOverrides: {},
-      origin: corner1,
-      width,
-      height,
+      origin: { x: minX, y: minY },
+      width: Math.abs(c1.a),
+      height: Math.abs(c1.b),
       localAxisAngle: 0,
     });
     return { committed: true, description: 'rectangle (DI W,H)' };

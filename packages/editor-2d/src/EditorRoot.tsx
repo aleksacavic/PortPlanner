@@ -197,7 +197,8 @@ export function EditorRoot(): ReactElement {
       // segment. Plan §7 Phase 1 step 11 + §10 audit C2.5.
       onSubmitDynamicInput: (manifest, buffers) => {
         const cb = editorUiStore.getState().commandBar;
-        const guides = editorUiStore.getState().overlay.dimensionGuides;
+        const overlay = editorUiStore.getState().overlay;
+        const guides = overlay.dimensionGuides;
         // Resolve anchor: linear-dim guide carries anchorA (line p1);
         // angle-arc guide carries pivot. Fall back to
         // commandBar.directDistanceFrom (set by the runner from
@@ -224,10 +225,18 @@ export function EditorRoot(): ReactElement {
           if (b.length > 0) return b;
           return placeholders[i] ?? '';
         });
+        // M1.3 DI pipeline overhaul Phase 3 (B7) — thread cursor for
+        // cursor-aware combining. `lastKnownCursor` survives the user
+        // moving onto the command bar (where overlay.cursor is null);
+        // it's never cleared once set. Combiner uses it for unlocked
+        // angle/distance in 'point' arm and W/H quadrant in
+        // 'numberPair' arm. 'number' / 'angle' arms ignore cursor.
+        const cursor = overlay.lastKnownCursor;
         const input = combineDynamicInputBuffers(
           manifest,
           effectiveBuffers,
           anchor ?? { x: 0, y: 0 },
+          cursor,
         );
         if (input === null) {
           // Empty / un-parseable buffers — ignore submit (buffers stay

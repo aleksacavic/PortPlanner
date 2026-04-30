@@ -526,8 +526,8 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | Gate | Command | Expected |
 |------|---------|----------|
 | DI-P3-CombinerSignature | `rg -n "cursor: Point2D \| null" packages/editor-2d/src/tools/dynamic-input-combine.ts` | 1 match (signature) |
-| DI-P3-CombinerNoLockedParam | `rg -n "locked" packages/editor-2d/src/tools/dynamic-input-combine.ts` | zero matches (combiner has no `locked` parameter per A19) |
-| DI-P3-RectAbsRemoved | `rg -n "Math\.abs\(c1\.a\)\|Math\.abs\(c1\.b\)" packages/editor-2d/src/tools/draw/draw-rectangle.ts` | zero matches (signed numberPair lands) |
+| DI-P3-CombinerNoLockedParam | `rg -n "^\s*locked\s*:" packages/editor-2d/src/tools/dynamic-input-combine.ts` | zero matches (combiner has no `locked: boolean[]` parameter declaration per A19; un-anchored `locked` references in JSDoc are intentional negative framing per §1.16.12 bucket-b). [§3.10 patch 2026-05-01: regex tightened from un-anchored `rg -n "locked"` after Phase 3 discovered the JSDoc explicitly states "the `locked` slice field is NOT a parameter here".] |
+| DI-P3-RectAbsRemoved | `rg -n "origin:\s*corner1\b" packages/editor-2d/src/tools/draw/draw-rectangle.ts` | zero matches in numberPair commit branches (signed numberPair derives origin via min-corner; the literal `origin: corner1` would be the OLD pre-Phase-3 pattern. The retained `width: Math.abs(c1.a), height: Math.abs(c1.b)` at the addPrimitive site is intentional — primitive fields stay positive per A19 / I-DI-7). [§3.10 patch 2026-05-01: regex retargeted from `Math\.abs\(c1\.a\)` after Phase 3 discovered that pattern over-matches the legitimate retained abs at the addPrimitive site; the actual invariant being enforced is "origin derived from min-corner, not corner1 directly".] |
 | DI-P3-TabLocksOnTyped | `pnpm --filter @portplanner/editor-2d test -- keyboard-router.test.ts -t "Tab.*typed.*lock"` | passes |
 | DI-P3-TabEmptyNoLock | `pnpm --filter @portplanner/editor-2d test -- keyboard-router.test.ts -t "Tab.*empty"` | passes |
 | DI-P3-AutoSubmitAllLocked | `pnpm --filter @portplanner/editor-2d test -- keyboard-router.test.ts -t "all.*locked"` | passes; onSubmitDynamicInput fires |
@@ -783,3 +783,13 @@ The plan §4.1 originally said "Phase 4: drop placeholder-render tests" — but 
 **Patch applied:** plan §4.1 row updated to move the placeholder-test deletion from Phase 4 to Phase 2 as a same-commit cleanup. Phase 4 keeps only the new recall-pill test additions. Plan-vs-reality sequencing fix; no scope or behavior change.
 
 User acknowledged via "ok" 2026-05-01 before patch was committed.
+
+### 2026-05-01 — Phase 3 §3.10 gate-regex tightenings (2 patches)
+
+During Phase 3 execution, two gates' regex over-matched legitimate code that was supposed to remain:
+
+**Patch A — DI-P3-CombinerNoLockedParam.** Original regex `rg -n "locked"` over-matched the JSDoc references in `dynamic-input-combine.ts` that explicitly state "The `locked` slice field is NOT a parameter here" — those are bucket-(b) intentional negative framing per §1.16.12. Regex tightened to `rg -n "^\s*locked\s*:"` to catch only object-property declarations (which would be the parameter shape). Same precedent as Phase 1 patch.
+
+**Patch B — DI-P3-RectAbsRemoved.** Original regex `Math\.abs\(c1\.a\)|Math\.abs\(c1\.b\)` over-matched the legitimate retained `Math.abs(c1.a)` / `Math.abs(c1.b)` at the `addPrimitive({ width, height })` site — the plan explicitly says width/height stay positive in the primitive (origin derivation gets the signed delta; primitive fields are abs). The actual invariant being asserted is "origin is derived from min-corner of (corner1, corner1+(a,b)), NOT corner1 directly." Regex retargeted to `rg -n "origin:\s*corner1\b"` (catches the OLD pre-Phase-3 pattern where origin was assigned `corner1` directly without min-derivation).
+
+Both patches preserve gate intent + literal expected-zero semantics. User acknowledged via the standing §3.10 ack from 2026-05-01 covering Phase 1 + Phase 2 patches; this Phase 3 round is the same class of plan-vs-reality regex-tightening work and is documented here per §3.7 append-only convention.

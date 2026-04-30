@@ -683,3 +683,68 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     await tool.done();
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 3 (B7) — rectangle signed-numberPair
+// commit produces correct origin in all 4 quadrants relative to corner1.
+// Plan invariant I-DI-7. Combiner emits signed (a, b) per cursor's
+// quadrant + typed sign; tool re-derives origin = min-corner.
+describe('draw-rectangle Phase 3 signed-numberPair commit (4 quadrants)', () => {
+  beforeEach(() => {
+    resetEditorUiStoreForTests();
+    resetProjectStoreForTests();
+    createNewProject(makeProject());
+    editorUiActions.setActiveLayerId(LayerId.DEFAULT);
+  });
+
+  function tickN(n: number): Promise<void> {
+    let p = Promise.resolve();
+    for (let i = 0; i < n; i += 1) p = p.then(tick);
+    return p;
+  }
+
+  async function commitRectFromNumberPair(
+    corner1: { x: number; y: number },
+    a: number,
+    b: number,
+  ): Promise<{ origin: { x: number; y: number }; width: number; height: number }> {
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: corner1 });
+    await tickN(2);
+    tool.feedInput({ kind: 'numberPair', a, b });
+    await tool.done();
+    const rect = Object.values(projectStore.getState().project!.primitives).find(
+      (p) => p.kind === 'rectangle',
+    );
+    if (!rect || rect.kind !== 'rectangle') throw new Error('expected rectangle commit');
+    return { origin: rect.origin, width: rect.width, height: rect.height };
+  }
+
+  it('Q1 (signed +W +H): origin = corner1; rectangle extends +X +Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, 5, 3);
+    expect(r.origin).toEqual({ x: 10, y: 20 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+
+  it('Q2 (signed -W +H): origin shifts left to corner1.x - |W|; rectangle extends -X +Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, -5, 3);
+    expect(r.origin).toEqual({ x: 5, y: 20 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+
+  it('Q3 (signed -W -H): origin shifts left + down to corner1 - (W,H); rectangle extends -X -Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, -5, -3);
+    expect(r.origin).toEqual({ x: 5, y: 17 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+
+  it('Q4 (signed +W -H): origin shifts down to corner1.y - |H|; rectangle extends +X -Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, 5, -3);
+    expect(r.origin).toEqual({ x: 10, y: 17 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+});

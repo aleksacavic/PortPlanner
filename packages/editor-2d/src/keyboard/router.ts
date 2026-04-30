@@ -203,6 +203,17 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       return;
     }
     if (key === 'Escape') {
+      // M1.3 DI pipeline overhaul Phase 3 (B7) — two-step Esc.
+      // First press: if any DI field is locked, unlock all (return
+      // to live-cursor mode); else fall through to existing abort.
+      // Second press (or first when nothing locked) executes the
+      // existing abort semantics. Plan A3 + I-DI-6.
+      const diBeforeEsc = editorUiStore.getState().commandBar.dynamicInput;
+      if (diBeforeEsc?.locked.some(Boolean)) {
+        e.preventDefault();
+        editorUiActions.unlockAllDynamicInputFields();
+        return;
+      }
       // M1.3d-Rem-4 G1: Escape clears the accumulator silently (no
       // activation). G2: Escape also clears the inputBuffer — Esc
       // means "abort everything in flight" (tool, accumulator, buffer).
@@ -219,14 +230,36 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     // between DI pills regardless of which surface they're typing in.
     // When no DI is active, Tab passes through to native browser
     // behaviour (preserves accessibility for chrome regions).
+    //
+    // M1.3 DI pipeline overhaul Phase 3 (B7) — Tab handler now also
+    // locks a typed field before cycling, and fires implicit submit
+    // when every field becomes locked. Plan A2 + A18 + I-DI-4 + I-DI-5.
     if (key === 'Tab') {
       const di = editorUiStore.getState().commandBar.dynamicInput;
-      if (di && di.manifest.fields.length > 1) {
+      if (di && di.manifest.fields.length > 0) {
         e.preventDefault();
-        cycleDIActiveField(e.shiftKey ? -1 : 1);
+        const idx = di.activeFieldIdx;
+        const buffer = di.buffers[idx] ?? '';
+        // Lock-on-typed (Plan A2): empty field → just navigate; typed
+        // field → freeze it BEFORE cycling. Idempotent if already locked.
+        if (buffer.length > 0 && !di.locked[idx]) {
+          editorUiActions.setDynamicInputFieldLocked(idx, true);
+        }
+        // Cycle navigation only if multi-field. Single-field lock
+        // path falls through to the all-locked auto-submit check.
+        if (di.manifest.fields.length > 1) {
+          cycleDIActiveField(e.shiftKey ? -1 : 1);
+        }
+        // Auto-submit when every field becomes locked (Plan A18).
+        // Re-read state after the lock + cycle mutations so we see
+        // the current `locked` array.
+        const updatedDi = editorUiStore.getState().commandBar.dynamicInput;
+        if (updatedDi?.locked.every(Boolean)) {
+          callbacks.onSubmitDynamicInput(updatedDi.manifest, updatedDi.buffers);
+        }
         return;
       }
-      // No DI active OR single-field manifest — pass through.
+      // No DI active OR zero-field manifest — pass through.
     }
     if (key === 'Enter' && focus === 'canvas') {
       // M1.3d-Rem-4 — Enter at canvas focus disambiguation per A10b.

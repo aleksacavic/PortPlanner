@@ -500,3 +500,87 @@ describe('keyboard router — M1.3 Round 6 Dynamic Input', () => {
     expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 3 (B7) — Tab lock-on-typed +
+// auto-submit + two-step Esc semantics. Plan invariants I-DI-4 / I-DI-5 / I-DI-6.
+describe('keyboard router — M1.3 DI pipeline overhaul Phase 3 (B7)', () => {
+  function activateDIManifest(): void {
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setActiveToolId('draw-line');
+    editorUiActions.setFocusHolder('canvas');
+  }
+
+  it('Tab on a typed field locks it before cycling (I-DI-4)', () => {
+    activateDIManifest();
+    pressKey('5');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.buffers[0]).toBe('5');
+    pressKey('Tab');
+    // Field 0 typed → locked; cycled to field 1.
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([true, false]);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(1);
+  });
+
+  it('Tab on an empty field just navigates (no lock per A2)', () => {
+    activateDIManifest();
+    // Don't type — buffer empty.
+    pressKey('Tab');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(1);
+  });
+
+  it('Tab when all fields locked auto-submits via onSubmitDynamicInput (I-DI-5 / A18)', () => {
+    activateDIManifest();
+    pressKey('5');
+    pressKey('Tab'); // locks field 0, cycles to field 1
+    pressKey('3');
+    pressKey('0');
+    pressKey('Tab'); // locks field 1, cycles back to field 0; every(locked) → auto-submit
+    expect(mocks.onSubmitDynamicInput).toHaveBeenCalledTimes(1);
+    expect(mocks.onSubmitDynamicInput).toHaveBeenCalledWith(
+      expect.objectContaining({ combineAs: 'point' }),
+      ['5', '30'],
+    );
+  });
+
+  it('Esc with any locked field → unlocks all (no abort) — first step of two-step Esc (I-DI-6)', () => {
+    activateDIManifest();
+    pressKey('5');
+    pressKey('Tab'); // lock field 0
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([true, false]);
+    pressKey('Escape');
+    // First Esc: unlock all; tool NOT aborted, manifest still active.
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+    expect(editorUiStore.getState().commandBar.dynamicInput).not.toBeNull();
+    expect(mocks.onAbortCurrentTool).not.toHaveBeenCalled();
+  });
+
+  it('Esc with no locked fields → existing abort semantics (clearDynamicInput + onAbortCurrentTool)', () => {
+    activateDIManifest();
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+    pressKey('Escape');
+    // No fields locked → standard abort path: DI cleared + abort callback fires.
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+    expect(mocks.onAbortCurrentTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('Two-step Esc: first press unlocks; second press aborts', () => {
+    activateDIManifest();
+    pressKey('5');
+    pressKey('Tab'); // lock field 0
+    pressKey('Escape'); // first Esc: unlock all
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+    expect(mocks.onAbortCurrentTool).not.toHaveBeenCalled();
+    pressKey('Escape'); // second Esc: abort
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+    expect(mocks.onAbortCurrentTool).toHaveBeenCalledTimes(1);
+  });
+});
