@@ -24,11 +24,10 @@
 // commandBar.dynamicInput change.
 
 import type { Point2D } from '@portplanner/domain';
-import { type ReactElement, useCallback, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import type { ReactElement } from 'react';
 
 import { type Viewport, metricToScreen } from '../canvas/view-transform';
-import type { DimensionGuide, DynamicInputField } from '../tools/types';
+import type { DimensionGuide } from '../tools/types';
 import styles from './DynamicInputPills.module.css';
 import { useEditorUi } from './use-editor-ui-store';
 
@@ -70,17 +69,33 @@ export function DynamicInputPills(): ReactElement | null {
           const screen = derivePillScreenAnchor(guide, viewport);
           const focused = idx === dynamicInput.activeFieldIdx;
           const buffer = dynamicInput.buffers[idx] ?? '';
+          // Round 7 Phase 2 — dim placeholder. When the active buffer
+          // for this field is empty AND a previously-submitted value
+          // was recorded under the current promptKey, render the
+          // persisted value with reduced opacity. Typing replaces; if
+          // the user hits Enter without typing, the placeholder is
+          // used as the effective buffer (fallback applied at the
+          // EditorRoot.onSubmitDynamicInput boundary).
           const placeholder = dynamicInput.placeholders[idx] ?? '';
+          const showPlaceholder = buffer.length === 0 && placeholder.length > 0;
+          const labelPrefix = field.label ? `${field.label}: ` : '';
+          const valueText = showPlaceholder ? placeholder : buffer;
+          const text = `${labelPrefix}${valueText}`;
+          const focusClass = focused ? styles.pillFocused : styles.pillDimmed;
+          const placeholderClass = showPlaceholder ? styles.pillPlaceholder : '';
           return (
-            <DynamicInputPill
+            <div
               key={`di-pill-${idx}`}
-              field={field}
-              idx={idx}
-              focused={focused}
-              buffer={buffer}
-              placeholder={placeholder}
-              screen={screen}
-            />
+              className={`${styles.pill} ${styles.pillCentered} ${focusClass} ${placeholderClass}`}
+              data-component="dynamic-input-pill"
+              data-pill-index={idx}
+              data-pill-focused={focused ? 'true' : 'false'}
+              data-pill-placeholder={showPlaceholder ? 'true' : 'false'}
+              style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
+            >
+              {text}
+              {focused ? <span className={styles.pillCaret} aria-hidden /> : null}
+            </div>
           );
         })}
       </>
@@ -102,129 +117,6 @@ export function DynamicInputPills(): ReactElement | null {
       {fallbackText}
     </div>
   );
-}
-
-/**
- * Round 7 Phase 3 — single multi-pill DI cell with hover-overflow
- * tooltip. When the pill's text is wider than its visible box
- * (`scrollWidth > clientWidth`), hovering shows a tooltip rendered
- * via `createPortal` to `document.body` containing the full
- * value + a unit suffix derived from `field.kind`. Non-overflow
- * pills don't trigger a tooltip — overflow-only behaviour locks
- * I-HOV-1 + REM7-P3-OverflowDetection.
- *
- * Pointer-events on the pill itself are enabled so the hover lands
- * (parent `.pill` base class declares `pointer-events: none` for
- * canvas-passthrough; `.pillHoverable` re-enables on this element).
- */
-interface DynamicInputPillProps {
-  field: DynamicInputField;
-  idx: number;
-  focused: boolean;
-  buffer: string;
-  placeholder: string;
-  screen: { x: number; y: number };
-}
-
-function DynamicInputPill({
-  field,
-  idx,
-  focused,
-  buffer,
-  placeholder,
-  screen,
-}: DynamicInputPillProps): ReactElement {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [tooltip, setTooltip] = useState<{
-    text: string;
-    x: number;
-    y: number;
-  } | null>(null);
-
-  const showPlaceholder = buffer.length === 0 && placeholder.length > 0;
-  const labelPrefix = field.label ? `${field.label}: ` : '';
-  const valueText = showPlaceholder ? placeholder : buffer;
-  const text = `${labelPrefix}${valueText}`;
-  const focusClass = focused ? styles.pillFocused : styles.pillDimmed;
-  const placeholderClass = showPlaceholder ? styles.pillPlaceholder : '';
-
-  const handleEnter = useCallback(() => {
-    const el = ref.current;
-    if (!el) return;
-    // Overflow detection — the pill clips its content via
-    // `.pill { white-space: nowrap; overflow: hidden }`. Compare
-    // scroll vs client width to know if there's hidden content.
-    if (el.scrollWidth <= el.clientWidth) {
-      // No overflow → no tooltip.
-      return;
-    }
-    const rect = el.getBoundingClientRect();
-    const unit = unitSuffix(field.kind);
-    const tipText = `${labelPrefix}${valueText}${unit}`;
-    setTooltip({
-      text: tipText,
-      // Anchor the tooltip below the pill (rect.bottom in viewport
-      // coords). Tooltip CSS centers horizontally via translate(-50%).
-      x: rect.left + rect.width / 2,
-      y: rect.bottom + 4,
-    });
-  }, [field.kind, labelPrefix, valueText]);
-
-  const handleLeave = useCallback(() => {
-    setTooltip(null);
-  }, []);
-
-  return (
-    <>
-      <div
-        ref={ref}
-        className={`${styles.pill} ${styles.pillCentered} ${styles.pillHoverable} ${focusClass} ${placeholderClass}`}
-        data-component="dynamic-input-pill"
-        data-pill-index={idx}
-        data-pill-focused={focused ? 'true' : 'false'}
-        data-pill-placeholder={showPlaceholder ? 'true' : 'false'}
-        style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
-        onMouseEnter={handleEnter}
-        onMouseLeave={handleLeave}
-      >
-        {text}
-        {focused ? <span className={styles.pillCaret} aria-hidden /> : null}
-      </div>
-      {tooltip && typeof document !== 'undefined'
-        ? createPortal(
-            <div
-              className={styles.pillTooltip}
-              data-component="dynamic-input-pill-tooltip"
-              data-pill-tooltip-index={idx}
-              style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
-            >
-              {tooltip.text}
-            </div>,
-            document.body,
-          )
-        : null}
-    </>
-  );
-}
-
-/**
- * Round 7 Phase 3 — unit suffix per DI field kind. Distance values
- * are in metres (the project's metric SSOT). Angle values are in
- * degrees (parsed by the combiner from the per-field buffer).
- * Generic numeric fields (rectangle W/H, circle radius — which is
- * also distance but kind is 'number' for combineAs:'numberPair' or
- * 'number') get no suffix because the unit context isn't always
- * metres (e.g., a dimensionless count in a future tool).
- */
-function unitSuffix(kind: DynamicInputField['kind']): string {
-  switch (kind) {
-    case 'distance':
-      return ' m';
-    case 'angle':
-      return '°';
-    default:
-      return '';
-  }
 }
 
 /**

@@ -472,3 +472,95 @@ Total net-new: ~33. Final count target ≥ 432 (baseline 399). `pnpm --filter @p
 - `packages/design-system/src/tokens/semantic-dark.ts` — `dim_polar_min_length: '100'` line removed.
 - `packages/editor-2d/src/canvas/painters/paintDimensionGuides.ts` — `polarMinLengthCss` chrome field removed; `paintAngleArc` reverted to direct `radiusMetric`.
 - `packages/editor-2d/tests/paintDimensionGuides.test.ts` — fixture restored; clamp test case removed.
+
+### Phase 2 — Buffer persistence within tab (2026-04-30)
+
+**Phase verdict:** GO. All 7 mandatory completion gates passed:
+
+- REM7-P2-SliceShape — 7 new ui-state.test.ts cases for `lastSubmittedBuffers` slice. PASS.
+- REM7-P2-PromptKey — 3 canonical-expression cases in tool-runner.test.ts. PASS.
+- REM7-P2-Placeholder — 3 pill placeholder rendering cases in DynamicInputPills.test.tsx. PASS.
+- REM7-P2-PolylinePersistKey — `'next-vertex'` assertion added to existing per-loop test in draw-tools.test.ts. PASS.
+- REM7-P2-SmokeRoundtrip — new `'line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim placeholder defaults'` scenario in smoke-e2e.test.tsx. PASS.
+- REM7-P2-NoPersistenceLeak — `rg -n 'lastSubmittedBuffers' apps/web/src/persistence/ packages/project-store/src/ services/api/` returned 0 matches. PASS.
+- REM7-P2-Typecheck/Lint/Tests — clean. editor-2d 444/444 (up from 430 = +14 net-new for Phase 2).
+
+**Net-new tests in Phase 2:** 14.
+
+### Phase 3 — Hover overflow tooltip on DI pills (2026-04-30 — DROPPED in §3.10 post-Phase-3 revert)
+
+**Initial implementation (commit `f942c6a`):** Refactored `DynamicInputPills` into a `DynamicInputPill` sub-component with `onMouseEnter` / `onMouseLeave` handlers measuring `scrollWidth > clientWidth` and rendering a portal tooltip via `createPortal` to `document.body`. Added `.pillHoverable` CSS class (`overflow:hidden`, `pointer-events:auto`, `max-width:140px`) + `.pillTooltip` class. Six new test cases in `DynamicInputPills.tooltip.test.tsx` using `Object.defineProperty` stubbing per Codex Round-1 B2 lock. All 9 phase gates green at commit time.
+
+**§3.10 post-Phase-3 design discovery:** During manual smoke testing the user observed two issues:
+
+1. With `max-width: 140px` removed (initial implementation actually shipped without it), the pill stretches across the canvas as the user types a long buffer (e.g. `Distance: 333…3`). AC parity confirmed via screenshot — AC's pill grows freely with content, no clipping.
+2. With the cap restored to test the hover trigger, the tooltip is unreachable: the multi-pill DI cells anchor to the dim-line midpoint or arc midpoint, both of which **move with the cursor every frame the rubber-band updates**. Hovering toward the pill repositions the pill — runaway. Hover-on-overflow is the wrong UX pattern for a moving target.
+
+**Resolution — Phase 3 dropped wholesale:**
+
+- `DynamicInputPills.tsx` — `DynamicInputPill` sub-component removed, inline `.map` rendering restored (with Phase 2 placeholder logic preserved). `unitSuffix` helper removed. `useRef` / `useState` / `useCallback` / `createPortal` imports dropped.
+- `DynamicInputPills.module.css` — `.pillHoverable` and `.pillTooltip` rules deleted. Pill grows freely (AC parity).
+- `tests/DynamicInputPills.tooltip.test.tsx` — file deleted (6 tests removed).
+- Plan §11 Phase 3 description left in place above for historical record but marked DROPPED in this Post-execution note.
+- Net token contribution from Phase 3: 0 (no canvas tokens were touched). Phase 1 (27 leaves) and Phase 2 (1 leaf — `pill_placeholder_opacity`) unaffected.
+
+**Why dropped rather than reworked into auto-show on overflow:** AC has no equivalent feature and there are zero current consumers that benefit (DI fields are all numeric — short by nature). Building speculative scaffolding violates GR-1 §1 ("no features beyond what was asked"). Captured as backlog item #B0 below in case a future text-input DI field surfaces and revives the need.
+
+### Post-execution backlog — items raised by the user during Phase-3 manual smoke test (2026-04-30)
+
+The user surfaced 8 separate items during manual smoke testing and asked them to be documented in this plan rather than implemented inline. Most are interconnected (snap engine, polar input semantics, DI pill behaviour) and deserve their own plan session per the architecture-first discipline. Captured here as discovered, in user order:
+
+#### B1 — Snap glyph outline-only
+
+Currently `paintSnapGlyph.ts` fills + strokes the endpoint (square), midpoint (triangle), and node (circle) glyphs. AC convention is to render these as **outline-only** so they're visually distinct from filled vertex markers. Intersection (`×`) and grid-node / grid-line (`+`) are already line-based — no change needed. Quick fix (2-line change per case in `paintSnapGlyph.ts`: remove the `ctx.fill()` calls). **Could be done in this plan's tail or moved to a follow-up — small enough either way.**
+
+#### B2 — Crosshair sizing default flip
+
+Currently F7 toggles `viewport.crosshairSizePct` between 100 (full-canvas) and 5 (pickbox). AC defaults to the **shorter pickbox** style; full-canvas is the toggled-on state. Change initial `crosshairSizePct: 100` → `5` in `editorUiStore` initial state. Also flip the F7 handler so first press → 100, second → 5. **Trivial.** Could be done in this plan's tail.
+
+#### B3 — Arc tool DI migration to multi-pill
+
+The arc tool's DI manifest still routes through the single-pill fallback path (per the user, "current pill should be the new one — one on rubber band — it is still using the old component"). Need to: (a) audit who consumes the single-pill fallback, (b) move arc to the new multi-pill path with proper `dimensionGuidesBuilder`, (c) check no other tools depend on the single-pill fallback that should also be migrated, (d) remove the single-pill fallback wholesale once empty. **Belongs to a separate plan session because it intersects with the deferred arc-detail work the user has flagged for later.**
+
+#### B4 — Selection rectangle click-release-click flow
+
+Currently mouse-down → drag → mouse-up creates the selection rectangle. AC also accepts: click-release first corner, move (rubber-band rectangle shows), click-release second corner. Both flows should coexist (mouse-down-drag stays as-is). Touches the `select-rect` tool's input semantics — small but needs a careful test pass (the existing smoke scenario only exercises the drag flow). **Belongs to a separate plan session — interacts with the selection / grip-stretch test surface.**
+
+#### B5 — Circle snapping (intersection + 4 quadrants)
+
+User question: "why circle does not get any snapping, not on the intersection not on its 4 quadrants". Quadrants = the 4 compass points on the circumference (0°, 90°, 180°, 270° in metric Y-up). Intersections = where the circle crosses other primitives. Both require new snap providers in the snap-priority engine. **Belongs to a separate plan session — intersects with the M1.3-snap engine architecture (priority cascade + per-kind snap helpers).**
+
+#### B6 — DI pills live-update with cursor
+
+While DI is active and the user hasn't typed/locked anything, the pills should auto-fill with current cursor-derived values (X/Y or distance/angle) so the user reads what the rubber-band is showing in real time. The values get pre-served as the user starts typing. **Belongs to a separate plan session — interacts with B7 (input direction inversion + per-pill locking) which is the natural pair.**
+
+#### B7 — Polar input direction inversion + per-pill locking
+
+Two interlocking changes that AC implements but the current DI does not:
+
+1. **Direction inversion via cursor + sign:** typing `Distance = 5` while the cursor is in Q3 should keep the rubber-band in Q3 with length 5 (cursor direction wins, ignoring global sign). Typing `Distance = -5` flips 180°. Current behaviour: positive distance always shoots in global +X; this breaks AC muscle memory.
+2. **Per-pill locking on Tab:** typing into a pill + Tab freezes that field's value. Cursor only affects the un-frozen field. Lock breaks only on Escape. Examples (user-supplied):
+   - Line, Tab past Distance, type Angle=50, Tab → angle locked at 50°, distance follows cursor along that ray.
+   - Line, cursor in Q3, type Distance=-4, Tab → flips to Q1, distance locked at 4.
+   - Rectangle, type W=4, Tab → W locked at 4, only H follows cursor.
+
+**Belongs to a separate plan session — touches the runner / input-combiner / DI manifest contract surface deeply.**
+
+#### B8 — Buffer persistence redesign (Arrow Up triggered, separate pill near cursor)
+
+Items B6 + B7 effectively wipe the value of the current Phase-2 buffer-persistence design (the dim-placeholder pre-fill becomes redundant once cursor live-updates the empty pills). User proposal:
+
+- Drop the current "pill seeds placeholder from `lastSubmittedBuffers[promptKey]`" path.
+- Replace with an **Arrow Up trigger**: when active, an extra pill renders **next to the cursor** containing the previously-submitted values (e.g. `Distance:3434, Angle:33` — comma-separated, single pill, label-prefixed). The existing per-field pills dim (lose focus). User can: Tab back to per-field pills (cancels the buffer pill), Space/Enter to accept the buffered values (commits as if typed). While the buffer pill is active the rubber-band stays frozen at the current cursor position — does NOT preview the buffered values.
+
+**Belongs to a separate plan session — supersedes the Phase 2 design.** When that plan lands, the current `lastSubmittedBuffers` slice + `placeholders` field on `commandBar.dynamicInput` + dim-placeholder rendering all get reworked. The slice itself can stay (renamed if needed) since the data is the same — it's the consumption pattern that changes.
+
+#### Recommended split for next plan session
+
+- **Quick polish (this session tail or small follow-up):** B1, B2.
+- **Single-feature follow-up plans (each its own session):** B5 (circle snap), B4 (selection click-release-click), B3 (arc DI migration).
+- **One large interconnected plan:** B6 + B7 + B8 (DI live-update + per-pill locking + polar inversion + buffer-redesign). Touches runner contract + DI manifest + pill chrome simultaneously; should be planned together to avoid contract churn.
+
+#### B0 — Hover overflow tooltip (re-entry placeholder)
+
+Reserved slot for if a future text-input DI field surfaces and revives the need for an overflow surface. Note that the `useLayoutEffect` auto-show-on-overflow pattern (no hover) is the correct UX shape — hover doesn't work for moving pill targets.

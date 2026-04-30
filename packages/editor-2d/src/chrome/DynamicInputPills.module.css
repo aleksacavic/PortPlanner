@@ -66,39 +66,6 @@
 .pillPlaceholder {
   opacity: 0.45;
 }
-/* Round 7 Phase 3 — hover overflow tooltip. The base .pill class
-   declares pointer-events: none so canvas drags pass through. To
-   support hover-overflow detection on multi-pill DI cells, the
-   sub-component DynamicInputPill applies .pillHoverable to
-   re-enable pointer events. Padding/border/typography all inherit
-   from the base .pill rules. Adding overflow:hidden so the visual
-   clip happens at the pill rectangle edge — the scrollWidth >
-   clientWidth comparison only works when overflow is hidden, not
-   `visible` (which is the default when no overflow rule is set). */
-.pillHoverable {
-  pointer-events: auto;
-  overflow: hidden;
-}
-/* Round 7 Phase 3 — tooltip rendered via createPortal at
-   document.body. Positioned by absolute coordinates from
-   getBoundingClientRect of the pill at hover time. translate(-50%)
-   horizontally centers the tooltip on the pill column. Distinct
-   visual (slightly larger pad, full opacity, neutral background)
-   from the pill itself. */
-.pillTooltip {
-  position: fixed;
-  transform: translate(-50%, 0);
-  padding: 4px 8px;
-  background: rgba(15, 18, 24, 0.96);
-  color: #f0f0f0;
-  font-family: ui-monospace, monospace;
-  font-size: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 0;
-  white-space: nowrap;
-  pointer-events: none;
-  z-index: 100;
-}
 @keyframes di-caret-blink {
   to {
     visibility: hidden;
