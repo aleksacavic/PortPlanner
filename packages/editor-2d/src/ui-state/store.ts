@@ -8,7 +8,7 @@
 //
 // M1.3d Phase 1 extends `viewport` (crosshairSizePct lives on Viewport
 // itself in view-transform.ts) and `overlay` (cursor / previewShape /
-// hoverEntity / transientLabels / grips / suppressEntityPaint), adds
+// hoverEntity / grips / suppressEntityPaint), adds
 // per-field setters, and re-exports the local-to-overlay forward types
 // `Grip`, `TransientLabel`, and `SnapTarget` (alias for SnapHit). The
 // `PreviewShape` discriminated union is owned by `../tools/types` to
@@ -50,18 +50,6 @@ export interface Grip {
    *  decide which patch field to update on commit. */
   gripKind: string;
   position: Point2D;
-}
-
-/**
- * Transient label record (length / radius / angle / dimension readouts
- * a tool wants painted near an anchor point). Painted by
- * `paintTransientLabel` (Phase 4). Anchor is metric so the renderer can
- * place the label after applying the current view transform; an
- * optional screen-space offset nudges the label off the anchor.
- */
-export interface TransientLabel {
-  anchor: { metric: Point2D; screenOffset?: { dx: number; dy: number } };
-  text: string;
 }
 
 export type FocusHolder = 'canvas' | 'bar' | 'dialog';
@@ -146,7 +134,36 @@ export interface CommandBarState {
     manifest: DynamicInputManifest;
     buffers: string[];
     activeFieldIdx: number;
+    /**
+     * Round 7 Phase 2 — buffer-persistence identity for the active
+     * prompt. Computed by the runner per A16:
+     * `${toolId}:${prompt.persistKey ?? promptIndex}`. Used by the
+     * pill chrome to look up `lastSubmittedBuffers[promptKey]` for
+     * placeholder seeding and by EditorRoot.onSubmitDynamicInput to
+     * record the submitted buffers under this key.
+     */
+    promptKey: string;
+    /**
+     * Round 7 Phase 2 — dim placeholder values pre-filled from the
+     * `lastSubmittedBuffers` map at manifest publication time. One
+     * entry per manifest field (parallel to `buffers`). Empty string
+     * means "no persisted value for this field — render the pill
+     * label only". When the active buffer for a field is empty AND
+     * `placeholders[idx]` is non-empty, the pill renders the
+     * placeholder dim (per `pill_placeholder_opacity` token).
+     */
+    placeholders: string[];
   } | null;
+  /**
+   * Round 7 Phase 2 — buffer persistence within tab. Key =
+   * `${toolId}:${prompt.persistKey ?? promptIndex}` (canonical per
+   * plan A16). Value = the per-field buffer array submitted on the
+   * most recent successful `onSubmitDynamicInput` for that prompt
+   * key. Cleared on page reload (lives only in editorUiStore;
+   * never written to IndexedDB / project-store / API per
+   * I-BPER-1 + REM7-P2-NoPersistenceLeak gate).
+   */
+  lastSubmittedBuffers: Record<string, string[]>;
 }
 
 export interface OverlayState {
@@ -184,13 +201,6 @@ export interface OverlayState {
    * only when `activeToolId === null` (I-DTP-12).
    */
   hoverEntity: PrimitiveId | null;
-  /**
-   * Tool-yielded transient labels rendered via `paintTransientLabel`
-   * (Phase 4). `paintTransientLabel` is the SOLE source of transient
-   * text on canvas (I-DTP-8, Gate DTP-T2 — other painters never call
-   * `ctx.fillText` / `ctx.strokeText`).
-   */
-  transientLabels: TransientLabel[];
   /**
    * Click-select grip squares for entities currently in `selection`.
    * `null` when no entity is selected (Phase 5 sets after computing
@@ -286,7 +296,10 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     dpr: typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1,
     canvasWidthCss: 800,
     canvasHeightCss: 600,
-    crosshairSizePct: 100,
+    // Round 7 backlog B2 — short pickbox is the AC default; full-canvas
+    // (100) is the toggled-on state via F7. Was 100 prior to backlog
+    // sweep (M1.3 Round 7).
+    crosshairSizePct: 5,
   },
   selection: [],
   activeToolId: null,
@@ -309,6 +322,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     lastToolId: null,
     accumulator: '',
     dynamicInput: null,
+    lastSubmittedBuffers: {},
   },
   focusHolder: 'canvas',
   focusStack: [],
@@ -319,7 +333,6 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     selectionHandles: [],
     previewShape: null,
     hoverEntity: null,
-    transientLabels: [],
     grips: null,
     suppressEntityPaint: null,
     hoveredGrip: null,
@@ -452,11 +465,6 @@ export const editorUiActions = {
       s.overlay.hoverEntity = id;
     });
   },
-  setTransientLabels(labels: TransientLabel[]): void {
-    editorUiStore.setState((s) => {
-      s.overlay.transientLabels = labels;
-    });
-  },
   setGrips(grips: Grip[] | null): void {
     editorUiStore.setState((s) => {
       s.overlay.grips = grips;
@@ -505,13 +513,41 @@ export const editorUiActions = {
   },
   // M1.3 Round 6 — Dynamic Input multi-field state setters per plan §3 A2.1.
   // Plan Rev-1 R2-A5: each prompt yield with a manifest resets buffers + activeFieldIdx.
-  setDynamicInputManifest(manifest: DynamicInputManifest): void {
+  /**
+   * Round 7 Phase 2 — manifest publication takes the runner-derived
+   * `promptKey` (canonical expression per plan A16:
+   * `${toolId}:${prompt.persistKey ?? promptIndex}`). The placeholder
+   * array is seeded from `commandBar.lastSubmittedBuffers[promptKey]`
+   * if a previous submit recorded values under that key; otherwise
+   * empty strings. Buffers always start empty (Rev-1 R2-A5).
+   */
+  setDynamicInputManifest(manifest: DynamicInputManifest, promptKey: string): void {
     editorUiStore.setState((s) => {
+      const persisted = s.commandBar.lastSubmittedBuffers[promptKey];
+      const placeholders =
+        persisted && persisted.length === manifest.fields.length
+          ? [...persisted]
+          : Array<string>(manifest.fields.length).fill('');
       s.commandBar.dynamicInput = {
         manifest,
         buffers: Array<string>(manifest.fields.length).fill(''),
         activeFieldIdx: 0,
+        promptKey,
+        placeholders,
       };
+    });
+  },
+  /**
+   * Round 7 Phase 2 — record the submitted buffers for a prompt under
+   * the given key (canonical expression — see plan A16). Replaces any
+   * previous entry for the key. Called by EditorRoot.onSubmitDynamicInput
+   * BEFORE clearDynamicInput on a successful combiner result. Locks
+   * I-BPER-1: writes only to editorUiStore; never reaches the
+   * project-store / IndexedDB / API.
+   */
+  recordSubmittedBuffers(promptKey: string, buffers: string[]): void {
+    editorUiStore.setState((s) => {
+      s.commandBar.lastSubmittedBuffers[promptKey] = [...buffers];
     });
   },
   setDynamicInputActiveField(idx: number): void {

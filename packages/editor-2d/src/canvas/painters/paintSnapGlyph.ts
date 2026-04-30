@@ -26,14 +26,7 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import type { SnapHit } from '../../snap/priority';
 
 import { type Viewport, metricToScreen } from '../view-transform';
-
-const ENDPOINT_SIDE_CSS = 8;
-const MIDPOINT_SIDE_CSS = 8;
-const INTERSECTION_HALF_CSS = 5;
-const NODE_RADIUS_CSS = 5;
-const GRID_NODE_HALF_CSS = 4;
-const GRID_LINE_HALF_CSS = 3;
-const STROKE_CSS_PX = 1.5;
+import { parseNumericToken } from './_tokens';
 
 /**
  * Paint a snap-target glyph at the resolved point. Caller passes the
@@ -55,12 +48,20 @@ export function paintSnapGlyph(
 ): void {
   if (snapTarget.kind === 'cursor') return;
 
+  const sg = tokens.canvas.transient.snap_glyph;
+  const ENDPOINT_SIDE_CSS = parseNumericToken(sg.endpoint_side);
+  const MIDPOINT_SIDE_CSS = parseNumericToken(sg.midpoint_side);
+  const INTERSECTION_HALF_CSS = parseNumericToken(sg.intersection_half);
+  const NODE_RADIUS_CSS = parseNumericToken(sg.node_radius);
+  const GRID_NODE_HALF_CSS = parseNumericToken(sg.grid_node_half);
+  const GRID_LINE_HALF_CSS = parseNumericToken(sg.grid_line_half);
+
   const screen = metricToScreen(snapTarget.point, viewport);
   const dpr = viewport.dpr;
   const cx = screen.x * dpr;
   const cy = screen.y * dpr;
   const color = tokens.canvas.snap_indicator;
-  const stroke = STROKE_CSS_PX * dpr;
+  const stroke = parseNumericToken(sg.stroke_width) * dpr;
 
   ctx.save();
   // Reset transform so we draw in device pixels; multiply by dpr inline
@@ -74,15 +75,18 @@ export function paintSnapGlyph(
 
   switch (snapTarget.kind) {
     case 'endpoint': {
+      // Round 7 backlog B1 — outline-only square (AC convention:
+      // snap glyphs are unfilled to distinguish from filled vertex
+      // markers).
       const half = (ENDPOINT_SIDE_CSS / 2) * dpr;
       ctx.beginPath();
       ctx.rect(cx - half, cy - half, half * 2, half * 2);
-      ctx.fill();
       ctx.stroke();
       break;
     }
     case 'midpoint': {
       // Equilateral triangle pointing up, side ≈ MIDPOINT_SIDE_CSS.
+      // Round 7 backlog B1 — outline-only (AC convention).
       const side = MIDPOINT_SIDE_CSS * dpr;
       const half = side / 2;
       const h = (Math.sqrt(3) / 2) * side;
@@ -93,7 +97,6 @@ export function paintSnapGlyph(
       ctx.lineTo(cx - half, baseY);
       ctx.lineTo(cx + half, baseY);
       ctx.closePath();
-      ctx.fill();
       ctx.stroke();
       break;
     }
@@ -108,10 +111,10 @@ export function paintSnapGlyph(
       break;
     }
     case 'node': {
+      // Round 7 backlog B1 — outline-only circle (AC convention).
       const r = NODE_RADIUS_CSS * dpr;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
       ctx.stroke();
       break;
     }

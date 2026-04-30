@@ -464,9 +464,19 @@ dash patterns split on whitespace and convert to `number[]` for
 | `crosshair` | Stroke color for the cursor crosshair. |
 | `crosshair_dash` | Dash pattern for the crosshair. Sentinel `'solid'` means "no dashing" (painter skips `ctx.setLineDash`). Empty strings are forbidden by the leaf-non-empty invariant. |
 | `dimension_line` | Stroke color for transient dimension witness/extension lines (used by M1.3c). |
-| `selection_window.stroke` / `.fill` / `.dash` | Window-selection (L→R drag, fully-enclosed) rectangle styling. |
-| `selection_crossing.stroke` / `.fill` / `.dash` | Crossing-selection (R→L drag, any-touch) rectangle styling. |
-| `hover_highlight.stroke` / `.dash` | Faint outline drawn on the entity under the cursor when no tool is active. |
+| `selection_window.stroke` / `.fill` / `.dash` / `.stroke_width` | Window-selection (L→R drag, fully-enclosed) rectangle styling. `stroke_width` added in 1.4.0. |
+| `selection_crossing.stroke` / `.fill` / `.dash` / `.stroke_width` | Crossing-selection (R→L drag, any-touch) rectangle styling. `stroke_width` added in 1.4.0. |
+| `hover_highlight.stroke` / `.dash` / `.stroke_width` | Faint outline drawn on the entity under the cursor when no tool is active. `stroke_width` added in 1.4.0. |
+| `preview_stroke_width` | Stroke width (CSS-px stringified) for live-preview rubber-band outlines. Added 1.4.0. |
+| `label_font_size` | Font size (CSS-px stringified) for transient label text. Added 1.4.0. |
+| `label_radius` | Corner radius (CSS-px stringified) for the transient label pill backdrop. Added 1.4.0. |
+| `crosshair_stroke_width` / `crosshair_pickbox_half` | Cursor crosshair stroke width + pickbox half-extent (CSS-px stringified). Added 1.4.0. |
+| `dim_stroke_width` / `dim_arrow_tick` / `dim_witness_overshoot` / `dim_witness_offset` / `dim_witness_endcap` / `dim_dashed_pattern` | Dimension-guide (`linear-dim` + `angle-arc`) numeric chrome. `dim_witness_offset` is mirrored by the `DIM_OFFSET_CSS = 40` literal in `paintDimensionGuides.ts` (locked by `tests/dim-offset-mirror.test.ts`). Added 1.4.0. |
+| `grid_stroke_width` | Canvas-grid stroke width (CSS-px stringified, divided by `metricToPx`). Added 1.4.0. |
+| `selection_outline_width` | Stroke width (CSS-px stringified) for the solid outline drawn around selected entities. Added 1.4.0. |
+| `grip.side` / `.hovered_side` / `.border_width` | Grip-handle square sizes + border thickness (CSS-px stringified). Added 1.4.0. |
+| `snap_glyph.endpoint_side` / `.midpoint_side` / `.intersection_half` / `.node_radius` / `.grid_node_half` / `.grid_line_half` / `.stroke_width` | Snap-target glyph sizes + stroke (CSS-px stringified). Added 1.4.0. |
+| `pill_placeholder_opacity` | Opacity (unitless 0..1, stringified) applied to the dim-placeholder text inside a DI pill when the active buffer is empty AND a previously-submitted value is available. Added 1.4.0; consumed by Phase 2 (buffer persistence). |
 
 ## Icon Library
 
@@ -709,6 +719,7 @@ component library work begins.
 
 | Version | Date | Change |
 |---|---|---|
+| 1.4.0 | 2026-04-29 | M1.3 Round 7 (canvas-tokens-and-di-polish) Phase 1 — canvas painter token sweep. Every overlay painter's hardcoded numeric chrome constant migrated to `canvas.transient.*` tokens. **27 new leaves added** (additive only — no rename of existing tokens): `preview_stroke_width`, `label_font_size`, `label_radius`, `crosshair_stroke_width`, `crosshair_pickbox_half`, `dim_stroke_width`, `dim_arrow_tick`, `dim_witness_overshoot`, `dim_witness_offset`, `dim_witness_endcap`, `dim_dashed_pattern`, `grid_stroke_width`, `selection_outline_width`, `selection_window.stroke_width`, `selection_crossing.stroke_width`, `hover_highlight.stroke_width`, `grip.side`, `grip.hovered_side`, `grip.border_width`, `snap_glyph.endpoint_side`, `snap_glyph.midpoint_side`, `snap_glyph.intersection_half`, `snap_glyph.node_radius`, `snap_glyph.grid_node_half`, `snap_glyph.grid_line_half`, `snap_glyph.stroke_width`, `pill_placeholder_opacity`. Numeric leaves stored as decimal strings per existing string-leaf convention. New SSOT helper `parseNumericToken` in `packages/editor-2d/src/canvas/painters/_tokens.ts` (consolidating duplicate `parseDashPattern` + `parsePadding` definitions previously scattered across paintCrosshair / paintHoverHighlight / paintSelectionRect / paintTransientLabel). `paintPoint` excluded — entity painter, not transient overlay. `DIM_OFFSET_CSS = 40` exported literal in `paintDimensionGuides.ts` mirrors `dim_witness_offset` token; equality locked by `tests/dim-offset-mirror.test.ts`. |
 | 1.3.1 | 2026-04-27 | M1.3d-Remediation-2 R6 — value-only updates in `canvas.transient` block: `label_bg` `'rgba(13, 20, 32, 0.85)'` → `'rgba(42, 127, 255, 0.9)'` (blue, matches selection_window.stroke / accent.primary); `label_text` `'#c8d4e3'` → `'#ffffff'` (white on blue for contrast); `label_padding` `'4'` → `'3'` (compactness). Token interface unchanged. |
 | 1.3.0 | 2026-04-26 | Added `canvas.transient.*` sub-namespace for in-flight UI styling (live preview, snap glyph, selection rectangle, hover highlight, grip handles, cursor crosshair, transient labels). Documented as a hard SSOT boundary outside the ByLayer ladder, enforced by Gate DTP-T1. Numeric values (dash patterns, padding) stored as strings to preserve leaf-is-string contract. M1.3d Phase 1. |
 | 1.2.0 | 2026-04-18 | Replaced illustrative `styled.div` examples with CSS-module examples to align with ADR-012 decision #12 (CSS Modules + CSS custom properties). No change to semantic or theme-switching behaviour. Token values unchanged. |

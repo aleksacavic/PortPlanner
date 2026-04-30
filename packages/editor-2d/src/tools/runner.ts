@@ -119,6 +119,12 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   const resultPromise: Promise<ToolResult> = (async (): Promise<ToolResult> => {
     editorUiActions.setActiveToolId(toolId);
     let nextValue: Input | undefined;
+    // Round 7 Phase 2 — zero-based yield counter, used to derive the
+    // canonical promptKey for buffer persistence (plan A16). Increment
+    // on every yield; tools that share buffer state across prompt
+    // boundaries (e.g., polyline next-vertex loop) override via
+    // `prompt.persistKey`.
+    let promptIndex = 0;
     try {
       while (true) {
         if (aborted) {
@@ -142,8 +148,13 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         // M1.3 Round 6 — Phase 1 step 3a.i: publish DI manifest sparsely
         // on prompt-yield (resets buffers + activeFieldIdx per Rev-1
         // R2-A5). When the prompt has no manifest, clear any leftover.
+        // Round 7 Phase 2 extends this with a runner-derived promptKey
+        // so the slice can seed dim placeholders from
+        // `lastSubmittedBuffers[promptKey]` if a previous submit
+        // recorded values under that key (canonical expression per A16).
         if (prompt.dynamicInput) {
-          editorUiActions.setDynamicInputManifest(prompt.dynamicInput);
+          const promptKey = `${toolId}:${prompt.persistKey ?? promptIndex}`;
+          editorUiActions.setDynamicInputManifest(prompt.dynamicInput, promptKey);
         } else {
           editorUiActions.clearDynamicInput();
         }
@@ -187,6 +198,10 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           continue;
         }
         nextValue = input;
+        // Round 7 Phase 2 — advance the yield counter so the NEXT
+        // prompt computes its own promptKey suffix unless it sets
+        // an explicit `prompt.persistKey`.
+        promptIndex += 1;
       }
     } finally {
       editorUiActions.setActiveToolId(null);

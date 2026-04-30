@@ -23,7 +23,6 @@ import { paintPreview } from './painters/paintPreview';
 import { paintSelection } from './painters/paintSelection';
 import { paintSelectionRect } from './painters/paintSelectionRect';
 import { paintSnapGlyph } from './painters/paintSnapGlyph';
-import { paintTransientLabel } from './painters/paintTransientLabel';
 import type { PrimitiveSpatialIndex } from './spatial-index';
 import { resolveEffectiveStyle } from './style';
 import { type Viewport, applyToCanvasContext, viewportFrustum } from './view-transform';
@@ -61,7 +60,7 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     const layer = project.layers[grid.layerId];
     if (!layer || !layer.visible || layer.frozen) continue;
     const style = resolveEffectiveStyle({}, layer);
-    paintGrid(ctx, grid, style, metricToPx, frustum);
+    paintGrid(ctx, grid, style, metricToPx, frustum, dark);
   }
 
   // 2. Primitives in frustum, filtered by layer visibility.
@@ -117,14 +116,11 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     // the metric transform after paintPreview's restore in case the
     // painter's save/restore left ctx in identity.
     if (overlay.previewShape && overlay.previewShape.kind !== 'selection-rect') {
-      // M1.3 Round 6 — when DI manifest is active (signaled by
-      // dimensionGuides being non-null), suppress paintPreview's
-      // embedded labels (line length, rectangle W×H, circle radius,
-      // arc radius). DI pills replace them; otherwise both render and
-      // produce duplicate-label noise.
-      const suppressEmbeddedLabels =
-        overlay.dimensionGuides !== null && overlay.dimensionGuides.length > 0;
-      paintPreview(ctx, overlay.previewShape, viewport, dark, suppressEmbeddedLabels);
+      // M1.3 Round 7 backlog B3 — embedded labels removed wholesale
+      // along with paintTransientLabel; rubber-band length/radius/W×H
+      // readouts come from DynamicInputPills (DOM chrome) on top of
+      // overlay.dimensionGuides.
+      paintPreview(ctx, overlay.previewShape, viewport, dark);
       applyToCanvasContext(ctx, viewport);
     }
     // M1.3 Round 6 — dimension guides (linear-dim / angle-arc) painted
@@ -146,14 +142,10 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     if (overlay.previewShape && overlay.previewShape.kind === 'selection-rect') {
       paintSelectionRect(ctx, overlay.previewShape, viewport, dark);
     }
-    // Phase 4 — tool-yielded transient labels (move delta, rotate
-    // angle, etc.). paintPreview already renders its own embedded
-    // labels (line length, radius, etc.); this pass handles labels
-    // attached to overlay.transientLabels[] for cases the preview
-    // arm doesn't cover.
-    for (const label of overlay.transientLabels) {
-      paintTransientLabel(ctx, label.anchor, label.text, viewport, dark);
-    }
+    // M1.3 Round 7 backlog B3 — `overlay.transientLabels[]` had no
+    // production writer (no tool ever called setTransientLabels) and
+    // paintTransientLabel itself was wiped. The slice field is also
+    // removed in this round.
   }
 }
 

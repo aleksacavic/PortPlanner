@@ -14,8 +14,7 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import type { Point2D } from '@portplanner/domain';
 
 import { type Viewport, metricToScreen } from '../view-transform';
-
-const STROKE_WIDTH_CSS = 1;
+import { parseDashPattern, parseNumericToken } from './_tokens';
 
 export function paintSelectionRect(
   ctx: CanvasRenderingContext2D,
@@ -45,18 +44,9 @@ export function paintSelectionRect(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = t.fill;
   ctx.strokeStyle = t.stroke;
-  ctx.lineWidth = STROKE_WIDTH_CSS * dpr;
+  ctx.lineWidth = parseNumericToken(t.stroke_width) * dpr;
   ctx.setLineDash(dash.map((n) => n * dpr));
   ctx.fillRect(x, y, w, h);
   ctx.strokeRect(x, y, w, h);
   ctx.restore();
-}
-
-function parseDashPattern(token: string): number[] {
-  const trimmed = token.trim();
-  if (trimmed === '' || trimmed === 'solid') return [];
-  return trimmed
-    .split(/\s+/)
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n));
 }

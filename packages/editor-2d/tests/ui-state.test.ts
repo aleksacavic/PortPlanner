@@ -1,5 +1,5 @@
 import { newPrimitiveId } from '@portplanner/domain';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   HISTORY_CAP,
@@ -59,7 +59,6 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(o.snapTarget).toBeNull();
     expect(o.previewShape).toBeNull();
     expect(o.hoverEntity).toBeNull();
-    expect(o.transientLabels).toEqual([]);
     expect(o.grips).toBeNull();
     expect(o.suppressEntityPaint).toBeNull();
     // Existing fields retained.
@@ -104,13 +103,6 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(editorUiStore.getState().overlay.hoverEntity).toBe(id);
     editorUiActions.setHoverEntity(null);
     expect(editorUiStore.getState().overlay.hoverEntity).toBeNull();
-  });
-
-  it('setTransientLabels replaces the labels array', () => {
-    editorUiActions.setTransientLabels([{ anchor: { metric: { x: 1, y: 2 } }, text: '5.000 m' }]);
-    expect(editorUiStore.getState().overlay.transientLabels).toHaveLength(1);
-    editorUiActions.setTransientLabels([]);
-    expect(editorUiStore.getState().overlay.transientLabels).toEqual([]);
   });
 
   it('setGrips stores grip records and clears via null', () => {
@@ -158,15 +150,14 @@ describe('editorUiStore — M1.3d overlay extensions', () => {
     expect(o.hoverEntity).toBe(id);
     expect(o.cursor).not.toBeNull();
     expect(o.previewShape).toBeNull();
-    expect(o.transientLabels).toEqual([]);
   });
 });
 
 describe('editorUiStore — viewport.crosshairSizePct (I-DTP-3 / I-DTP-18)', () => {
   afterEach(() => resetEditorUiStoreForTests());
 
-  it('default crosshairSizePct is 100 (full-canvas, AutoCAD default)', () => {
-    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(100);
+  it('default crosshairSizePct is 5 (short pickbox, AC default per Round 7 backlog B2)', () => {
+    expect(editorUiStore.getState().viewport.crosshairSizePct).toBe(5);
   });
 
   it('setCrosshairSizePct stores in-range values verbatim', () => {
@@ -372,5 +363,82 @@ describe('editorUiStore — M1.3 Round 6 Dynamic Input slice', () => {
     const di = editorUiStore.getState().commandBar.dynamicInput;
     expect(di?.buffers).toEqual(['', '']);
     expect(di?.activeFieldIdx).toBe(0);
+  });
+});
+
+describe('Round 7 Phase 2 — buffer persistence slice', () => {
+  beforeEach(() => {
+    resetEditorUiStoreForTests();
+  });
+
+  it('lastSubmittedBuffers defaults to {}', () => {
+    expect(editorUiStore.getState().commandBar.lastSubmittedBuffers).toEqual({});
+  });
+
+  it('recordSubmittedBuffers stores the array under the given promptKey', () => {
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    expect(editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:0']).toEqual([
+      '5',
+      '30',
+    ]);
+  });
+
+  it('recordSubmittedBuffers replaces an existing entry under the same promptKey', () => {
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['7', '45']);
+    expect(editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:0']).toEqual([
+      '7',
+      '45',
+    ]);
+  });
+
+  it('recordSubmittedBuffers preserves entries under other promptKeys', () => {
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.recordSubmittedBuffers('draw-circle:0', ['7']);
+    const map = editorUiStore.getState().commandBar.lastSubmittedBuffers;
+    expect(map['draw-line:0']).toEqual(['5', '30']);
+    expect(map['draw-circle:0']).toEqual(['7']);
+  });
+
+  it('reading lastSubmittedBuffers via editorUiStore.getState() returns the stored array (no helper function — A15 lock)', () => {
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    const persisted = editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:0'];
+    expect(persisted).toEqual(['5', '30']);
+    const missing = editorUiStore.getState().commandBar.lastSubmittedBuffers['draw-line:99'];
+    expect(missing).toBeUndefined();
+  });
+
+  it('setDynamicInputManifest seeds placeholders from lastSubmittedBuffers[promptKey] when present', () => {
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di?.placeholders).toEqual(['5', '30']);
+    expect(di?.buffers).toEqual(['', '']);
+    expect(di?.promptKey).toBe('draw-line:0');
+  });
+
+  it('setDynamicInputManifest seeds empty placeholders when promptKey has no persisted entry', () => {
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di?.placeholders).toEqual(['', '']);
+    expect(di?.promptKey).toBe('draw-line:0');
   });
 });

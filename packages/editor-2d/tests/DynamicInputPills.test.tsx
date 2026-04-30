@@ -138,3 +138,92 @@ describe('DynamicInputPills — multi-pill chrome', () => {
     expect(container.querySelectorAll('[data-component="dynamic-input-pill"]')).toHaveLength(0);
   });
 });
+
+// Round 7 Phase 2 — dim-placeholder pill rendering. When the active
+// buffer for a field is empty AND a previously-submitted value is
+// available under the current promptKey, the pill renders the
+// placeholder text dim. Locks REM7-P2-Placeholder.
+describe('Round 7 Phase 2 — dim placeholder rendering (REM7-P2-Placeholder)', () => {
+  function seedTwoFieldGuides(): void {
+    editorUiActions.setCursor({ metric: { x: 0, y: 0 }, screen: { x: 100, y: 200 } });
+    editorUiActions.setDimensionGuides([
+      {
+        kind: 'linear-dim',
+        anchorA: { x: 0, y: 0 },
+        anchorB: { x: 5, y: 0 },
+        offsetCssPx: 40,
+      },
+      {
+        kind: 'angle-arc',
+        pivot: { x: 0, y: 0 },
+        baseAngleRad: 0,
+        sweepAngleRad: 0.5,
+        radiusMetric: 5,
+      },
+    ]);
+  }
+
+  it('renders dim placeholder when buffer empty AND placeholder non-empty (data-pill-placeholder="true")', () => {
+    seedTwoFieldGuides();
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills).toHaveLength(2);
+    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBe('true');
+    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBe('true');
+    expect(pills[0]?.textContent).toContain('D: 5');
+    expect(pills[1]?.textContent).toContain('A: 30');
+  });
+
+  it('typing replaces the placeholder (data-pill-placeholder="false" once buffer non-empty)', () => {
+    seedTwoFieldGuides();
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setDynamicInputFieldBuffer(0, '7');
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBe('false');
+    expect(pills[0]?.textContent).toContain('D: 7');
+    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBe('true');
+    expect(pills[1]?.textContent).toContain('A: 30');
+  });
+
+  it('no placeholder rendered when no persisted value under the promptKey', () => {
+    seedTwoFieldGuides();
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills[0]?.getAttribute('data-pill-placeholder')).toBe('false');
+    expect(pills[1]?.getAttribute('data-pill-placeholder')).toBe('false');
+    expect(pills[0]?.textContent).toBe('D: ');
+    expect(pills[1]?.textContent).toBe('A: ');
+  });
+});

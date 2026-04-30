@@ -29,9 +29,7 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import type { Point2D } from '@portplanner/domain';
 
 import { type Viewport, metricToScreen } from '../view-transform';
-
-const STROKE_WIDTH_CSS = 1;
-const PICKBOX_HALF_CSS = 5;
+import { parseDashPattern, parseNumericToken } from './_tokens';
 
 export function paintCrosshair(
   ctx: CanvasRenderingContext2D,
@@ -44,12 +42,14 @@ export function paintCrosshair(
   const transient = tokens.canvas.transient;
   const dash = parseDashPattern(transient.crosshair_dash);
   const dpr = viewport.dpr;
+  const strokeWidth = parseNumericToken(transient.crosshair_stroke_width);
+  const pickboxHalf = parseNumericToken(transient.crosshair_pickbox_half);
   const screen = metricToScreen(cursor, viewport);
   const cx = screen.x * dpr;
   const cy = screen.y * dpr;
   const canvasW = viewport.canvasWidthCss * dpr;
   const canvasH = viewport.canvasHeightCss * dpr;
-  const pbHalf = PICKBOX_HALF_CSS * dpr;
+  const pbHalf = pickboxHalf * dpr;
 
   let halfH: number;
   let halfV: number;
@@ -65,7 +65,7 @@ export function paintCrosshair(
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.strokeStyle = transient.crosshair;
-  ctx.lineWidth = STROKE_WIDTH_CSS * dpr;
+  ctx.lineWidth = strokeWidth * dpr;
   ctx.setLineDash(dash.map((n) => n * dpr));
 
   ctx.beginPath();
@@ -91,13 +91,4 @@ export function paintCrosshair(
   ctx.strokeRect(cx - pbHalf, cy - pbHalf, pbHalf * 2, pbHalf * 2);
 
   ctx.restore();
-}
-
-function parseDashPattern(token: string): number[] {
-  const trimmed = token.trim();
-  if (trimmed === '' || trimmed === 'solid') return [];
-  return trimmed
-    .split(/\s+/)
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n));
 }

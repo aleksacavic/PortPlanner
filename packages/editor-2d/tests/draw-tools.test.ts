@@ -605,7 +605,7 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     await tool.done();
   });
 
-  it('polyline: per-loop next-point prompt yields the same shape as line + uses last vertex as anchor', async () => {
+  it('polyline: per-loop next-point prompt yields the same shape as line + uses last vertex as anchor + sets persistKey "next-vertex" (Round 7 Phase 2 — I-BPER-3)', async () => {
     const tool = startTool('draw-polyline', lookupTool('draw-polyline')!);
     await tick();
     tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
@@ -614,6 +614,10 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     const di = (await import('../src/ui-state/store')).editorUiStore.getState().commandBar
       .dynamicInput;
     expect(di?.manifest.combineAs).toBe('point');
+    // Round 7 Phase 2: every loop iteration shares one persistKey
+    // ('next-vertex') so iteration N+1 dim-placeholder seeds from
+    // iteration N's submitted buffers. Locks I-BPER-3.
+    expect(di?.promptKey).toBe('draw-polyline:next-vertex');
     const guides = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
       .dimensionGuides;
     if (guides?.[0]?.kind === 'linear-dim') {
@@ -624,13 +628,15 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     // Feed second vertex; next loop iteration should re-yield with anchor at (3,4).
     tool.feedInput({ kind: 'point', point: { x: 3, y: 4 } });
     await tick();
-    const guidesNext = (await import('../src/ui-state/store')).editorUiStore.getState().overlay
-      .dimensionGuides;
+    const storeAfter2 = (await import('../src/ui-state/store')).editorUiStore.getState();
+    const guidesNext = storeAfter2.overlay.dimensionGuides;
     if (guidesNext?.[0]?.kind === 'linear-dim') {
       expect(guidesNext[0].anchorA).toEqual({ x: 3, y: 4 });
     } else {
       throw new Error('expected linear-dim guide[0] after 2nd vertex');
     }
+    // Round 7 Phase 2: persistKey stays 'next-vertex' across iterations.
+    expect(storeAfter2.commandBar.dynamicInput?.promptKey).toBe('draw-polyline:next-vertex');
     tool.abort();
     await tool.done();
   });

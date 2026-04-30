@@ -200,6 +200,18 @@ export interface Prompt {
    * defense for re-entrancy per plan §3 A2.1).
    */
   dimensionGuidesBuilder?: (cursor: Point2D) => DimensionGuide[];
+  /**
+   * M1.3 Round 7 Phase 2 — buffer-persistence identity suffix. When
+   * set, the runner computes this prompt's persistence key as
+   * `${toolId}:${persistKey}`; otherwise the key is
+   * `${toolId}:${promptIndex}` (canonical expression per plan A16).
+   * Tools that share buffer state across prompt boundaries opt in via
+   * an explicit string — e.g., `draw-polyline` sets `'next-vertex'`
+   * so every loop iteration of the next-vertex prompt writes to the
+   * same key. Most tools omit this field; the prompt-index fallback
+   * gives each yield its own bucket automatically.
+   */
+  persistKey?: string;
 }
 
 export type Input =

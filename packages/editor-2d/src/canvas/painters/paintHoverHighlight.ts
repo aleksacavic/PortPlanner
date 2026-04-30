@@ -12,9 +12,8 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import type { Primitive } from '@portplanner/domain';
 
 import type { Viewport } from '../view-transform';
+import { parseDashPattern, parseNumericToken } from './_tokens';
 import { strokeEntityOutline } from './strokeEntityOutline';
-
-const STROKE_WIDTH_CSS = 1;
 
 export function paintHoverHighlight(
   ctx: CanvasRenderingContext2D,
@@ -24,7 +23,8 @@ export function paintHoverHighlight(
 ): void {
   const transient = tokens.canvas.transient.hover_highlight;
   const dash = parseDashPattern(transient.dash);
-  const lineWidthMetric = STROKE_WIDTH_CSS / (viewport.zoom * viewport.dpr);
+  const lineWidthMetric =
+    parseNumericToken(transient.stroke_width) / (viewport.zoom * viewport.dpr);
 
   ctx.save();
   ctx.strokeStyle = transient.stroke;
@@ -32,13 +32,4 @@ export function paintHoverHighlight(
   ctx.setLineDash(dash.map((n) => n / (viewport.zoom * viewport.dpr)));
   strokeEntityOutline(ctx, primitive, viewport);
   ctx.restore();
-}
-
-function parseDashPattern(token: string): number[] {
-  const trimmed = token.trim();
-  if (trimmed === '' || trimmed === 'solid') return [];
-  return trimmed
-    .split(/\s+/)
-    .map((s) => Number(s))
-    .filter((n) => Number.isFinite(n));
 }

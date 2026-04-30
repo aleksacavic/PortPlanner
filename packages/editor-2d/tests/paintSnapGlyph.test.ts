@@ -99,23 +99,24 @@ describe('paintSnapGlyph — kind dispatch + screen-space transform (I-DTP-6)', 
     });
   }
 
-  it("'endpoint' draws a square (rect + fill + stroke)", () => {
+  it("'endpoint' draws an OUTLINE-ONLY square (rect + stroke, no fill — Round 7 backlog B1, AC parity)", () => {
     const { ctx, calls } = makeCtxRecorder();
     paintSnapGlyph(ctx, { kind: 'endpoint', point: { x: 0, y: 0 } }, viewport, dark);
     const methods = calls.map((c) => c.method);
     expect(methods).toContain('rect');
-    expect(methods).toContain('fill');
     expect(methods).toContain('stroke');
+    expect(methods).not.toContain('fill');
   });
 
-  it("'midpoint' draws a triangle (3 line segments closing back to start)", () => {
+  it("'midpoint' draws an OUTLINE-ONLY triangle (3 line segments closing back to start, no fill — Round 7 backlog B1, AC parity)", () => {
     const { ctx, calls } = makeCtxRecorder();
     paintSnapGlyph(ctx, { kind: 'midpoint', point: { x: 0, y: 0 } }, viewport, dark);
     const methods = calls.map((c) => c.method);
     expect(methods.filter((m) => m === 'lineTo')).toHaveLength(2);
     expect(methods).toContain('moveTo');
     expect(methods).toContain('closePath');
-    expect(methods).toContain('fill');
+    expect(methods).toContain('stroke');
+    expect(methods).not.toContain('fill');
   });
 
   it("'intersection' draws an X (two diagonal strokes — no fill)", () => {
@@ -128,7 +129,7 @@ describe('paintSnapGlyph — kind dispatch + screen-space transform (I-DTP-6)', 
     expect(methods).not.toContain('fill');
   });
 
-  it("'node' draws a filled circle (arc with full sweep)", () => {
+  it("'node' draws an OUTLINE-ONLY circle (arc with full sweep, no fill — Round 7 backlog B1, AC parity)", () => {
     const { ctx, calls } = makeCtxRecorder();
     paintSnapGlyph(ctx, { kind: 'node', point: { x: 0, y: 0 } }, viewport, dark);
     const arc = calls.find((c) => c.method === 'arc');
@@ -136,6 +137,9 @@ describe('paintSnapGlyph — kind dispatch + screen-space transform (I-DTP-6)', 
     // arc(cx, cy, r, 0, 2π) — sweep is the full circle.
     expect(arc?.args[3]).toBe(0);
     expect(arc?.args[4]).toBeCloseTo(Math.PI * 2, 6);
+    const methods = calls.map((c) => c.method);
+    expect(methods).toContain('stroke');
+    expect(methods).not.toContain('fill');
   });
 
   it("'grid-node' and 'grid-line' both draw a + with 2 moveTo + 2 lineTo (grid-line is smaller)", () => {

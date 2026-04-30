@@ -2,9 +2,11 @@
 // in viewport extent, transforms by grid origin/angle, strokes with
 // effective layer style.
 
+import type { SemanticTokens } from '@portplanner/design-system';
 import type { Grid } from '@portplanner/domain';
 
 import type { EffectiveStyle } from '../style';
+import { parseNumericToken } from './_tokens';
 
 interface Frustum {
   minX: number;
@@ -19,9 +21,10 @@ export function paintGrid(
   style: EffectiveStyle,
   metricToPx: number,
   frustum: Frustum,
+  tokens: SemanticTokens,
 ): void {
   ctx.strokeStyle = style.color;
-  ctx.lineWidth = 1 / metricToPx;
+  ctx.lineWidth = parseNumericToken(tokens.canvas.transient.grid_stroke_width) / metricToPx;
   const cos = Math.cos(grid.angle);
   const sin = Math.sin(grid.angle);
 

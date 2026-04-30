@@ -20,12 +20,8 @@ import type { Primitive, PrimitiveId } from '@portplanner/domain';
 
 import type { Grip } from '../../ui-state/store';
 import { type Viewport, metricToScreen } from '../view-transform';
+import { parseNumericToken } from './_tokens';
 import { strokeEntityOutline } from './strokeEntityOutline';
-
-const OUTLINE_STROKE_CSS = 1.5;
-const GRIP_SIDE_CSS = 7;
-const GRIP_HOVERED_SIDE_CSS = 9;
-const GRIP_BORDER_CSS = 1;
 
 export interface HoveredGripKey {
   entityId: PrimitiveId;
@@ -41,7 +37,11 @@ export function paintSelection(
   hoveredGripKey?: HoveredGripKey | null,
 ): void {
   const transient = tokens.canvas.transient.selection_window;
-  const lineWidthMetric = OUTLINE_STROKE_CSS / (viewport.zoom * viewport.dpr);
+  const outlineStrokeCss = parseNumericToken(tokens.canvas.transient.selection_outline_width);
+  const gripSideCss = parseNumericToken(tokens.canvas.transient.grip.side);
+  const gripHoveredSideCss = parseNumericToken(tokens.canvas.transient.grip.hovered_side);
+  const gripBorderCss = parseNumericToken(tokens.canvas.transient.grip.border_width);
+  const lineWidthMetric = outlineStrokeCss / (viewport.zoom * viewport.dpr);
 
   // Outline pass — solid stroke (clear setLineDash explicitly so a
   // previous painter's dash doesn't leak into the outline).
@@ -56,9 +56,9 @@ export function paintSelection(
   // across zoom (I-DTP-14). Hovered grip (R7) gets amber fill + larger
   // square per AutoCAD's "grip about to be grabbed" convention.
   const dpr = viewport.dpr;
-  const halfDefault = (GRIP_SIDE_CSS / 2) * dpr;
-  const halfHovered = (GRIP_HOVERED_SIDE_CSS / 2) * dpr;
-  const border = GRIP_BORDER_CSS * dpr;
+  const halfDefault = (gripSideCss / 2) * dpr;
+  const halfHovered = (gripHoveredSideCss / 2) * dpr;
+  const border = gripBorderCss * dpr;
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);

@@ -350,4 +350,97 @@ describe('ToolRunner — M1.3 Round 6 Dynamic Input substrate', () => {
       await toolRef.done().catch(() => undefined);
     }
   });
+
+  // Round 7 Phase 2 — canonical promptKey expression per plan A16:
+  // `${toolId}:${prompt.persistKey ?? promptIndex}`. Three cases lock
+  // the contract: index-0 fallback, index-N fallback, and explicit
+  // persistKey override (used by polyline next-vertex loop).
+  describe('Round 7 Phase 2 — promptKey propagation (canonical: ${toolId}:${prompt.persistKey ?? promptIndex})', () => {
+    it('first prompt without persistKey gets promptKey "${toolId}:0"', async () => {
+      async function* g(): ToolGenerator {
+        yield {
+          text: 'one',
+          acceptedInputKinds: ['point', 'numberPair'],
+          dynamicInput: RECT_MANIFEST,
+        };
+        return { committed: true };
+      }
+      const tool = startTool('draw-rectangle', g);
+      await waitFor(
+        () => editorUiStore.getState().commandBar.dynamicInput,
+        (di) => di !== null,
+        'manifest published',
+      );
+      expect(editorUiStore.getState().commandBar.dynamicInput?.promptKey).toBe('draw-rectangle:0');
+      tool.abort();
+      await tool.done();
+    });
+
+    it('second prompt without persistKey gets promptKey "${toolId}:1"', async () => {
+      async function* g(): ToolGenerator {
+        yield { text: 'first', acceptedInputKinds: ['point'] };
+        yield {
+          text: 'second',
+          acceptedInputKinds: ['point', 'numberPair'],
+          dynamicInput: RECT_MANIFEST,
+        };
+        return { committed: true };
+      }
+      const tool = startTool('draw-rectangle', g);
+      // Feed a point to advance past the first yield.
+      await waitFor(
+        () => editorUiStore.getState().commandBar.activePrompt,
+        (p) => p === 'first',
+        'first prompt published',
+      );
+      tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+      await waitFor(
+        () => editorUiStore.getState().commandBar.dynamicInput,
+        (di) => di !== null,
+        'second prompt manifest published',
+      );
+      expect(editorUiStore.getState().commandBar.dynamicInput?.promptKey).toBe('draw-rectangle:1');
+      tool.abort();
+      await tool.done();
+    });
+
+    it('explicit persistKey overrides the prompt-index fallback ("draw-polyline:next-vertex" regardless of yield index)', async () => {
+      async function* g(): ToolGenerator {
+        // Two yields without DI to advance promptIndex past 0.
+        yield { text: 'p1', acceptedInputKinds: ['point'] };
+        yield { text: 'p2', acceptedInputKinds: ['point'] };
+        // Now at promptIndex=2 — explicit persistKey should override.
+        yield {
+          text: 'next vertex',
+          acceptedInputKinds: ['point'],
+          dynamicInput: RECT_MANIFEST,
+          persistKey: 'next-vertex',
+        };
+        return { committed: true };
+      }
+      const tool = startTool('draw-polyline', g);
+      await waitFor(
+        () => editorUiStore.getState().commandBar.activePrompt,
+        (p) => p === 'p1',
+        'p1 published',
+      );
+      tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+      await waitFor(
+        () => editorUiStore.getState().commandBar.activePrompt,
+        (p) => p === 'p2',
+        'p2 published',
+      );
+      tool.feedInput({ kind: 'point', point: { x: 1, y: 1 } });
+      await waitFor(
+        () => editorUiStore.getState().commandBar.dynamicInput,
+        (di) => di !== null,
+        'next-vertex manifest published',
+      );
+      expect(editorUiStore.getState().commandBar.dynamicInput?.promptKey).toBe(
+        'draw-polyline:next-vertex',
+      );
+      tool.abort();
+      await tool.done();
+    });
+  });
 });

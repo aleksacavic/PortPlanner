@@ -50,6 +50,12 @@ export async function* drawPolylineTool(): ToolGenerator {
         { label: 'Undo', shortcut: 'u' },
       ],
       acceptedInputKinds: ['point', 'subOption'],
+      // Round 7 Phase 2 — every loop iteration of the next-vertex
+      // prompt shares one persistence key so a Distance / Angle pair
+      // typed for vertex N surfaces as the dim-placeholder default
+      // for vertex N+1 (and across tool re-invocations within the
+      // same browser tab). Plan A16 + I-BPER-3.
+      persistKey: 'next-vertex',
       previewBuilder: (cursor) => ({
         kind: 'polyline',
         vertices: verticesSnapshot,
