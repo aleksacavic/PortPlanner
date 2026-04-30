@@ -264,3 +264,108 @@ describe('M1.3 DI pipeline overhaul Phase 2 — live cursor pill values (B6)', (
     expect(pills[0]?.textContent).toBe('D: 5.000');
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 4 (B8) — recall pill render.
+// When dynamicInput.recallActive=true: per-field pills get pillDimmed
+// styling; recall pill renders at cursor + (16, 28) CSS-px showing
+// `${label}=${value} / ...` for the recalled buffers from
+// dynamicInputRecall[promptKey]. Plan A13 / A14 / I-DI-10.
+describe('M1.3 DI pipeline overhaul Phase 4 — recall pill render (B8)', () => {
+  function seedRecallAndManifest(): void {
+    editorUiActions.setCursor({ metric: { x: 0, y: 0 }, screen: { x: 200, y: 300 } });
+    editorUiActions.setDimensionGuides([
+      {
+        kind: 'linear-dim',
+        anchorA: { x: 0, y: 0 },
+        anchorB: { x: 5, y: 0 },
+        offsetCssPx: 40,
+      },
+      {
+        kind: 'angle-arc',
+        pivot: { x: 0, y: 0 },
+        baseAngleRad: 0,
+        sweepAngleRad: Math.PI / 6,
+        radiusMetric: 5,
+      },
+    ]);
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'Distance' },
+          { kind: 'angle', label: 'Angle' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+  }
+
+  it('recallActive=false: no recall pill rendered; per-field pills focus normally', () => {
+    seedRecallAndManifest();
+    const { container } = render(<DynamicInputPills />);
+    const recallPill = container.querySelector('[data-component="dynamic-input-recall-pill"]');
+    expect(recallPill).toBeNull();
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills[0]?.getAttribute('data-pill-focused')).toBe('true');
+  });
+
+  it('recallActive=true: recall pill rendered with `Distance=5 / Angle=30` text at cursor offset', () => {
+    seedRecallAndManifest();
+    editorUiActions.setDynamicInputRecallActive(true);
+    const { container } = render(<DynamicInputPills />);
+    const recallPill = container.querySelector<HTMLElement>(
+      '[data-component="dynamic-input-recall-pill"]',
+    );
+    expect(recallPill).not.toBeNull();
+    expect(recallPill?.textContent).toBe('Distance=5 / Angle=30');
+    // Position derives from cursor.screen + (16, 28).
+    const transform = recallPill?.style.transform ?? '';
+    expect(transform).toContain('216px'); // 200 + 16
+    expect(transform).toContain('328px'); // 300 + 28
+  });
+
+  it('recallActive=true: per-field pills get data-pill-focused="false" + pillDimmed (lose focus styling)', () => {
+    seedRecallAndManifest();
+    editorUiActions.setDynamicInputRecallActive(true);
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills).toHaveLength(2);
+    expect(pills[0]?.getAttribute('data-pill-focused')).toBe('false');
+    expect(pills[1]?.getAttribute('data-pill-focused')).toBe('false');
+  });
+
+  it('recallActive=true with no recall entry under promptKey → recall pill not rendered (graceful degradation)', () => {
+    editorUiActions.setCursor({ metric: { x: 0, y: 0 }, screen: { x: 100, y: 100 } });
+    editorUiActions.setDimensionGuides([
+      {
+        kind: 'linear-dim',
+        anchorA: { x: 0, y: 0 },
+        anchorB: { x: 5, y: 0 },
+        offsetCssPx: 40,
+      },
+      {
+        kind: 'angle-arc',
+        pivot: { x: 0, y: 0 },
+        baseAngleRad: 0,
+        sweepAngleRad: 0,
+        radiusMetric: 5,
+      },
+    ]);
+    // NO recordSubmittedBuffers — recall map empty for this promptKey.
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setDynamicInputRecallActive(true);
+    const { container } = render(<DynamicInputPills />);
+    const recallPill = container.querySelector('[data-component="dynamic-input-recall-pill"]');
+    expect(recallPill).toBeNull(); // defensive: no entry → render nothing
+  });
+});

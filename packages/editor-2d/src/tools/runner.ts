@@ -66,6 +66,14 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   function ensurePreviewSubscription(): void {
     if (unsubscribePreview !== null) return;
     unsubscribePreview = editorUiStore.subscribe((state: EditorUiState) => {
+      // M1.3 DI pipeline overhaul Phase 4 (B8) — freeze rubber-band
+      // (preview + dimensionGuides) while DI recall pill is active.
+      // Per plan A16 / I-DI-11: cursor moves continue (so the recall
+      // pill itself can follow the cursor) but the runner's per-frame
+      // builder calls short-circuit, leaving the previously-rendered
+      // preview shape and dimension guides frozen until the user
+      // accepts (Enter / Space) or cancels (Tab / ArrowDown / Esc) recall.
+      if (state.commandBar.dynamicInput?.recallActive === true) return;
       const cursor = state.overlay.cursor;
       const promptNow = currentPromptRef.current;
       if (!promptNow) return;

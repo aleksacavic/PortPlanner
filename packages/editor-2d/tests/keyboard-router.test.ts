@@ -584,3 +584,105 @@ describe('keyboard router — M1.3 DI pipeline overhaul Phase 3 (B7)', () => {
     expect(mocks.onAbortCurrentTool).toHaveBeenCalledTimes(1);
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 4 (B8) — ArrowUp recall pill +
+// recall precedence on Tab/Esc/Enter/Space. Plan invariants I-DI-10 + I-DI-12.
+describe('keyboard router — M1.3 DI pipeline overhaul Phase 4 (B8)', () => {
+  function activateDIManifestWithRecall(): void {
+    // Seed a recall entry under the promptKey BEFORE publishing the
+    // manifest so ArrowUp finds an entry to show.
+    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setActiveToolId('draw-line');
+    editorUiActions.setFocusHolder('canvas');
+  }
+
+  it('ArrowUp at canvas focus + DI active + recall entry exists → setRecallActive(true)', () => {
+    activateDIManifestWithRecall();
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(false);
+    pressKey('ArrowUp');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(true);
+  });
+
+  it('ArrowUp with no recall entry under active promptKey → no-op', () => {
+    // Activate manifest but DON'T seed recall.
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+    editorUiActions.setActiveToolId('draw-line');
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('ArrowUp');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(false);
+  });
+
+  it('ArrowDown when recallActive → setRecallActive(false)', () => {
+    activateDIManifestWithRecall();
+    pressKey('ArrowUp');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(true);
+    pressKey('ArrowDown');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(false);
+  });
+
+  it('Tab during recall cancels recall (does NOT cycle / lock)', () => {
+    activateDIManifestWithRecall();
+    pressKey('ArrowUp');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(true);
+    const idxBefore = editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx;
+    pressKey('Tab');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(false);
+    // activeFieldIdx unchanged — Tab cancelled recall instead of cycling.
+    expect(editorUiStore.getState().commandBar.dynamicInput?.activeFieldIdx).toBe(idxBefore);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+  });
+
+  it('Enter during recall commits at recalled buffers via onSubmitDynamicInput', () => {
+    activateDIManifestWithRecall();
+    pressKey('ArrowUp');
+    pressKey('Enter');
+    expect(mocks.onSubmitDynamicInput).toHaveBeenCalledTimes(1);
+    expect(mocks.onSubmitDynamicInput).toHaveBeenCalledWith(
+      expect.objectContaining({ combineAs: 'point' }),
+      ['5', '30'], // recalled buffers, NOT the current empty buffers
+    );
+  });
+
+  it('Esc precedence: recall > unlock > abort (I-DI-12)', () => {
+    activateDIManifestWithRecall();
+    // Type something + Tab to lock field 0, then ArrowUp → both
+    // recallActive=true AND locked[0]=true coexist.
+    pressKey('5');
+    pressKey('Tab'); // locks field 0; activeFieldIdx now 1
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([true, false]);
+    pressKey('ArrowUp');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(true);
+    // First Esc: cancel recall (precedence 1). Locked still true.
+    pressKey('Escape');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(false);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([true, false]);
+    expect(mocks.onAbortCurrentTool).not.toHaveBeenCalled();
+    // Second Esc: unlock all (precedence 2).
+    pressKey('Escape');
+    expect(editorUiStore.getState().commandBar.dynamicInput?.locked).toEqual([false, false]);
+    expect(mocks.onAbortCurrentTool).not.toHaveBeenCalled();
+    // Third Esc: abort (precedence 3).
+    pressKey('Escape');
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+    expect(mocks.onAbortCurrentTool).toHaveBeenCalledTimes(1);
+  });
+});

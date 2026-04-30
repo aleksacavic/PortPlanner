@@ -633,8 +633,8 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | Gate | Command | Expected |
 |------|---------|----------|
 | DI-P4-PlaceholdersDropped | `rg -n "placeholders\s*:\s*string\[\]" packages/editor-2d/src` | zero matches (slice field gone) |
-| DI-P4-RecallActiveExists | `rg -n "recallActive" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches in `store.ts` (interface field declaration + initial state line in `setDynamicInputManifest`) |
-| DI-P4-RecallActionExists | `rg -n "setDynamicInputRecallActive" packages/editor-2d/src/ui-state/store.ts` | 1 match |
+| DI-P4-RecallActiveExists | `rg -n "^\s*recallActive[: ]" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches (interface field decl `recallActive: boolean;` + initial state property `recallActive: false`). [§3.10 patch 2026-05-01: regex tightened — un-anchored `rg "recallActive"` produced 6 matches incl. JSDoc; the contract under enforcement is the 2 declarative sites only. Same precedent as DI-P1-RenamedFieldExists / DI-P3-CombinerNoLockedParam.] |
+| DI-P4-RecallActionExists | `rg -n "setDynamicInputRecallActive" packages/editor-2d/src/ui-state/store.ts` | 1 match (action declaration line; helper / consumer-call references covered by Phase 4 router gates) |
 | DI-P4-ArrowUpHandler | `rg -n "key === 'ArrowUp'" packages/editor-2d/src/keyboard/router.ts` | 1 match |
 | DI-P4-ArrowDownHandler | `rg -n "key === 'ArrowDown'" packages/editor-2d/src/keyboard/router.ts` | 1 match |
 | DI-P4-RunnerFreezeActive | `rg -n "recallActive === true" packages/editor-2d/src/tools/runner.ts` | 1 match (subscription short-circuit) |
@@ -793,3 +793,7 @@ During Phase 3 execution, two gates' regex over-matched legitimate code that was
 **Patch B — DI-P3-RectAbsRemoved.** Original regex `Math\.abs\(c1\.a\)|Math\.abs\(c1\.b\)` over-matched the legitimate retained `Math.abs(c1.a)` / `Math.abs(c1.b)` at the `addPrimitive({ width, height })` site — the plan explicitly says width/height stay positive in the primitive (origin derivation gets the signed delta; primitive fields are abs). The actual invariant being asserted is "origin is derived from min-corner of (corner1, corner1+(a,b)), NOT corner1 directly." Regex retargeted to `rg -n "origin:\s*corner1\b"` (catches the OLD pre-Phase-3 pattern where origin was assigned `corner1` directly without min-derivation).
 
 Both patches preserve gate intent + literal expected-zero semantics. User acknowledged via the standing §3.10 ack from 2026-05-01 covering Phase 1 + Phase 2 patches; this Phase 3 round is the same class of plan-vs-reality regex-tightening work and is documented here per §3.7 append-only convention.
+
+### 2026-05-01 — Phase 4 §3.10 gate-regex tightening
+
+DI-P4-RecallActiveExists original regex `rg -n "recallActive"` over-matched JSDoc + body references (6 matches in store.ts). Tightened to `rg -n "^\s*recallActive[: ]"` to capture only the 2 declarative sites (interface field + initial state property). Same precedent as Phase 1 (DI-P1-RenamedFieldExists) and Phase 3 (DI-P3-CombinerNoLockedParam) patches; covered under the standing §3.10 ack from 2026-05-01.

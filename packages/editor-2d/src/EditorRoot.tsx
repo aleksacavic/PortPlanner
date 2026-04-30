@@ -211,30 +211,24 @@ export function EditorRoot(): ReactElement {
           }
         }
         if (!anchor) anchor = cb.directDistanceFrom;
-        // Round 7 Phase 2 — placeholder fallback at the submit
-        // boundary. For each empty buffer slot, substitute the
-        // persisted placeholder value (if any). This keeps the
-        // combiner pure (it still receives a flat string[] and
-        // doesn't know about the recall map); empty-buffer +
-        // empty-placeholder still produces null per the combiner's
-        // existing parse-failure semantics.
-        // (Recall slice is `commandBar.dynamicInputRecall`; placeholder
-        // fallback path retired in Phase 4.)
-        const placeholders = cb.dynamicInput?.placeholders ?? [];
-        const effectiveBuffers = buffers.map((b, i) => {
-          if (b.length > 0) return b;
-          return placeholders[i] ?? '';
-        });
+        // M1.3 DI pipeline overhaul Phase 4 (B8) — placeholder fallback
+        // path RETIRED. Combiner receives raw `buffers` directly. Empty
+        // buffer slots fall back to cursor-derived values inside the
+        // combiner (Phase 3 cursor-aware logic) for `'point'` and
+        // `'numberPair'` arms; for `'number'` / `'angle'` arms an empty
+        // buffer is rejected (combiner returns null → ignore submit).
+        // The recall mechanic is now ArrowUp-driven (router fires
+        // onSubmitDynamicInput with the recalled buffers when Enter /
+        // Space pressed while recallActive). Plan I-DI-9.
+        //
         // M1.3 DI pipeline overhaul Phase 3 (B7) — thread cursor for
         // cursor-aware combining. `lastKnownCursor` survives the user
         // moving onto the command bar (where overlay.cursor is null);
-        // it's never cleared once set. Combiner uses it for unlocked
-        // angle/distance in 'point' arm and W/H quadrant in
-        // 'numberPair' arm. 'number' / 'angle' arms ignore cursor.
+        // it's never cleared once set.
         const cursor = overlay.lastKnownCursor;
         const input = combineDynamicInputBuffers(
           manifest,
-          effectiveBuffers,
+          buffers,
           anchor ?? { x: 0, y: 0 },
           cursor,
         );
@@ -243,8 +237,8 @@ export function EditorRoot(): ReactElement {
           // intact so the user can edit). Plan §3 A7.
           return;
         }
-        // Append history mirror of the EFFECTIVE buffers (joined with " / ").
-        const rawJoin = effectiveBuffers
+        // Append history mirror of the raw buffers (joined with " / ").
+        const rawJoin = buffers
           .map((b, i) => {
             const label = manifest.fields[i]?.label;
             return label ? `${label}=${b}` : b;
@@ -259,11 +253,11 @@ export function EditorRoot(): ReactElement {
         }
         // Round 7 Phase 2 — record the submitted buffers under the
         // active promptKey BEFORE clearDynamicInput wipes the slice.
-        // I-BPER-1: writes only to editorUiStore; never to project /
-        // IndexedDB / API. Locked by REM7-P2-NoPersistenceLeak.
+        // I-DI-13: writes only to editorUiStore; never to project /
+        // IndexedDB / API.
         const promptKey = cb.dynamicInput?.promptKey;
         if (promptKey !== undefined) {
-          editorUiActions.recordSubmittedBuffers(promptKey, effectiveBuffers);
+          editorUiActions.recordSubmittedBuffers(promptKey, buffers);
         }
         runningToolRef.current?.feedInput(input);
         editorUiActions.clearDynamicInput();

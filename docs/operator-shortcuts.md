@@ -1,7 +1,7 @@
 # Operator Shortcut Registry
 
-**Version:** 2.1.0
-**Date:** 2026-04-29
+**Version:** 2.2.0
+**Date:** 2026-05-01
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`); extended by ADR-025 (`docs/adr/025-dynamic-input-manifest-v2.md`, supersedes ADR-024) for the multi-field Dynamic Input behaviour described under §M1.3 below.
 
 This registry is the going-forward source of truth for keyboard
@@ -49,8 +49,15 @@ is the snapshot at supersession; this file is the active registry.
 | `F9` | GSNAP toggle | |
 | `F12` | Dynamic Input / command bar toggle | |
 | `F7` | toggle-crosshair | Toggle crosshair size between full-canvas and pickbox preset (M1.3d) |
-| `Tab` | DI cycle next field | Canvas / bar focus when DI manifest active (`commandBar.dynamicInput !== null`) AND `manifest.fields.length > 1`. Cycles `activeFieldIdx` modulo field count. Pass-through to native browser behaviour when no DI is active OR single-field manifest (preserves keyboard accessibility for chrome regions). M1.3 Round 6. |
+| `Tab` | DI cycle next field | Canvas / bar focus when DI manifest active (`commandBar.dynamicInput !== null`) AND `manifest.fields.length > 1`. Cycles `activeFieldIdx` modulo field count. Pass-through to native browser behaviour when no DI is active OR single-field manifest (preserves keyboard accessibility for chrome regions). M1.3 Round 6. **M1.3 DI pipeline overhaul Phase 3 (B7)** extends behavior: a typed field freezes (`locked[idx] = true`) before cycling; when every field becomes locked the router fires `onSubmitDynamicInput` (implicit commit). Tab during recall (Phase 4 B8) cancels recall back to live-cursor mode. |
 | `Shift+Tab` | DI cycle previous field | Same context as Tab; cycles `activeFieldIdx` backward. M1.3 Round 6. |
+
+#### M1.3 DI pipeline overhaul — Phase 4 (B8) recall pill
+
+| Shortcut | Operator | Notes |
+|---|---|---|
+| `ArrowUp` | dynamic-input-recall-show | Canvas focus only when DI manifest active AND a prior submit exists in `commandBar.dynamicInputRecall` under the active promptKey. Sets `dynamicInput.recallActive = true`; chrome dims per-field pills and renders a recall pill at cursor + (16, 28) CSS-px showing `${label}=${value} / ...` for the recalled buffers. Rubber-band freezes (runner subscription short-circuits). Enter / Space accepts → commits at recalled values via standard `onSubmitDynamicInput`. Tab / ArrowDown / Esc cancels back to live-cursor mode. M1.3 DI pipeline overhaul Phase 4 (B8). |
+| `ArrowDown` | dynamic-input-recall-cancel | Canvas focus only when `dynamicInput.recallActive === true`. Sets `recallActive = false` (returns to live-cursor pill mode). Mirror of Tab cancellation; provides a directional affordance (↓ = "back to current cursor reading"). Pass-through when recall not active. M1.3 DI pipeline overhaul Phase 4 (B8). |
 | `PT` | Point (draw) | M1.3a primitive |
 | `L` | Line (draw) | M1.3a primitive |
 | `PL` | Polyline (draw) | M1.3a primitive (bulges deferred to M1.3c) |
@@ -134,6 +141,7 @@ until the user commits with Enter or aborts with Esc).
 
 | Version | Date | Change |
 |---|---|---|
+| 2.2.0 | 2026-05-01 | Add `ArrowUp` → DI recall-pill show (canvas focus when `commandBar.dynamicInput.manifest !== null` AND `commandBar.dynamicInputRecall[promptKey]` non-empty) + `ArrowDown` → DI recall cancel. M1.3 DI pipeline overhaul Phase 4 (B8) — see plan `docs/plans/feature/m1-3-di-pipeline-overhaul.md`. Replaces the Round 7 Phase 2 dim-placeholder pre-fill mechanic via GR-1 clean-break (placeholder slice field, render branch, EditorRoot fallback path, and smoke-e2e scenario all retired). **Minor bump** per registry governance ("Adding a new shortcut: minor version bump"). |
 | 2.1.0 | 2026-04-29 | Add `Tab` / `Shift+Tab` → DI cycle next/previous field (canvas / bar focus when `commandBar.dynamicInput.manifest !== null` AND `manifest.fields.length > 1`; pass-through otherwise to preserve keyboard accessibility for chrome regions). M1.3 Round 6 multi-field Dynamic Input — see ADR-024 for the manifest contract. **Minor bump** per registry governance ("Adding a new shortcut: minor version bump"). |
 | 2.0.0 | 2026-04-28 | Letter accumulator behavior change: 750 ms idle stale-clear removed; accumulator persists indefinitely until Enter, Space, or Escape (true AC parity). M1.3d-Remediation-5 H2. **Major bump** per registry governance ("Changing an existing shortcut behaviour: major version bump") — first MAJOR application of the rule. The earlier `1.2.0 → 1.2.1` patch proposal was rejected by Codex Round-1 review as governance-non-compliant. |
 | 1.2.0 | 2026-04-27 | AC-mode letter activation (Enter or Space required; Escape clears; 750 ms silent stale-clear). Dynamic Input pill at the cursor (numeric / punctuation routes into `inputBuffer`; F12 toggles visibility; Enter submits buffer through the same path as the bottom command line; click eaten while buffer non-empty). M1.3d-Remediation-4 G1 + G2. Behavior change; minor bump per registry governance. |

@@ -444,3 +444,76 @@ describe('ToolRunner — M1.3 Round 6 Dynamic Input substrate', () => {
     });
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 4 (B8) — runner subscription freeze
+// while DI recall pill is active. Per plan A16 / I-DI-11: the runner's
+// preview + dimensionGuides re-invocation short-circuits when
+// commandBar.dynamicInput.recallActive is true, leaving the previously-
+// rendered preview frozen until the user accepts/cancels recall.
+describe('ToolRunner — Phase 4 (B8) recall-active rubber-band freeze (I-DI-11)', () => {
+  it('does NOT re-invoke previewBuilder/dimensionGuidesBuilder while recallActive=true', async () => {
+    let previewCalls = 0;
+    let guidesCalls = 0;
+    async function* freezeProbeTool(): ToolGenerator {
+      const manifest: DynamicInputManifest = {
+        fields: [{ kind: 'distance', label: 'D' }],
+        combineAs: 'number',
+      };
+      yield {
+        text: 'probe',
+        acceptedInputKinds: ['point'],
+        dynamicInput: manifest,
+        previewBuilder: (cursor) => {
+          previewCalls += 1;
+          return { kind: 'circle', center: { x: 0, y: 0 }, cursor };
+        },
+        dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
+          guidesCalls += 1;
+          return [
+            {
+              kind: 'linear-dim',
+              anchorA: { x: 0, y: 0 },
+              anchorB: cursor,
+              offsetCssPx: 40,
+            },
+          ];
+        },
+      };
+      return { committed: false, reason: 'aborted' };
+    }
+    // Seed an initial cursor so the synchronous bootstrap fires once.
+    editorUiActions.setCursor({ metric: { x: 1, y: 1 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('freeze-probe', freezeProbeTool);
+    await tick();
+    const previewBeforeRecall = previewCalls;
+    const guidesBeforeRecall = guidesCalls;
+    // Bootstrap fires both builders once (sync seed).
+    expect(previewBeforeRecall).toBeGreaterThanOrEqual(1);
+    expect(guidesBeforeRecall).toBeGreaterThanOrEqual(1);
+    // Move cursor — runner subscription fires; both builders increment.
+    editorUiActions.setCursor({ metric: { x: 2, y: 2 }, screen: { x: 200, y: 200 } });
+    await tick();
+    expect(previewCalls).toBeGreaterThan(previewBeforeRecall);
+    expect(guidesCalls).toBeGreaterThan(guidesBeforeRecall);
+    // Activate recall — subscription should now short-circuit.
+    editorUiActions.setDynamicInputRecallActive(true);
+    const previewAtFreeze = previewCalls;
+    const guidesAtFreeze = guidesCalls;
+    // Move cursor multiple times while recall is active.
+    editorUiActions.setCursor({ metric: { x: 3, y: 3 }, screen: { x: 300, y: 300 } });
+    await tick();
+    editorUiActions.setCursor({ metric: { x: 4, y: 4 }, screen: { x: 400, y: 400 } });
+    await tick();
+    // Builder counters frozen — runner short-circuited each call.
+    expect(previewCalls).toBe(previewAtFreeze);
+    expect(guidesCalls).toBe(guidesAtFreeze);
+    // Cancel recall — subscription resumes for subsequent cursor moves.
+    editorUiActions.setDynamicInputRecallActive(false);
+    editorUiActions.setCursor({ metric: { x: 5, y: 5 }, screen: { x: 500, y: 500 } });
+    await tick();
+    expect(previewCalls).toBeGreaterThan(previewAtFreeze);
+    expect(guidesCalls).toBeGreaterThan(guidesAtFreeze);
+    tool.abort();
+    await tool.done();
+  });
+});

@@ -122,10 +122,7 @@ const SCENARIOS = [
   'circle DI: single-field [Radius] manifest + per-field digit routing (Round-2)',
   'click is eaten while DI buffer non-empty (multi-field DI parity)',
   'first-frame DI coherence',
-  // M1.3 DI pipeline overhaul Phase 2 — Round 7 Phase 2 placeholder
-  // smoke scenario removed per §3.10 patch 2026-05-01 (Phase 2's
-  // live-cursor render path makes the placeholder assertions invalid;
-  // Phase 4 will add a new ArrowUp recall pill scenario).
+  'line DI: typed 5 / 30 → Esc → re-invoke L → ArrowUp shows recall pill → Enter commits at recalled values (Phase 4 B8)',
   'select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits (Round 7 backlog B4)',
   'select-rect click-on-entity: mousedown on a line selects it inline without spawning the tool (Round 7 backlog B4)',
 ] as const;
@@ -1296,15 +1293,70 @@ describe('M1.3a smoke E2E (DOM-level per A18, Revision-4)', () => {
     }
   });
 
-  // M1.3 DI pipeline overhaul Phase 2: the previous smoke scenario
-  // ('line DI: typed 5 / 30 → Esc → re-invoke L → pills show dim
-  // placeholder defaults') asserted the Round 7 Phase 2 dim-placeholder
-  // mechanic. Phase 2's live-cursor render path retires the placeholder
-  // attribute + display; Phase 4 will add a new scenario asserting the
-  // ArrowUp recall pill flow. Scenario removed here per §3.10 patch
-  // 2026-05-01 (sequencing fix — placeholder-test deletion moved from
-  // Phase 4 to Phase 2 because Phase 2's render change makes the
-  // assertions invalid immediately).
+  it('line DI: typed 5 / 30 → Esc → re-invoke L → ArrowUp shows recall pill → Enter commits at recalled values (Phase 4 B8)', async () => {
+    // M1.3 DI pipeline overhaul Phase 4 (B8) — ArrowUp recall flow.
+    // After a successful line submit with Distance=5, Angle=30,
+    // re-invoking the line tool + pressing ArrowUp should:
+    //   (a) show the recall pill at cursor with `Distance=5 / Angle=30`
+    //   (b) dim per-field pills (data-pill-focused="false")
+    //   (c) freeze the rubber-band (preview shape unchanged on cursor move)
+    //   (d) Enter commits a second line at the recalled vector.
+    // Locks I-DI-9 + I-DI-10 + I-DI-11.
+    const { container } = render(<EditorRoot />);
+    createNewProject(makeProject());
+    const canvas = getCanvasOrThrow(container);
+
+    // First invocation — type 5 / 30 / Enter to commit.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 400, clientY: 300 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 450, clientY: 300 });
+    await wait(40);
+    fireEvent.keyDown(window, { key: '5' });
+    fireEvent.keyDown(window, { key: 'Tab' });
+    fireEvent.keyDown(window, { key: '3' });
+    fireEvent.keyDown(window, { key: '0' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(60);
+    // Recall map should have the entry under the line's prompt key.
+    const persistedAfterCommit = editorUiStore.getState().commandBar.dynamicInputRecall;
+    const lineKey = Object.keys(persistedAfterCommit).find((k) => k.startsWith('draw-line:'));
+    expect(lineKey).toBeDefined();
+    expect(persistedAfterCommit[lineKey as string]).toEqual(['5', '30']);
+
+    // Re-invoke L; click p1; mouseMove; press ArrowUp.
+    fireEvent.keyDown(window, { key: 'L' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(20);
+    fireEvent.mouseDown(canvas, { button: 0, clientX: 200, clientY: 200 });
+    await wait(20);
+    fireEvent.mouseMove(canvas, { clientX: 260, clientY: 240 });
+    await wait(40);
+    fireEvent.keyDown(window, { key: 'ArrowUp' });
+    await wait(20);
+
+    // recallActive set; recall pill rendered with `Distance=5 / Angle=30`.
+    const di = editorUiStore.getState().commandBar.dynamicInput;
+    expect(di?.recallActive).toBe(true);
+    const recallPill = container.querySelector<HTMLElement>(
+      '[data-component="dynamic-input-recall-pill"]',
+    );
+    expect(recallPill).not.toBeNull();
+    expect(recallPill?.textContent).toBe('Distance=5 / Angle=30');
+    // Per-field pills get data-pill-focused="false" while recall up.
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills.length).toBeGreaterThanOrEqual(2);
+    expect(pills[0]?.getAttribute('data-pill-focused')).toBe('false');
+
+    // Press Enter — commits at recalled values.
+    const beforeCount = Object.keys(projectStore.getState().project!.primitives).length;
+    fireEvent.keyDown(window, { key: 'Enter' });
+    await wait(60);
+    const afterCount = Object.keys(projectStore.getState().project!.primitives).length;
+    expect(afterCount).toBe(beforeCount + 1); // second line committed
+  });
 
   it('select-rect click-release-click: empty mousedown + small mouseup leaves tool alive; second click commits (Round 7 backlog B4)', async () => {
     // AC parity: clicking on empty space then clicking again at a

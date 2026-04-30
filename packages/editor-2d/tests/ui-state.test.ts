@@ -408,8 +408,11 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
     expect(missing).toBeUndefined();
   });
 
-  it('setDynamicInputManifest seeds placeholders from dynamicInputRecall[promptKey] when present', () => {
-    editorUiActions.recordSubmittedBuffers('draw-line:0', ['5', '30']);
+  // M1.3 DI pipeline overhaul Phase 4 (B8) — placeholder-seeding tests
+  // retired (slice field `placeholders` removed; ArrowUp recall pill
+  // replaces the dim-placeholder mechanic). Phase 4 invariant I-DI-9.
+
+  it('setDynamicInputManifest initializes recallActive: false (I-DI-10)', () => {
     editorUiActions.setDynamicInputManifest(
       {
         fields: [
@@ -421,12 +424,11 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
       'draw-line:0',
     );
     const di = editorUiStore.getState().commandBar.dynamicInput;
-    expect(di?.placeholders).toEqual(['5', '30']);
-    expect(di?.buffers).toEqual(['', '']);
+    expect(di?.recallActive).toBe(false);
     expect(di?.promptKey).toBe('draw-line:0');
   });
 
-  it('setDynamicInputManifest seeds empty placeholders when promptKey has no persisted entry', () => {
+  it('setDynamicInputRecallActive(true) sets the flag', () => {
     editorUiActions.setDynamicInputManifest(
       {
         fields: [
@@ -437,9 +439,16 @@ describe('Round 7 Phase 2 — buffer persistence slice', () => {
       },
       'draw-line:0',
     );
-    const di = editorUiStore.getState().commandBar.dynamicInput;
-    expect(di?.placeholders).toEqual(['', '']);
-    expect(di?.promptKey).toBe('draw-line:0');
+    editorUiActions.setDynamicInputRecallActive(true);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(true);
+    editorUiActions.setDynamicInputRecallActive(false);
+    expect(editorUiStore.getState().commandBar.dynamicInput?.recallActive).toBe(false);
+  });
+
+  it('setDynamicInputRecallActive is a no-op when dynamicInput is null', () => {
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
+    editorUiActions.setDynamicInputRecallActive(true);
+    expect(editorUiStore.getState().commandBar.dynamicInput).toBeNull();
   });
 
   // M1.3 DI pipeline overhaul Phase 1 — locked field initialization +

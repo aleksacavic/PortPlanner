@@ -145,22 +145,6 @@ export interface CommandBarState {
      */
     promptKey: string;
     /**
-     * Round 7 Phase 2 — dim placeholder values pre-filled from the
-     * `dynamicInputRecall` map at manifest publication time. One
-     * entry per manifest field (parallel to `buffers`). Empty string
-     * means "no persisted value for this field — render the pill
-     * label only". When the active buffer for a field is empty AND
-     * `placeholders[idx]` is non-empty, the pill renders the
-     * placeholder dim (per `pill_placeholder_opacity` token).
-     *
-     * **M1.3 DI pipeline overhaul Phase 1 note:** This field stays in
-     * the slice for now (Phases 1-3); Phase 4 retires it together with
-     * the dim-placeholder render branch in pill chrome and the
-     * EditorRoot fallback path, replacing the design with the ArrowUp
-     * recall pill. See `docs/plans/feature/m1-3-di-pipeline-overhaul.md`.
-     */
-    placeholders: string[];
-    /**
      * **M1.3 DI pipeline overhaul Phase 1** — per-field lock state.
      * Parallel to `buffers`; `true` when the field's value is frozen
      * via Tab (set by router when Tab transitions a typed field).
@@ -170,6 +154,19 @@ export interface CommandBarState {
      * the `buffers: Array(N).fill('')` reset). Plan invariant I-DI-1.
      */
     locked: boolean[];
+    /**
+     * **M1.3 DI pipeline overhaul Phase 4 (B8)** — recall pill state.
+     * `true` when the user has pressed ArrowUp on a DI prompt that has
+     * a prior submit recorded under its promptKey: per-field pills dim
+     * + a recall pill renders at cursor + (16, 28) CSS-px offset
+     * showing `${label}=${value}` joined ` / ` for the recalled
+     * buffers. Rubber-band freezes during recall (runner subscription
+     * short-circuits per A16). Cancelled by Tab / ArrowDown / Esc;
+     * accepted by Enter / Space (commits using the recalled buffers
+     * via the standard onSubmitDynamicInput path). Initialized to
+     * `false` on every manifest publish. Plan invariants I-DI-10 + I-DI-11.
+     */
+    recallActive: boolean;
   } | null;
   /**
    * Round 7 Phase 2 — buffer persistence within tab. Key =
@@ -537,28 +534,28 @@ export const editorUiActions = {
   /**
    * Round 7 Phase 2 — manifest publication takes the runner-derived
    * `promptKey` (canonical expression per plan A16:
-   * `${toolId}:${prompt.persistKey ?? promptIndex}`). The placeholder
-   * array is seeded from `commandBar.dynamicInputRecall[promptKey]`
-   * if a previous submit recorded values under that key; otherwise
-   * empty strings. Buffers always start empty (Rev-1 R2-A5).
+   * `${toolId}:${prompt.persistKey ?? promptIndex}`).
    *
    * **M1.3 DI pipeline overhaul Phase 1** — also initializes `locked`
    * parallel to `buffers` (`Array(N).fill(false)`). I-DI-1 invariant.
+   *
+   * **M1.3 DI pipeline overhaul Phase 4 (B8)** — placeholder pre-fill
+   * mechanic retired (the slice no longer has a `placeholders` field;
+   * the dim-placeholder pill render path is gone). Recall is now
+   * surfaced via the ArrowUp recall pill at the cursor (router-driven;
+   * sets `recallActive = true` when a recall entry exists for the
+   * active promptKey). `recallActive` initializes to `false` on every
+   * manifest publish.
    */
   setDynamicInputManifest(manifest: DynamicInputManifest, promptKey: string): void {
     editorUiStore.setState((s) => {
-      const persisted = s.commandBar.dynamicInputRecall[promptKey];
-      const placeholders =
-        persisted && persisted.length === manifest.fields.length
-          ? [...persisted]
-          : Array<string>(manifest.fields.length).fill('');
       s.commandBar.dynamicInput = {
         manifest,
         buffers: Array<string>(manifest.fields.length).fill(''),
         activeFieldIdx: 0,
         promptKey,
-        placeholders,
         locked: Array<boolean>(manifest.fields.length).fill(false),
+        recallActive: false,
       };
     });
   },
@@ -605,6 +602,19 @@ export const editorUiActions = {
     editorUiStore.setState((s) => {
       if (s.commandBar.dynamicInput) {
         s.commandBar.dynamicInput.locked = s.commandBar.dynamicInput.locked.map(() => false);
+      }
+    });
+  },
+  /**
+   * **M1.3 DI pipeline overhaul Phase 4 (B8)** — set `recallActive` flag.
+   * Sole writer: keyboard router (ArrowUp → true; ArrowDown / Tab → false;
+   * Esc cancels recall before falling through to unlock / abort).
+   * No-op when `dynamicInput` is null. Plan invariants I-DI-10 + I-DI-12.
+   */
+  setDynamicInputRecallActive(active: boolean): void {
+    editorUiStore.setState((s) => {
+      if (s.commandBar.dynamicInput) {
+        s.commandBar.dynamicInput.recallActive = active;
       }
     });
   },
