@@ -9,6 +9,7 @@
 | Rev | Date | Trigger | Changes |
 |---|---|---|---|
 | 1 | 2026-04-30 | Initial draft. M1.3 Round 7 backlog items B6 + B7 + B8 land together — they share the `commandBar.dynamicInput` slice contract (dropping `placeholders[]`, adding `locked: boolean[]` and later `recallActive: boolean`), the manifest-pipeline (combiner becomes cursor-aware), and the recall map (renamed `lastSubmittedBuffers` → `dynamicInputRecall`). Splitting them would require three contract changes; bundling means one. Phase 1 establishes the contract; Phase 2 ships B6; Phase 3 ships B7; Phase 4 ships B8 and retires the Round 7 Phase 2 dim-placeholder design via clean-break per GR-1. |
+| 4 | 2026-05-01 | Codex Procedure 02 Round-3 review (No-Go, 1 Partial-Agree Blocker + 1 Agree High-risk) — fixes applied: **B1 (Partial-Agree, path-role framing in §3.0)**: Codex flagged that §3.0 cited only `docs/procedures/Claude/00-architecture-contract.md` (author copy) but Procedure 02 review prerequisite expects the Codex-side mirror at `docs/procedures/Codex/00-architecture-contract.md`. Verified via `ls docs/procedures/Codex/` that the Codex-side copy exists (along with `02-plan-review.md` + `04-post-commit-review.md`); confirmed via `diff -u` that the Claude-side and Codex-side architecture contracts mirror the same binding ADR list with reviewer-role framing differences only. §3.0 split into §3.0.a "Author-role prerequisites" (Claude-side, consulted while authoring) + §3.0.b "Reviewer-role prerequisites" (Codex-side, expected by Procedure 02 review). §3.0.b explicitly lists `docs/procedures/Codex/00-architecture-contract.md` AND `docs/procedures/Codex/02-plan-review.md` (the Codex review protocol) so reviewer-role framing is explicit. **H1 (Agree, gate exactness)**: every gate row's expected-output column tightened — `≥N matches` → `exactly N matches in <file> (<rationale>)`; `exit 0` → `exit code 0; zero TypeScript errors / zero biome errors`; "all pass; net-new ≈ N" → `final test count = baseline + N (<itemized breakdown>)`. Per Codex's rule enhancement "Require each grep gate to include exact command + expected count in plan (not just intent labels)". |
 | 3 | 2026-04-30 | Codex Procedure 02 Round-2 review (No-Go, 1 Blocker regression + 1 High-risk scope) — fixes applied: **B1-regress** (combiner call snippet at Phase 4 step 2 still showed 5-arg form `combineDynamicInputBuffers(..., cursorRel, locked)`): snippet rewritten to the 4-arg signature locked in A19 — `(manifest, buffers, anchor, cursor)` only, no `locked` arg. Comment expanded to source `cursor` from `editorUiStore.getState().overlay.lastKnownCursor` (matches Phase 3 step 2 wording). Stale-symbol re-sweep run (zero matches for `cursorRel, locked` and `, locked,` patterns in the plan). **H1-scope** (persistence gate scope too narrow for §8 claim): the single Rev-2 gate `DI-P4-NoDIFieldsInPersistence` was scoped to `packages/domain/src/serialize.ts` + `packages/domain/src/schemas/` only. Rev-3 expands to FOUR gates covering the full persistence surface allowlist per Codex's "explicit path list + zero-match expectations per path" rule: (a) **Domain** — same scope as Rev-2 (serialize.ts + schemas/); (b) **ProjectStore** — `packages/project-store/src/` (store.ts, actions.ts, actions/ folder, operation-emit.ts, initial-state.ts, index.ts); (c) **OperationEmit** — `editorUiStore` / `commandBar` references in operation-emit.ts + actions.ts (catches accidental editor-UI reads in undo/redo path); (d) **NoEditorUiCrossImport** — confirms `packages/domain/src` and `packages/project-store/src` do NOT import from editor-2d (architectural barrier per GR-3 / ADR-015 ensures DI fields cannot reach persistence by transitive read). Invariant I-DI-13 expanded; Done Criteria Phase 4 row references the 4-gate suite. |
 | 2 | 2026-04-30 | Codex Procedure 02 Round-1 review (No-Go, 2 Blockers + 3 High-risks) — fixes applied: **B1** (Prerequisite evidence): added §3.0 "Prerequisite evidence" subsection enumerating every binding-doc + procedure file read at authoring time with timestamps, addressing Codex's "show evidence of completion of prerequisite read" gap. **B2** (A19 ↔ §4.0.2 contradiction): line 250's stale paragraph "the `locked` parameter is threaded through for symmetry" deleted (combiner has NO `locked` parameter per A19); §4.1 DynamicInputPills row's `deriveLivePillValue(guide, fieldKind)` corrected to drop the `fieldKind` arg (Phase 2 step 1 already says no `fieldKind`); §4.1 dynamic-input-combine.test.ts row's "gains `cursor` + `locked` params" corrected to "gains `cursor` param" (single param per A19); §4.1 draw-tools.test.ts polyline row's "only Distance is locked" reworded to "Distance buffer non-empty" for clarity; Rev-1 history-row "combiner becomes cursor + lock aware" reworded to "cursor-aware (single new param per A19)". **H1** (operator-shortcut version target): plan now specifies exact bump `2.1.0 → 2.2.0` (minor — adding ArrowUp/ArrowDown shortcuts) per registry governance; new Phase 4 gate `DI-P4-OperatorShortcutsVersion` asserts the bump + changelog entry. **H2** (hydration/serialization grep gate): new Phase 4 gate `DI-P4-NoDIFieldsInPersistence` asserts `dynamicInputRecall` / `dynamicInput.locked` / `dynamicInput.recallActive` do NOT appear in `packages/domain/src/serialize.ts` or `packages/domain/src/schemas/` (hard gate proving §8 "unchanged" claim). **H3** (shorthand in §3.1): every "File:line" cell now uses the full path; all 24 grounding rows use markdown links to the canonical absolute path. |
 
@@ -52,14 +53,23 @@ Per ADR-025 §3, dimension guides are the SSOT for the geometric semantics of an
 
 B6's "live computer" is therefore deterministic from the existing slice — pill chrome derives display text from `dimensionGuides[idx]` per kind. No new manifest field, no parallel `liveCompute` callback. (Question Q1 in §1.13 — recommendation locked at option (c).)
 
-## 3.0 Prerequisite evidence (Rev-2 added per Codex Round-1 B1)
+## 3.0 Prerequisite evidence (Rev-2 added per Codex Round-1 B1; Rev-4 expanded per Codex Round-3 B1)
 
-Every binding spec / procedure file consulted during plan authoring is enumerated below. Codex Round-1 B1 flagged that the plan made heavy spec claims without explicitly evidencing prerequisite reads; this table closes that gap. Each row records the file read at authoring time. Reviewers can re-confirm by running `test -f <path>` on the citations.
+Every binding spec / procedure file consulted during plan authoring is enumerated below. Codex Round-1 B1 flagged that the plan made heavy spec claims without explicitly evidencing prerequisite reads; this table closes that gap. Codex Round-3 B1 (Partial Agree) further clarified: the architecture contract exists in BOTH `docs/procedures/Claude/` (author-role copy) AND `docs/procedures/Codex/` (reviewer-role copy) — the two are mirrors with reviewer-role framing differences only (verified via `diff -u`); the prerequisite evidence table now lists BOTH so each reviewer role's procedure references the exact path it expects. Each row records the file read at authoring time. Reviewers can re-confirm by running `test -f <path>` on the citations.
+
+### 3.0.a — Author-role prerequisites (Claude side, consulted while authoring this plan)
 
 | Doc / procedure | Path | Read at authoring time? | Why consulted |
 |---|---|---|---|
-| Procedure 00 — Architecture Contract | `docs/procedures/Claude/00-architecture-contract.md` | Yes (full file 1-377) | Enumerates binding ADRs, registry rules, GR-1 / GR-2 / GR-3, §0.7 Approved Deviation Protocol. Plan §6 ("Deviations") + §A1 (preproduction clean-break) + §A6 (no forward-extensibility placeholders) reference this directly. |
+| Procedure 00 (author copy) — Architecture Contract | `docs/procedures/Claude/00-architecture-contract.md` | Yes (full file 1-377) | Enumerates binding ADRs, registry rules, GR-1 / GR-2 / GR-3, §0.7 Approved Deviation Protocol. Plan §6 ("Deviations") + §A1 (preproduction clean-break) + §A6 (no forward-extensibility placeholders) reference this directly. |
 | Procedure 01 — Plan Authoring | `docs/procedures/Claude/01-plan-authoring.md` | Yes (full file 1-612) | Defines the §1.3 three-round self-audit, §1.4.1 plan-vs-code grounding, §1.5 scope template, §1.8 invariants + enforcement, §1.12 mandatory completion gates, §1.13 pre-response notification, §1.16.12 stale-symbol purge. This plan's structure follows §1.11 mandatory section order. |
+
+### 3.0.b — Reviewer-role prerequisites (Codex side, expected by Procedure 02 strict-evidence review)
+
+| Doc / procedure | Path | Required by Codex review? | Author confirmation |
+|---|---|---|---|
+| Procedure 00 (reviewer copy) — Architecture Contract | `docs/procedures/Codex/00-architecture-contract.md` | Yes — Codex Procedure 02 prerequisite | Confirmed exists at this path; verified Rev-4 via `ls docs/procedures/Codex/`. The Claude-side and Codex-side files mirror the same binding ADR list (verified via `diff -u`); the differences are reviewer-role framing only (e.g., "Codex uses this document to determine whether an implementation conforms or deviates" vs. "Read this file before starting any task"). The architecture content (binding ADRs §0.2, GR-1/2/3 §0.4, deviation protocol §0.7) is identical at the binding level. Author has read the Claude-side copy at plan-authoring time; Codex MAY use the Codex-side copy during review without divergence risk. |
+| Procedure 02 — Plan Review (Codex protocol) | `docs/procedures/Codex/02-plan-review.md` | Yes — this is the Codex review protocol | Confirmed exists at this path. Author has NOT read this file (it's the reviewer's protocol, not the author's); the §1.13 pre-response notification template + the supported-pair-matrix pattern + command-concrete gate quality bar in this plan are derived from observing what Codex requires per the snap-engine-extension precedent (Codex 9.8/10 Go). |
 | ADR-025 — Dynamic Input Manifest v2 | `docs/adr/025-dynamic-input-manifest-v2.md` | Yes (full file 1-247) | Authoritative DI manifest contract. §4 angle-as-degrees invariant, §1 angle-arc geometry, §6 DIM_OFFSET_CSS SSOT, §7 angle-pill placement. Plan §6 declares no ADR-025 amendment because the cursor-aware combiner is implementation-internal. |
 | ADR-023 — Tool State Machine + Command Bar | `docs/adr/023-tool-state-machine-and-command-bar.md` | Yes (skimmed for shortcut governance) | Authority for `docs/operator-shortcuts.md` registry; sourced the version-bump governance for the H1 fix. |
 | `docs/operator-shortcuts.md` | full file | Yes (head 1-30 + changelog table 133-140) | Confirmed current version `2.1.0`; Phase 4 bumps to `2.2.0` (minor — adding ArrowUp/ArrowDown). Governance: "Adding a new shortcut: minor version bump." |
@@ -364,12 +374,12 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | Gate | Command | Expected |
 |------|---------|----------|
 | DI-P1-NoLastSubmittedBuffersRef | `rg -n "lastSubmittedBuffers" packages/editor-2d/src packages/editor-2d/tests` | zero matches (everything renamed to `dynamicInputRecall`) |
-| DI-P1-RenamedFieldExists | `rg -n "dynamicInputRecall" packages/editor-2d/src/ui-state/store.ts` | ≥2 matches (interface field declaration + initial state) |
-| DI-P1-LockFieldExists | `rg -n "locked: boolean\[\]" packages/editor-2d/src/ui-state/store.ts` | 1 match (in dynamicInput type) |
-| DI-P1-LockMutatorExists | `rg -n "setDynamicInputFieldLocked\|unlockAllDynamicInputFields" packages/editor-2d/src/ui-state/store.ts` | ≥2 matches (action declarations) |
-| DI-P1-Typecheck | `pnpm typecheck` | exit 0 |
-| DI-P1-Lint | `pnpm check` | exit 0 |
-| DI-P1-Tests | `pnpm --filter @portplanner/editor-2d test` | all pass; net-new test count ≈ 4 |
+| DI-P1-RenamedFieldExists | `rg -n "dynamicInputRecall" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches in `store.ts` (interface field declaration line + initial state line) |
+| DI-P1-LockFieldExists | `rg -n "locked: boolean\[\]" packages/editor-2d/src/ui-state/store.ts` | exactly 1 match (in `dynamicInput` interface) |
+| DI-P1-LockMutatorExists | `rg -n "setDynamicInputFieldLocked\|unlockAllDynamicInputFields" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches (one declaration line per action) |
+| DI-P1-Typecheck | `pnpm typecheck` | exit code 0; zero TypeScript errors |
+| DI-P1-Lint | `pnpm check` | exit code 0; zero biome errors |
+| DI-P1-Tests | `pnpm --filter @portplanner/editor-2d test` | exit code 0; all tests pass; final test count = baseline + 4 (the 4 net-new mutator + slice tests added in step 6) |
 
 **Phase 1 invariants introduced:**
 - **I-DI-1** — slice shape invariant: when `commandBar.dynamicInput !== null`, `locked.length === buffers.length === placeholders.length === manifest.fields.length`. Enforcement: `setDynamicInputManifest` always initializes all four arrays at the same length; mutators can only update single indices.
@@ -434,9 +444,9 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | DI-P2-LiveDistanceTest | `pnpm --filter @portplanner/editor-2d test -- DynamicInputPills.test.tsx -t "live distance"` | passes; pill text includes `5.000` |
 | DI-P2-LiveAngleTest | `pnpm --filter @portplanner/editor-2d test -- DynamicInputPills.test.tsx -t "live angle"` | passes; pill text includes `45.00` |
 | DI-P2-AbsDisplayTest | `pnpm --filter @portplanner/editor-2d test -- DynamicInputPills.test.tsx -t "abs"` | passes; typed `-7` renders `7` |
-| DI-P2-Typecheck | `pnpm typecheck` | exit 0 |
-| DI-P2-Lint | `pnpm check` | exit 0 |
-| DI-P2-Tests | `pnpm --filter @portplanner/editor-2d test` | all pass; net-new ≈ 6 |
+| DI-P2-Typecheck | `pnpm typecheck` | exit code 0; zero TypeScript errors |
+| DI-P2-Lint | `pnpm check` | exit code 0; zero biome errors |
+| DI-P2-Tests | `pnpm --filter @portplanner/editor-2d test` | exit code 0; all tests pass; final test count = post-Phase-1 baseline + 6 (the 6 net-new live-cursor + abs-display tests added in step 3) |
 
 **Phase 2 invariants introduced:**
 - **I-DI-2** — pill display SSOT: `valueText` is computed from `(buffers[idx], locked[idx], dimensionGuides[idx], field.kind)` with NO read of `placeholders[idx]`. Enforcement: gate DI-P2-NoPlaceholderRead.
@@ -525,9 +535,9 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | DI-P3-PointInversionQ3 | `pnpm --filter @portplanner/editor-2d test -- dynamic-input-combine.test.ts -t "Q3"` | passes; cursor in Q3 + typed Distance=5 produces point in Q3 |
 | DI-P3-NumberPairCursorWins | `pnpm --filter @portplanner/editor-2d test -- dynamic-input-combine.test.ts -t "numberPair.*cursor"` | passes |
 | DI-P3-RectAllQuadrants | `pnpm --filter @portplanner/editor-2d test -- draw-tools.test.ts -t "rectangle.*quadrant"` | 4 quadrant cases pass |
-| DI-P3-Typecheck | `pnpm typecheck` | exit 0 |
-| DI-P3-Lint | `pnpm check` | exit 0 |
-| DI-P3-Tests | `pnpm --filter @portplanner/editor-2d test` | all pass; net-new ≈ 14 |
+| DI-P3-Typecheck | `pnpm typecheck` | exit code 0; zero TypeScript errors |
+| DI-P3-Lint | `pnpm check` | exit code 0; zero biome errors |
+| DI-P3-Tests | `pnpm --filter @portplanner/editor-2d test` | exit code 0; all tests pass; final test count = post-Phase-2 baseline + 14 (6 inversion-fixture combiner tests + 4 Tab/Esc router tests + 4 rectangle quadrant tool tests) |
 
 **Phase 3 invariants introduced:**
 - **I-DI-3** — combiner cursor-awareness: `combineDynamicInputBuffers` reads `cursor` for `'point'` and `'numberPair'` arms when buffers are empty; `'number'` and `'angle'` arms ignore cursor (A11 / A12). The combiner does NOT read `locked` per A19. Enforcement: gates DI-P3-CombinerSignature + DI-P3-CombinerNoLockedParam + dynamic-input-combine.test.ts cases.
@@ -623,7 +633,7 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | Gate | Command | Expected |
 |------|---------|----------|
 | DI-P4-PlaceholdersDropped | `rg -n "placeholders\s*:\s*string\[\]" packages/editor-2d/src` | zero matches (slice field gone) |
-| DI-P4-RecallActiveExists | `rg -n "recallActive" packages/editor-2d/src/ui-state/store.ts` | ≥2 matches (interface + initial state) |
+| DI-P4-RecallActiveExists | `rg -n "recallActive" packages/editor-2d/src/ui-state/store.ts` | exactly 2 matches in `store.ts` (interface field declaration + initial state line in `setDynamicInputManifest`) |
 | DI-P4-RecallActionExists | `rg -n "setDynamicInputRecallActive" packages/editor-2d/src/ui-state/store.ts` | 1 match |
 | DI-P4-ArrowUpHandler | `rg -n "key === 'ArrowUp'" packages/editor-2d/src/keyboard/router.ts` | 1 match |
 | DI-P4-ArrowDownHandler | `rg -n "key === 'ArrowDown'" packages/editor-2d/src/keyboard/router.ts` | 1 match |
@@ -638,14 +648,14 @@ UNCHANGED. `parseFloat(buffer) * Math.PI / 180`; emit `{ kind: 'angle', radians 
 | DI-P4-NoStalePillReads | `rg -n "dynamicInput\.placeholders\|placeholders\[idx\]\|placeholders\[i\]" packages/editor-2d/src` | zero matches |
 | DI-P4-NoStaleStyleClass | `rg -n "pillPlaceholder\|\.pillPlaceholder" packages/editor-2d/src/chrome` | zero matches |
 | DI-P4-OperatorShortcutsVersion (Rev-2 H1) | `rg -n "^\*\*Version:\*\* 2\.2\.0" docs/operator-shortcuts.md && rg -n "^\| 2\.2\.0 \|" docs/operator-shortcuts.md` | both succeed (header bumped + changelog row exists) |
-| DI-P4-OperatorShortcutsArrowUpEntry (Rev-2 H1) | `rg -n "ArrowUp.*dynamic-input-recall\|dynamic-input-recall.*ArrowUp" docs/operator-shortcuts.md` | ≥1 match (entry present in Shortcut map) |
+| DI-P4-OperatorShortcutsArrowUpEntry (Rev-2 H1) | `rg -n "ArrowUp.*dynamic-input-recall\|dynamic-input-recall.*ArrowUp" docs/operator-shortcuts.md` | exactly 1 match (the new ArrowUp row in the Shortcut map under the "Dynamic Input recall" sub-section added in Phase 4 step 9) |
 | DI-P4-NoDIFieldsInPersistence-Domain (Rev-3 H2 expanded) | `rg -n "dynamicInputRecall\|dynamicInput\.locked\|dynamicInput\.recallActive\|recallActive" packages/domain/src/serialize.ts packages/domain/src/schemas/` | zero matches (domain layer: serialize.ts + project + primitive + layer + grid + ownership + operation + object + coordinate-system schemas) |
 | DI-P4-NoDIFieldsInPersistence-ProjectStore (Rev-3 H2 expanded) | `rg -n "dynamicInputRecall\|dynamicInput\.locked\|dynamicInput\.recallActive\|recallActive" packages/project-store/src/` | zero matches (project-store: store.ts, actions.ts + actions/ folder, operation-emit.ts, initial-state.ts, index.ts) |
 | DI-P4-NoDIFieldsInPersistence-OperationEmit (Rev-3 H2 expanded) | `rg -n "editorUiStore\|commandBar" packages/project-store/src/operation-emit.ts packages/project-store/src/actions.ts` | zero matches (operation log / undo-redo never reads editor-UI state — confirms GR-3 module isolation per ADR-015) |
 | DI-P4-NoEditorUiCrossImport (Rev-3 H2 expanded) | `rg -n "from '\.\./\.\./editor-2d\|from '@portplanner/editor-2d" packages/domain/src packages/project-store/src` | zero matches (no upstream package imports editor-UI state — architectural barrier ensures DI fields cannot reach persistence) |
-| DI-P4-Typecheck | `pnpm typecheck` | exit 0 |
-| DI-P4-Lint | `pnpm check` | exit 0 |
-| DI-P4-Tests | `pnpm --filter @portplanner/editor-2d test` | all pass; net-new + rewrites total ≈ 8 |
+| DI-P4-Typecheck | `pnpm typecheck` | exit code 0; zero TypeScript errors |
+| DI-P4-Lint | `pnpm check` | exit code 0; zero biome errors |
+| DI-P4-Tests | `pnpm --filter @portplanner/editor-2d test` | exit code 0; all tests pass; final test count = post-Phase-3 baseline + 8 net-new (2 ArrowUp/ArrowDown router + 2 Esc-precedence router + 2 recall-pill render + 1 freeze-during-recall runner + 1 smoke-e2e recall scenario) − 6 deleted (the Round 7 Phase 2 placeholder smoke + ui-state placeholder-seeding tests). Net delta: +2 from post-Phase-3 baseline. |
 
 **Phase 4 invariants introduced:**
 - **I-DI-8** — recall map name SSOT: the slice field is `commandBar.dynamicInputRecall`, NOT `lastSubmittedBuffers`. Enforcement: gate DI-P1-NoLastSubmittedBuffersRef (set in Phase 1).
