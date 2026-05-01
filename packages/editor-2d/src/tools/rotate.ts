@@ -16,12 +16,7 @@
 //
 // Per I-MOD-6 truth table: emits 'UPDATE' per selected primitive.
 
-import {
-  type Point2D,
-  type Primitive,
-  type PrimitiveId,
-  rotatePrimitive,
-} from '@portplanner/domain';
+import { type Primitive, type PrimitiveId, rotatePrimitive } from '@portplanner/domain';
 import { projectStore, updatePrimitive } from '@portplanner/project-store';
 
 import { editorUiStore } from '../ui-state/store';

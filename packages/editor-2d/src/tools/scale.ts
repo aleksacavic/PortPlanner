@@ -14,12 +14,7 @@
 //            factor = newDist / refDist.
 //   4. Commit: for each id, updatePrimitive(id, scalePrimitive(p, base, factor)).
 
-import {
-  type Point2D,
-  type Primitive,
-  type PrimitiveId,
-  scalePrimitive,
-} from '@portplanner/domain';
+import { type Primitive, type PrimitiveId, scalePrimitive } from '@portplanner/domain';
 import { projectStore, updatePrimitive } from '@portplanner/project-store';
 
 import { editorUiStore } from '../ui-state/store';

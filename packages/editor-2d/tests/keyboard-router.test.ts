@@ -165,6 +165,38 @@ describe('keyboard router', () => {
     expect(mocks.onSubOption).not.toHaveBeenCalled();
   });
 
+  // M1.3b simple-transforms Phase 6 — router activation tests for the 4
+  // new modify operators (R / MI / SC / O).
+  it('activates rotate via R shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('R');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('rotate');
+  });
+
+  it('activates mirror via MI shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('M');
+    pressKey('I');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('mirror');
+  });
+
+  it('activates scale via SC shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('S');
+    pressKey('C');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('scale');
+  });
+
+  it('activates offset via O shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('O');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('offset');
+  });
+
   // M1.3d Phase 8 — F7 toggle-crosshair (I-DTP-20).
   it('F7 fires onToggleCrosshair regardless of focus holder', () => {
     editorUiActions.setFocusHolder('canvas');
