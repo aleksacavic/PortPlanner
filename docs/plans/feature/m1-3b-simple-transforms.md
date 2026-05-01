@@ -10,6 +10,7 @@
 |---|---|---|---|
 | 1 | 2026-05-01 | Initial draft. M1.3b kicks off with the 4 simple-transform modify operators (Rotate, Mirror, Scale, Offset). Bundled per the cluster split documented in `docs/plans/feature/m1-3-di-pipeline-overhaul.md` post-merge handoff. The 4 operators share the "select → reference → preview → commit" flow inherited from `move.ts` / `copy.ts` (M1.3a) but each requires NEW `PreviewShape` discriminated-union arms because the existing `'modified-entities'` arm only carries a translation `offsetMetric` — rotation, scale, and mirror produce non-translation ghosts that need their own preview shape. Plan also adds DI manifest support (typed angle for Rotate; typed scale factor for Scale; typed offset distance for Offset) using the existing manifest pipeline (no new manifest contract change). Per the just-shipped Procedure 01 §1.5.1, this plan includes the User-Visible Behavior Walkthrough table (§3.0). Per Procedure 01 §1.8.1, every grep gate's regex is anchored to declarative sites. |
 | 2 | 2026-05-01 | User AC-parity correction (chat 2026-05-01) — Rev 1 had the reference-angle / reference-distance as the default Rotate / Scale flow, missing AC's "live preview from 0° / factor=1, with `R` as Reference sub-command." Mirror was missing AC's post-commit `[Yes/No to erase source]` sub-prompt with default N. Revisions: **Rotate** flow now `select → base → "Specify rotation angle or [Reference]"` with single-prompt live preview (rotation from 0° as cursor angle), `R` shortcut opens a 2-click Reference sub-flow. **Scale** mirrors: `select → base → "Specify scale factor or [Reference]"` with live preview (factor = `hypot(cursor - base)` matching AC convention), `R` for Reference sub-flow. **Mirror** gains the post-commit `[Yes/No]` erase-source sub-prompt with default `'No'`; A6 lock flipped from "default delete" to "default keep" (matches AC default). **Offset** unchanged from Rev 1 — already had live preview. Net effect: §3 A1-A15 reorganized; §3.0 walkthrough table rewritten with new prompt sequences; §9 Phase 2-4 step bodies rewritten; §13 risks updated. |
+| 4 | 2026-05-01 | Codex Procedure 02 Round-2 review of Rev-3 (No-Go, 1 Blocker + 1 High-risk — both narrow). Single contradiction caught: Phase 4 step 1 `'number'` input branch said "Reject `factor <= 0`" while I-MOD-7 SSOT (added in Rev 3) says only `factor === 0` is rejected and `factor < 0` is allowed (AC flip). The test name "factor <= 0 aborts" carried the same drift. Fix: Phase 4 number-branch rewritten to `Reject **\`factor === 0\`** ONLY` with explicit pointer to I-MOD-7 + explanation that `scalePrimitive` handles negative factors via the `base + factor * (p - base)` formula. Test list updated: dropped "factor <= 0 aborts" → added "factor === 0 input aborts tool (degenerate)" + "factor === -2 input commits flipped-and-scaled result (AC parity flip semantics)". Stale-symbol grep `rg "factor <= 0\|reject factor"` post-fix → zero matches. Self-review confirms §4.1 scale row + §9 Phase 1 step 3 + §9 Phase 4 step 1 + I-MOD-7 + §13 risk row all agree on the same `=== 0` reject + `< 0` allowed semantics. §2.10 Appendix updated. |
 | 3 | 2026-05-01 | Codex Procedure 02 Round-1 review of Rev-2 (No-Go, 3 Blockers + 3 High-risks) — fixes applied: **B1** (§3.0 walkthrough sites were phase-narrative not file:line per Procedure 01 §1.5.1): every row's "Implementation site" cell rewritten to `path:line` format (existing files) or `path (NEW Phase N step M)` format (planned-new files); every "Test that observes it" cell now names an explicit test case title + boundary type (tool-generator / painter / router / domain-unit). Format note added at the top of §3.0. **B2** (§4.1 still had Rev-1 behavior text for rotate/mirror/scale): all 4 tool rows in §4.1 rewritten with the Rev-2 single-prompt + sub-option flow + erase-source sub-prompt + signed scale factor; per-row description now references the §8.1 truth table for operation semantics. **B3** (gate regexes not declarative-anchored per Procedure 02 #16): MOD-P1-PreviewShapeArms tightened from `rg "kind: 'X'"` to `^\s*\| \{ kind: 'X'` (discriminated-union member-line anchor); MOD-P1-PaintPreviewCases tightened to `^\s+case 'X':`; MOD-P6-ToolIdUnion / MOD-P6-ShortcutMaps / MOD-P6-Registry tightened to `^\s+` indent-line anchors. **H1** (A15 ↔ §8 operation-semantics conflict): added §8.1 Operation-emission truth table as Rev-3 SSOT — Rotate/Scale `'UPDATE'`; Mirror `'CREATE'` per copy + optional `'DELETE'` per source on Yes; Offset `'CREATE'`. Added I-MOD-6 invariant referencing the truth table. **H2** (Scale negative-factor §4.1 vs §13 conflict): added I-MOD-7 SSOT — `factor === 0` rejected (degenerate); `factor < 0` allowed (AC flip semantics). §4.1 scale.ts row updated; §13 row replaced with pointer to I-MOD-7. **H3** (walkthrough Esc row was "tested implicitly"): replaced with 4 explicit per-tool Esc tests (`rotate.test.ts` / `mirror.test.ts` / `scale.test.ts` / `offset.test.ts` "Esc at <prompt> aborts"). Self-Review-Miss #1 (Rev-1 residue in §4.1/§8) and #2 (gate-regex anchoring not applied uniformly) and #3 (walkthrough format) all closed. |
 
 ## 1. Goal
@@ -401,15 +402,16 @@ Plan §13 "Scale negative-factor" risk row and §3 A5 / §4.1 scale row align wi
      ```
    - Branch:
      - `'subOption'` with `'Reference'` → reference sub-flow (yield "Specify reference distance" + "Specify new distance"; factor = `newDist / refDist`).
-     - `'number'` → factor = `factorInput.value`. Reject `factor <= 0`.
-     - `'point'` → factor = `hypot(point - base)`. Reject `factor === 0`.
+     - `'number'` → factor = `factorInput.value`. Reject **`factor === 0`** ONLY (degenerate). Per I-MOD-7 SSOT: `factor < 0` is ALLOWED — commits a flipped-and-scaled result (AC parity). The tool calls `scalePrimitive(p, base, factor)`; the domain helper handles negative factors via the same `base + factor * (p - base)` formula (negative factor flips through base).
+     - `'point'` → factor = `hypot(point - base)`. Reject `factor === 0` (degenerate; cursor exactly on base produces no information). `hypot` is non-negative so the negative branch isn't reachable from this path.
      - else → abort.
    - Commit: `for (id of selection) updatePrimitive(id, scalePrimitive(project.primitives[id], base, factor))`.
-2. Tests:
+2. Tests (per I-MOD-7 SSOT — `factor === 0` rejected; `factor < 0` allowed):
    - "third prompt yields scaled-entities preview with live cursor factor"
    - "typed factor commits at locked scale"
    - "R sub-option opens 2-click reference-distance flow"
-   - "factor <= 0 aborts"
+   - "factor === 0 input aborts tool (degenerate)"
+   - "factor === -2 input commits flipped-and-scaled result (AC parity flip semantics)"
 
 **Phase 4 mandatory completion gates:**
 
@@ -500,7 +502,29 @@ Single-entity per A8. DI typed-distance path. Side determined by click position 
 | Selection model change (multi-select) post-this-plan could regress modify ops | Each tool reads `editorUiStore.selection` directly; multi-select changes the array length, not the slice shape. Existing tests cover both single and multi-element selection paths. |
 | Modify ops produce N operations per invocation (one per primitive); undo steps through them one at a time | Acceptable per ADR-023. Group-undo (multi-op as one undo step) is M1.3c polish per the plan body. |
 
-## Plan Review Handoff
+## Appendix — Scrutiny Assessment and Actions (Procedure 02 §2.10)
+
+Per Codex Procedure 02 §2.10 + the handback ritual, this appendix records per-finding Decision / Rationale / Plan-updates entries across the Round 1 + Round 2 review cycles. Append-only — each Codex round adds new entries without rewriting prior ones.
+
+### Round 1 (vs Rev-2)
+
+| Finding | Severity | Decision | Rationale | Plan updates made (commit `ec0303d`, Rev-3) |
+|---|---|---|---|---|
+| B1 — §3.0 walkthrough sites were phase-narrative not file:line | Blocker | Agree | Procedure 01 §1.5.1 requires `file:line` or `path (NEW Phase N)` per row; phase-narrative cells fail the traceability contract | Every row in §3.0 rewritten to concrete `path:line` or `path (NEW Phase N step M)` format. Format note prepended at the top of §3.0. Test column now names explicit test title + boundary type. |
+| B2 — §4.1 stale Rev-1 behavior text for rotate/mirror/scale | Blocker | Agree | Cross-section consistency requirement (§1.16 step 12); Rev-2 updated §1/§3/§9 but §4.1 carried the old prompt sequences | All 4 tool rows in §4.1 rewritten with Rev-2 single-prompt + sub-option flow + erase-source sub-prompt + signed scale factor. |
+| B3 — gate regexes not declarative-anchored per Procedure 02 #16 | Blocker | Agree | Un-anchored regex over-matches JSDoc + body reads + tests, producing false-positive match counts at gate time | MOD-P1-PreviewShapeArms tightened to `^\s*\| \{ kind: 'X'`; MOD-P1-PaintPreviewCases tightened to `^\s+case 'X':`; MOD-P6-ToolIdUnion / ShortcutMaps / Registry tightened to `^\s+`-anchored member-line patterns. |
+| H1 — A15 ↔ §8 operation-semantics conflict | High-risk | Agree | A15 said Mirror=CREATE+optional DELETE; §8 said Mirror=UPDATE; ambiguity broke undo-replay expectations | Added §8.1 Operation-emission truth table as Rev-3 SSOT. New I-MOD-6 invariant references it. §13 risk rows + §4.1 file rows + §3 A15 all defer to it instead of restating. |
+| H2 — Scale negative-factor §4.1 vs §13 conflict | High-risk | Agree (Round-1) — Partially Resolved (Round-2 found residual contradiction in Phase 4) | §4.1 said "throws on negative"; §13 said "negative allowed (AutoCAD flip)" | Added I-MOD-7 SSOT + updated §4.1 row + replaced §13 row with pointer to I-MOD-7. **Round-2 caught residual `factor <= 0` in Phase 4 step + test name** — see Round-2 entries below for the completion. |
+| H3 — walkthrough Esc row was "tested implicitly" | High-risk | Agree | Procedure 02 #15 + Procedure 01 §1.5.1 require explicit test titles for visible-behavior rows | Esc row replaced with 4 explicit per-tool tests (`rotate.test.ts` "Esc at base-point aborts" + analogous for mirror / scale / offset). |
+
+### Round 2 (vs Rev-3)
+
+| Finding | Severity | Decision | Rationale | Plan updates made (commit `<this Rev-4 commit>`, Rev-4) |
+|---|---|---|---|---|
+| B-R2-1 — Phase 4 Scale `'number'` branch said "Reject `factor <= 0`" contradicting I-MOD-7 (`factor === 0` rejected; `factor < 0` allowed) | Blocker | Agree | I-MOD-7 was correctly added in Rev-3 as SSOT but Phase 4 step text retained pre-Rev-3 wording; cross-section consistency violation per Procedure 01 §1.16 step 12 | Phase 4 step 1 `'number'` branch rewritten: `Reject \`factor === 0\` ONLY (degenerate). Per I-MOD-7 SSOT: factor < 0 is ALLOWED — commits a flipped-and-scaled result (AC parity).` `'point'` branch annotated to clarify hypot is non-negative so the negative branch isn't reachable from that path. Test list updated: dropped "factor <= 0 aborts"; added "factor === 0 input aborts tool (degenerate)" + "factor === -2 input commits flipped-and-scaled result (AC parity flip semantics)". |
+| H-R2-1 — Implementation drift risk if executor follows Phase 4 (rejects negatives) while tests/SSOT expect negative commit | High-risk | Agree | Same root contradiction as B-R2-1; codifies the implementer-side risk if the Phase 4 text shipped as-is | Resolved by the same Rev-4 fix above. Stale-symbol grep `rg "factor <= 0\|reject factor"` post-fix returns zero matches outside historical narrative (revision-history rows that quote the OLD wording — bucket (b) per §1.16.12). |
+
+
 
 ### Files touched by this plan
 - `packages/domain/src/transforms/{index,rotate,scale,mirror,offset}.ts` (NEW)
