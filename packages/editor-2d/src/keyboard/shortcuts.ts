@@ -10,6 +10,10 @@ export type ToolId =
   | 'erase'
   | 'move'
   | 'copy'
+  | 'rotate'
+  | 'mirror'
+  | 'scale'
+  | 'offset'
   | 'undo'
   | 'redo'
   | 'zoom'
@@ -32,12 +36,14 @@ export type ToolId =
   | 'grip-stretch'
   | 'select-rect';
 
-/** Single-letter shortcut → tool id (M1.3a essential operators + Line/Arc draw tools). */
+/** Single-letter shortcut → tool id (M1.3a essential operators + Line/Arc draw tools + M1.3b Rotate/Offset). */
 export const SINGLE_LETTER_SHORTCUTS: Record<string, ToolId> = {
   S: 'select',
   E: 'erase',
   M: 'move',
   C: 'copy',
+  R: 'rotate',
+  O: 'offset',
   U: 'undo',
   Z: 'zoom',
   P: 'pan',
@@ -48,6 +54,8 @@ export const SINGLE_LETTER_SHORTCUTS: Record<string, ToolId> = {
 /** Multi-letter shortcut → tool id. Accumulator routes via these. */
 export const MULTI_LETTER_SHORTCUTS: Record<string, ToolId> = {
   LA: 'layer-manager',
+  MI: 'mirror',
+  SC: 'scale',
   PT: 'draw-point',
   PL: 'draw-polyline',
   REC: 'draw-rectangle',
@@ -82,6 +90,10 @@ export const TOOL_DISPLAY_NAMES: Record<ToolId, string | null> = {
   erase: 'ERASE',
   move: 'MOVE',
   copy: 'COPY',
+  rotate: 'ROTATE',
+  mirror: 'MIRROR',
+  scale: 'SCALE',
+  offset: 'OFFSET',
   undo: 'UNDO',
   redo: 'REDO',
   zoom: 'ZOOM',
