@@ -55,14 +55,16 @@
   vertical-align: text-bottom;
   animation: di-caret-blink 1s steps(2, start) infinite;
 }
-/* M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance) —
-   locked-pill outline. Applied to per-field DI pills when
-   data-pill-locked='true' (slice flag set by router on Tab). Visible
-   affordance mirrors the rubber-band freeze so the user sees the
-   field is frozen at its typed value. */
-.pill[data-pill-locked="true"] {
-  border-color: rgba(255, 200, 80, 0.7);
-  box-shadow: inset 0 0 0 1px rgba(255, 200, 80, 0.45);
+/* M1.3 DI pipeline overhaul Phase 6 — locked-pill icon affordance.
+   When data-pill-locked='true', a small Lucide Lock icon renders
+   inline before the value text. No outline / shadow change to the
+   pill chrome itself (Phase 5's amber outline was too heavy per user
+   feedback). The icon visually signals the field is frozen. */
+.pillLockIcon {
+  display: inline-block;
+  vertical-align: text-bottom;
+  margin-right: 3px;
+  opacity: 0.85;
 }
 
 /* M1.3 DI pipeline overhaul Phase 4 (B8) — recall pill style.

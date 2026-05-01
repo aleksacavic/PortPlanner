@@ -24,6 +24,7 @@
 // commandBar.dynamicInput change.
 
 import type { Point2D } from '@portplanner/domain';
+import { Lock } from 'lucide-react';
 import type { ReactElement } from 'react';
 
 import { type ScreenPoint, type Viewport, metricToScreen } from '../canvas/view-transform';
@@ -113,7 +114,12 @@ export function DynamicInputPills(): ReactElement | null {
           // > unlocked + empty → live cursor read from guide.
           let valueText: string;
           if (buffer.length > 0) {
-            valueText = buffer.startsWith('-') ? buffer.slice(1) : buffer;
+            // Phase 6 — display buffer as-is (including any leading
+            // minus). Phase 2 stripped the minus per A1 ("pill displays
+            // absolute value") but user feedback says the minus must
+            // be visible while typing. The combiner still uses the
+            // signed value for direction inversion.
+            valueText = buffer;
           } else if (isLocked) {
             valueText = '';
           } else {
@@ -138,6 +144,9 @@ export function DynamicInputPills(): ReactElement | null {
               data-pill-locked={isLocked ? 'true' : 'false'}
               style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
             >
+              {isLocked ? (
+                <Lock size={10} className={styles.pillLockIcon} aria-label="locked" />
+              ) : null}
               {text}
               {focused && !recallActive ? <span className={styles.pillCaret} aria-hidden /> : null}
             </div>

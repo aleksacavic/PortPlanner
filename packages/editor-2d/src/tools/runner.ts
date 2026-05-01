@@ -77,6 +77,10 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   const currentPromptRef: { current: Prompt | null } = { current: null };
   let unsubscribePreview: (() => void) | null = null;
   let lastCursorSeen: { x: number; y: number } | null = null;
+  // Phase 6 — dedup also includes the `locked` array signature so Tab
+  // (which mutates locked without moving the cursor) re-fires the
+  // builders. Stored as the joined boolean string; cheap compare.
+  let lastLockedSig = '';
   // M1.3 Round 6 — sync-bootstrap re-entrancy guard. Set true around
   // synchronous builder seed calls (the block at the prompt-yield site
   // below); cleared in finally. `feedInput` checks the flag at entry
@@ -105,27 +109,43 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         lastCursorSeen = null;
         return;
       }
-      // Dedup on RAW cursor (existing semantics). Phase 5's effective
-      // cursor is then derived from the deduped raw cursor. Caveat:
-      // if the user types a digit without moving the mouse, the raw
-      // cursor stays the same, dedup blocks, and the rubber-band
-      // doesn't update until the next mousemove. Acceptable trade-off
-      // (verified empirically: dedup-on-effective causes a subscription
-      // cascade in some scenarios).
-      const last = lastCursorSeen;
-      if (last && last.x === cursor.metric.x && last.y === cursor.metric.y) return;
-      lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
-      // M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance) —
-      // compute effective cursor honoring DI buffers + anchor, so
-      // rubber-band preview + dim guides + B6 live pill values reflect
-      // locked / typed values during draft. Combiner uses the same
-      // math at commit time; this hoists it to the per-frame draft path.
+      // Phase 6 dedup: skip when BOTH the raw cursor AND the locked
+      // signature are unchanged. This lets Tab (which mutates locked
+      // without moving the cursor) re-fire the builders so the
+      // rubber-band reflects the new lock state. Buffer changes alone
+      // don't trigger an update because effective cursor gates on
+      // locked, not buffer-non-empty (per user feedback: rubber-band
+      // should only update on Tab blur, not on each keystroke).
       const di = state.commandBar.dynamicInput;
+      const lockedSig = di ? di.locked.join(',') : '';
+      const last = lastCursorSeen;
+      if (
+        last &&
+        last.x === cursor.metric.x &&
+        last.y === cursor.metric.y &&
+        lastLockedSig === lockedSig
+      ) {
+        return;
+      }
+      lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+      lastLockedSig = lockedSig;
+      // M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance) —
+      // compute effective cursor honoring DI locks + anchor, so
+      // rubber-band preview + dim guides reflect locked values during
+      // draft. Combiner uses the same math at commit time (with
+      // buffer-non-empty as gate) so Enter without Tab still honors
+      // typed values; rubber-band requires Tab to lock.
       let effectiveCursor = cursor.metric;
       if (di) {
         const anchor = resolveEffectiveCursorAnchor(state);
         if (anchor) {
-          effectiveCursor = computeEffectiveCursor(di.manifest, di.buffers, anchor, cursor.metric);
+          effectiveCursor = computeEffectiveCursor(
+            di.manifest,
+            di.buffers,
+            di.locked,
+            anchor,
+            cursor.metric,
+          );
         }
       }
       if (previewBuilder) {
@@ -233,6 +253,7 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
                   effectiveCursor = computeEffectiveCursor(
                     di.manifest,
                     di.buffers,
+                    di.locked,
                     anchor,
                     cursor.metric,
                   );

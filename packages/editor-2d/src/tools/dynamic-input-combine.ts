@@ -161,26 +161,32 @@ export function combineDynamicInputBuffers(
 export function computeEffectiveCursor(
   manifest: DynamicInputManifest,
   buffers: string[],
+  locked: boolean[],
   anchor: Point2D,
   rawCursor: Point2D,
 ): Point2D {
   if (buffers.length !== manifest.fields.length) return rawCursor;
+  if (locked.length !== buffers.length) return rawCursor;
+
+  // Phase 6 — gate on `locked[idx]` not `buffer non-empty`. Per user
+  // feedback: rubber-band should freeze only when the user explicitly
+  // commits a field via Tab (lock), not on every keystroke. Combiner
+  // (commit-time) still uses buffer-non-empty so Enter without Tab
+  // honors typed values; rubber-band (draft-time) requires Tab.
   switch (manifest.combineAs) {
     case 'point': {
       if (buffers.length !== 2) return rawCursor;
-      const distBuf = (buffers[0] ?? '').trim();
-      const angleBuf = (buffers[1] ?? '').trim();
       let angleRad: number;
-      if (angleBuf.length > 0) {
-        const angleDeg = Number(angleBuf);
+      if (locked[1] && (buffers[1] ?? '').trim().length > 0) {
+        const angleDeg = Number(buffers[1]);
         if (!Number.isFinite(angleDeg)) return rawCursor;
         angleRad = (angleDeg * Math.PI) / 180;
       } else {
         angleRad = Math.atan2(rawCursor.y - anchor.y, rawCursor.x - anchor.x);
       }
       let distance: number;
-      if (distBuf.length > 0) {
-        const d = Number(distBuf);
+      if (locked[0] && (buffers[0] ?? '').trim().length > 0) {
+        const d = Number(buffers[0]);
         if (!Number.isFinite(d)) return rawCursor;
         distance = d;
       } else {
@@ -193,8 +199,8 @@ export function computeEffectiveCursor(
     }
     case 'numberPair': {
       if (buffers.length !== 2) return rawCursor;
-      const wRaw = parseSignedFloat(buffers[0] ?? '');
-      const hRaw = parseSignedFloat(buffers[1] ?? '');
+      const wRaw = locked[0] ? parseSignedFloat(buffers[0] ?? '') : null;
+      const hRaw = locked[1] ? parseSignedFloat(buffers[1] ?? '') : null;
       const w = resolveSignedComponent(wRaw, rawCursor.x - anchor.x);
       const h = resolveSignedComponent(hRaw, rawCursor.y - anchor.y);
       if (w === null || h === null) return rawCursor;
@@ -202,6 +208,7 @@ export function computeEffectiveCursor(
     }
     case 'number': {
       if (buffers.length !== 1) return rawCursor;
+      if (!locked[0]) return rawCursor;
       const buf = (buffers[0] ?? '').trim();
       if (buf.length === 0) return rawCursor;
       const value = Number(buf);
@@ -217,6 +224,7 @@ export function computeEffectiveCursor(
     }
     case 'angle': {
       if (buffers.length !== 1) return rawCursor;
+      if (!locked[0]) return rawCursor;
       const buf = (buffers[0] ?? '').trim();
       if (buf.length === 0) return rawCursor;
       const angleDeg = Number(buf);

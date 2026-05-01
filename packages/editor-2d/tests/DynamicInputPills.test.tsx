@@ -208,14 +208,14 @@ describe('M1.3 DI pipeline overhaul Phase 2 — live cursor pill values (B6)', (
     expect(pills[1]?.textContent).toBe('A: 45.00');
   });
 
-  it('pill shows typed buffer (abs value per A1) overriding live cursor read', () => {
+  it('pill shows typed buffer as-is (Phase 6 — minus visible) overriding live cursor read', () => {
     seedTwoFieldGuides(5, Math.PI / 4);
     editorUiActions.setDynamicInputFieldBuffer(0, '-7');
     const { container } = render(<DynamicInputPills />);
     const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
-    // Pill displays absolute value; minus stripped from rendered text
-    // (buffer retains '-7' for combiner sign per A1).
-    expect(pills[0]?.textContent).toBe('D: 7');
+    // Phase 6 — Pill displays the buffer including any leading minus
+    // (Phase 2 stripped it per A1; user feedback overrode that lock).
+    expect(pills[0]?.textContent).toBe('D: -7');
   });
 
   it('pill empty + locked renders label only (degenerate edge case — Backspace-on-locked)', () => {

@@ -33,30 +33,31 @@ export async function* drawLineTool(): ToolGenerator {
     // leg p1→cursor (distance pill); angle-arc at p1 from horizontal-
     // right with sweep = atan2(cursor-p1) (angle pill).
     dynamicInput: LINE_DI_MANIFEST,
-    dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-      // Distance: inline-mode dim (offsetCssPx === 0 → no witness/dim
-      // line, line itself is the dim reference). Pill anchors on
-      // segment midpoint. Offset uses shared SSOT constant
-      // DIM_OFFSET_CSS so line + rectangle stay in lockstep.
-      { kind: 'linear-dim', anchorA: p1, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
-      // Angle arc — Round-2 user spec: arc centered at LINE START (p1),
-      // PASSES THROUGH cursor, terminates ON the horizontal baseline.
-      // Therefore radiusMetric = full line length; sweepAngleRad = line
-      // angle from horizontal-right; painter draws the polar baseline
-      // at the same length so the arc's baseline endpoint meets the
-      // baseline endpoint.
-      //
-      // Sign of sweep: positive = line above horizontal (arc visually
-      // CCW); negative = line below (arc visually CW). Painter selects
-      // arc direction from sign of sweep.
-      {
-        kind: 'angle-arc',
-        pivot: p1,
-        baseAngleRad: 0,
-        sweepAngleRad: Math.atan2(cursor.y - p1.y, cursor.x - p1.x),
-        radiusMetric: Math.hypot(cursor.x - p1.x, cursor.y - p1.y),
-      },
-    ],
+    dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
+      // Phase 6 — anchorA/anchorB swap so the dim line always lands on
+      // the OUTER side of the polar arc. Painter computes perp = CCW
+      // rotation of (anchorB - anchorA); for cursor strictly in Q3
+      // (sweep < -π/2), CCW perp falls INSIDE the polar wedge,
+      // overlapping the arc. Swapping anchors flips perp 180° to the
+      // outer side. Other quadrants (Q1, Q2, Q4) keep the natural
+      // (p1, cursor) order.
+      const sweep = Math.atan2(cursor.y - p1.y, cursor.x - p1.x);
+      const flip = sweep < -Math.PI / 2;
+      const dimA = flip ? cursor : p1;
+      const dimB = flip ? p1 : cursor;
+      return [
+        { kind: 'linear-dim', anchorA: dimA, anchorB: dimB, offsetCssPx: DIM_OFFSET_CSS },
+        // Angle arc — Round-2 user spec: arc centered at LINE START (p1),
+        // PASSES THROUGH cursor, terminates ON the horizontal baseline.
+        {
+          kind: 'angle-arc',
+          pivot: p1,
+          baseAngleRad: 0,
+          sweepAngleRad: sweep,
+          radiusMetric: Math.hypot(cursor.x - p1.x, cursor.y - p1.y),
+        },
+      ];
+    },
   };
   if (end.kind !== 'point') return { committed: false, reason: 'aborted' };
   const layerId = editorUiStore.getState().activeLayerId ?? LayerId.DEFAULT;
