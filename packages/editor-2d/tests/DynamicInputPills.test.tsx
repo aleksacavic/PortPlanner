@@ -369,3 +369,62 @@ describe('M1.3 DI pipeline overhaul Phase 4 — recall pill render (B8)', () => 
     expect(recallPill).toBeNull(); // defensive: no entry → render nothing
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 7 (regression backfill per Codex
+// Round-2 audit) — locked-pill renders a Lucide Lock SVG inline; an
+// unlocked pill does not. Phase 6 added this affordance to replace
+// the amber outline (which was too heavy per user feedback). The
+// SVG presence is the user-visible signal that the field is frozen.
+describe('DynamicInputPills — Phase 7 regression: lock icon visible affordance', () => {
+  function seedManifestAndGuides(): void {
+    editorUiActions.setCursor({ metric: { x: 0, y: 0 }, screen: { x: 100, y: 100 } });
+    editorUiActions.setDimensionGuides([
+      {
+        kind: 'linear-dim',
+        anchorA: { x: 0, y: 0 },
+        anchorB: { x: 5, y: 0 },
+        offsetCssPx: 40,
+      },
+      {
+        kind: 'angle-arc',
+        pivot: { x: 0, y: 0 },
+        baseAngleRad: 0,
+        sweepAngleRad: 0,
+        radiusMetric: 5,
+      },
+    ]);
+    editorUiActions.setDynamicInputManifest(
+      {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      },
+      'draw-line:0',
+    );
+  }
+
+  it('locked pill renders a Lock SVG icon inline (Phase 6 affordance)', () => {
+    seedManifestAndGuides();
+    editorUiActions.setDynamicInputFieldBuffer(0, '5');
+    editorUiActions.setDynamicInputFieldLocked(0, true);
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills[0]?.getAttribute('data-pill-locked')).toBe('true');
+    // Lucide icons render as inline <svg>. Locked pill MUST have one.
+    const lockedSvg = pills[0]?.querySelector('svg');
+    expect(lockedSvg).not.toBeNull();
+  });
+
+  it('unlocked pill does NOT render a Lock SVG icon', () => {
+    seedManifestAndGuides();
+    editorUiActions.setDynamicInputFieldBuffer(0, '5');
+    // Don't lock — buffer typed without Tab.
+    const { container } = render(<DynamicInputPills />);
+    const pills = container.querySelectorAll<HTMLElement>('[data-component="dynamic-input-pill"]');
+    expect(pills[0]?.getAttribute('data-pill-locked')).toBe('false');
+    const lockedSvg = pills[0]?.querySelector('svg');
+    expect(lockedSvg).toBeNull();
+  });
+});

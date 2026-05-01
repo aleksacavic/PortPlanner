@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { lookupTool } from '../src/tools';
 import { startTool } from '../src/tools/runner';
-import { editorUiActions, resetEditorUiStoreForTests } from '../src/ui-state/store';
+import { editorUiActions, editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -747,5 +747,95 @@ describe('draw-rectangle Phase 3 signed-numberPair commit (4 quadrants)', () => 
     expect(r.origin).toEqual({ x: 10, y: 17 });
     expect(r.width).toBe(5);
     expect(r.height).toBe(3);
+  });
+});
+
+// M1.3 DI pipeline overhaul Phase 7 (regression backfill per Codex
+// Round-2 audit) — Phase 6 fixed a latent bug where the line / polyline
+// distance dim-guide landed on the INNER side of the polar arc when
+// cursor was strictly in Q3 from the anchor (sweepAngleRad < -π/2).
+// Fix: swap anchorA/anchorB in that quadrant so the painter's CCW
+// perpendicular flips 180° to the outer side. These tests assert the
+// dim-guide anchor order based on cursor quadrant.
+describe('Phase 7 regression: line/polyline distance dim guide outer-side (Q3 flip)', () => {
+  beforeEach(() => {
+    resetEditorUiStoreForTests();
+    resetProjectStoreForTests();
+    createNewProject(makeProject());
+    editorUiActions.setActiveLayerId(LayerId.DEFAULT);
+  });
+
+  function getDimGuide(): { anchorA: { x: number; y: number }; anchorB: { x: number; y: number } } {
+    const guides = editorUiStore.getState().overlay.dimensionGuides;
+    expect(guides?.[0]?.kind).toBe('linear-dim');
+    if (guides?.[0]?.kind !== 'linear-dim') throw new Error('expected linear-dim guide');
+    return { anchorA: guides[0].anchorA, anchorB: guides[0].anchorB };
+  }
+
+  function expectClose(
+    actual: { x: number; y: number },
+    expected: { x: number; y: number },
+    label: string,
+  ): void {
+    expect(actual.x).toBeCloseTo(expected.x, 6);
+    expect(actual.y).toBeCloseTo(expected.y, 6);
+    void label;
+  }
+
+  it('line tool: cursor in Q1 (sweep > 0) → anchorA=p1, anchorB=cursor (natural order)', async () => {
+    // Cursor at (5, 5) from p1 (0, 0): sweep = atan2(5, 5) = π/4 (Q1).
+    editorUiActions.setCursor({ metric: { x: 5, y: 5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: 0, y: 0 }, 'p1');
+    expectClose(anchorB, { x: 5, y: 5 }, 'cursor');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('line tool: cursor in Q3 (sweep < -π/2) → SWAPPED anchorA=cursor, anchorB=p1 (Phase 6 outer-side fix)', async () => {
+    // Cursor at (-5, -5) from p1 (0, 0): sweep = atan2(-5, -5) = -3π/4 (Q3).
+    // Without swap: CCW perp falls inside the polar wedge. With swap,
+    // perp flips 180° to outer side.
+    editorUiActions.setCursor({ metric: { x: -5, y: -5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: -5, y: -5 }, 'cursor swapped to anchorA');
+    expectClose(anchorB, { x: 0, y: 0 }, 'p1 swapped to anchorB');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('line tool: cursor in Q4 (sweep in (-π/2, 0)) → no swap (natural order; perp already outer)', async () => {
+    // Cursor at (5, -5) from p1: sweep = atan2(-5, 5) = -π/4 (Q4).
+    editorUiActions.setCursor({ metric: { x: 5, y: -5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: 0, y: 0 }, 'p1');
+    expectClose(anchorB, { x: 5, y: -5 }, 'cursor');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('polyline tool: same Q3 flip applies (Phase 6 fix mirrored from draw-line)', async () => {
+    editorUiActions.setCursor({ metric: { x: -5, y: -5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-polyline', lookupTool('draw-polyline')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: -5, y: -5 }, 'cursor swapped');
+    expectClose(anchorB, { x: 0, y: 0 }, 'lastVertex swapped');
+    tool.abort();
+    await tool.done();
   });
 });
