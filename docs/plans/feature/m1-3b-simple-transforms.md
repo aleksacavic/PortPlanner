@@ -9,17 +9,18 @@
 | Rev | Date | Trigger | Changes |
 |---|---|---|---|
 | 1 | 2026-05-01 | Initial draft. M1.3b kicks off with the 4 simple-transform modify operators (Rotate, Mirror, Scale, Offset). Bundled per the cluster split documented in `docs/plans/feature/m1-3-di-pipeline-overhaul.md` post-merge handoff. The 4 operators share the "select → reference → preview → commit" flow inherited from `move.ts` / `copy.ts` (M1.3a) but each requires NEW `PreviewShape` discriminated-union arms because the existing `'modified-entities'` arm only carries a translation `offsetMetric` — rotation, scale, and mirror produce non-translation ghosts that need their own preview shape. Plan also adds DI manifest support (typed angle for Rotate; typed scale factor for Scale; typed offset distance for Offset) using the existing manifest pipeline (no new manifest contract change). Per the just-shipped Procedure 01 §1.5.1, this plan includes the User-Visible Behavior Walkthrough table (§3.0). Per Procedure 01 §1.8.1, every grep gate's regex is anchored to declarative sites. |
+| 2 | 2026-05-01 | User AC-parity correction (chat 2026-05-01) — Rev 1 had the reference-angle / reference-distance as the default Rotate / Scale flow, missing AC's "live preview from 0° / factor=1, with `R` as Reference sub-command." Mirror was missing AC's post-commit `[Yes/No to erase source]` sub-prompt with default N. Revisions: **Rotate** flow now `select → base → "Specify rotation angle or [Reference]"` with single-prompt live preview (rotation from 0° as cursor angle), `R` shortcut opens a 2-click Reference sub-flow. **Scale** mirrors: `select → base → "Specify scale factor or [Reference]"` with live preview (factor = `hypot(cursor - base)` matching AC convention), `R` for Reference sub-flow. **Mirror** gains the post-commit `[Yes/No]` erase-source sub-prompt with default `'No'`; A6 lock flipped from "default delete" to "default keep" (matches AC default). **Offset** unchanged from Rev 1 — already had live preview. Net effect: §3 A1-A15 reorganized; §3.0 walkthrough table rewritten with new prompt sequences; §9 Phase 2-4 step bodies rewritten; §13 risks updated. |
 
 ## 1. Goal
 
-Ship 4 modify operators on primitives:
+Ship 4 modify operators on primitives, all with **live ghost preview from the moment the user starts moving the cursor** (matching AC parity per user direction 2026-05-01):
 
-1. **Rotate (`R`)** — select → base point → reference angle → final angle. Each selected primitive rotates about the base point by `Δangle = finalAngle - referenceAngle`.
-2. **Mirror (`MI`)** — select → first mirror line point → second mirror line point. Each selected primitive is reflected across the line through those two points. Original deleted (per AC default; the "keep source" sub-option is M1.3b deferred polish, not in this plan).
-3. **Scale (`SC`)** — select → base point → reference distance → new distance. Each selected primitive scales about the base point by factor = `newDistance / referenceDistance`.
-4. **Offset (`O`)** — select an entity → specify offset distance → click on the side. Creates a new parallel/offset entity at that distance. Single-entity operation per AC; multi-select Offset is M1.3b deferred polish.
+1. **Rotate (`R`)** — `select → base point → "Specify rotation angle or [Reference]"`. The third prompt shows a live ghost rotating from 0° as the cursor angle changes (rotation = `atan2(cursor - base) - 0`). User commits by clicking, typing an angle in DI, or pressing `R` to open a 2-click Reference sub-flow (the original "reference-angle → final-angle" pattern, available as a sub-command). Each selected primitive rotates about the base point by the resulting `Δangle`.
+2. **Mirror (`MI`)** — `select → "Specify first mirror line point" → "Specify second mirror line point"` with live ghost reflection. After the second click commits the line, an additional **`"Erase source objects? [Yes/No] <No>"`** sub-prompt fires (AC parity); default `'No'` keeps the source, `'Yes'` deletes via `deletePrimitive` after the mirror has been added.
+3. **Scale (`SC`)** — `select → base point → "Specify scale factor or [Reference]"`. The third prompt shows a live ghost scaled by `factor = hypot(cursor - base)` (AC convention: cursor distance from base IS the factor). User commits by clicking, typing a number in DI, or pressing `R` for the Reference sub-flow (`reference-distance → new-distance` pattern, where factor = `newDistance / referenceDistance`).
+4. **Offset (`O`)** — `select an entity → specify offset distance → click on the side` with live ghost preview during the side-click prompt (cursor side determines which way the offset goes; preview updates per cursor frame). Creates a new parallel/offset entity. Single-entity per V1 (multi-select deferred).
 
-All four follow the M1.3a `move.ts` / `copy.ts` pattern (select → base → reference → commit) with two modifications: (a) each tool needs DI manifest support for typed reference values, and (b) each tool needs a NEW `PreviewShape` arm for the live ghost preview (the existing `'modified-entities'` arm is translation-only).
+All four follow the M1.3a `move.ts` / `copy.ts` pattern but with the **single-prompt live-preview** structure (Rotate / Scale: reference is a sub-option, NOT the default flow; Mirror: live preview during line-pick + erase-source sub-prompt after). Each needs (a) DI manifest support for typed values (typed angle for Rotate, typed number for Scale + Offset), (b) NEW `PreviewShape` arms for the live ghost (the existing `'modified-entities'` arm is translation-only), and (c) sub-option support on the relevant prompts.
 
 ## 2. Background / context
 
@@ -32,29 +33,28 @@ These 4 share the same UX shape (select → base point → reference → final),
 - **STRETCH** (with crossing-window mode sub-options) — separate cluster, larger scope. Bundled with topological operators in a follow-up plan.
 - **Fillet / Chamfer** — separate cluster (introduces bulge-arcs in polylines per ADR-016).
 - **Trim / Extend / Break / Join / Array / Match / Explode** — topological-operator cluster, separate plan.
-- **Mirror "keep source" sub-option** — AC's `[Yes/No]` sub-prompt to keep the original entity. M1.3b polish; deferred. Default is delete source.
 - **Offset multi-select** — multi-entity offset cluster. AC supports it via repeat; deferred. This plan does single-entity offset.
-- **Reference angle / distance via 2 clicks vs typed value** — Rotate's "reference angle" can be typed (DI) OR picked via a second click. Same for Scale's "reference distance." This plan ships BOTH paths from the start; the DI path uses the same manifest pipeline that B7 just landed.
+- **Offset `[Through]` sub-option** — AC's "specify a point through which the offset should pass" alternative to typed distance. Deferred to M1.3b later.
 
 ## 3. Assumptions + locks
 
 User-confirmed during scoping (chat 2026-05-01) and adopted as plan locks:
 
 - **A1 — All 4 operators bundle in one branch.** Per the M1.3 DI pipeline overhaul handoff cluster split. Each operator gets its own commit phase; PreviewShape extension lands in Phase 1 ahead of the per-tool phases.
-- **A2 — `move.ts` / `copy.ts` are the structural template.** Each tool: yield "Select objects" if selection empty → yield "Specify base point" → yield reference prompt with previewBuilder → yield final prompt with previewBuilder → apply transform via `updatePrimitive`. Consistent with ADR-023 + the M1.3a essential-operators shape.
-- **A3 — DI manifest support for typed reference values.** Rotate's "Specify rotation angle" accepts typed angle (combineAs `'angle'`, single-field manifest, same as xline). Scale's "Specify scale factor" accepts typed number (combineAs `'number'`, single-field). Offset's "Specify offset distance" accepts typed number. No new combineAs arm needed; reuse existing `'angle'` / `'number'` arms from B7.
+- **A2 — Single-prompt live-preview pattern (Rev-2 AC parity).** Rotate: `select → base → "Specify rotation angle or [Reference]"` — third prompt shows live ghost rotating from 0° as cursor angle changes; user commits via click / typed angle (DI) / `R` sub-option for Reference sub-flow. Scale: same shape, factor = `hypot(cursor - base)` (AC convention). Mirror: `select → mirror line p1 → mirror line p2` with live ghost on the third prompt; followed by `[Yes/No to erase source]` sub-prompt. Offset: `select entity → specify distance → click side` with live ghost during side-click. NO separate reference-angle / reference-distance prompt as the default flow — that's a sub-command, NOT a default branch.
+- **A3 — DI manifest support for typed values.** Rotate's "Specify rotation angle" accepts typed angle (combineAs `'angle'`, single-field manifest, same as xline). Scale's "Specify scale factor" accepts typed number (combineAs `'number'`). Offset's "Specify offset distance" accepts typed number. No new combineAs arm needed; reuse existing `'angle'` / `'number'` arms from B7.
 - **A4 — PreviewShape extends with 4 new arms.** `'rotated-entities'` (primitives + base + angleRad), `'scaled-entities'` (primitives + base + factor), `'mirrored-entities'` (primitives + line p1/p2), `'offset-preview'` (single primitive + offsetDistance + side). Each painter case delegates to a per-primitive geometry transform (similar to `drawShiftedPrimitiveOutline`'s switch).
-- **A5 — Per-primitive transform helpers in pure domain code.** `rotatePrimitive(p, base, angleRad)`, `scalePrimitive(p, base, factor)`, `mirrorPrimitive(p, line)`, `offsetPrimitive(p, distance, side)` live in `packages/domain/src/transforms/` (new directory). Pure functions, no React, no store. Mirror Move's `shiftPrimitive` pattern but kept domain-pure since multiple consumers (tools, preview builders, future scripting) will use them.
-- **A6 — Mirror deletes source by default.** AC convention: `[Yes/No to keep source]` defaults to No (delete). The sub-option is deferred.
-- **A7 — Offset side is determined by click position relative to the source entity.** Click on the cursor side → offset goes that way. Same as AC. No "Through" option (deferred).
-- **A8 — Selection: same precedence as Move/Copy.** If `editorUiStore.selection` is non-empty at tool activation, skip the "Select objects" prompt. Otherwise yield it as the first prompt (single-entity for now; multi-select via `select-rect` carries the array forward).
+- **A5 — Per-primitive transform helpers in pure domain code.** `rotatePrimitive(p, base, angleRad)`, `scalePrimitive(p, base, factor)`, `mirrorPrimitive(p, line)`, `offsetPrimitive(p, distance, side)` live in `packages/domain/src/transforms/` (new directory). Pure functions, no React, no store.
+- **A6 — Mirror's erase-source sub-prompt: AC parity, default `'No'` (Rev-2 corrected).** After the second mirror-line point commits, an additional sub-prompt fires: `"Erase source objects? [Yes/No]"` with `defaultValue: 'No'`. Pressing Enter without typing accepts the default = No = keep source. Typing `Y` or clicking [Yes] deletes the sources via `deletePrimitive(id)` after `addPrimitive(mirrored)` per ID. Default flipped from Rev-1's "delete by default" to "keep by default" matching AC convention.
+- **A7 — Offset side is determined by click position relative to the source entity.** Click on the cursor side → offset goes that way. Same as AC. `[Through]` sub-option deferred.
+- **A8 — Selection: same precedence as Move/Copy.** If `editorUiStore.selection` is non-empty at tool activation, skip the "Select objects" prompt. Otherwise yield it as the first prompt. Offset is single-entity in V1 (multi-select Offset deferred per A8 mention in Out-of-scope); selection picks one entity and the others are ignored.
 - **A9 — Operator shortcuts already reserved in `docs/operator-shortcuts.md`** (per M1.3b row): `R` = Rotate, `MI` = Mirror, `SC` = Scale, `O` = Offset. Plan adds them to `SINGLE_LETTER_SHORTCUTS` (R, O) and `MULTI_LETTER_SHORTCUTS` (MI, SC). Bumps `operator-shortcuts.md` 2.2.0 → 2.3.0 (minor — adding 4 shortcuts).
 - **A10 — Per-primitive transforms preserve `displayOverrides`, `layerId`, and (for points) `displayShape`.** Object spread `{ ...p, <transformed-fields> }` is the SSOT pattern (per `copy.ts:13-29`).
 - **A11 — Xline rotation: rotates the `pivot` AND adjusts `angle` by `Δangle`.** Mirror flips `angle` by `2 * mirrorLineAngle - angle` and reflects pivot. Scale: pivot scales about base; angle unchanged (xline is direction-invariant under uniform scale). Offset: parallel xline at distance perpendicular to direction.
 - **A12 — Arc rotation: rotates `center` AND adjusts `startAngle` / `endAngle` by `Δangle`.** Scale: center scales, radius scales. Mirror: center reflects; sweep direction may flip (CCW arc becomes CW). Offset: arc with same center but radius ± offsetDistance.
-- **A13 — Polyline rotation/scale/mirror operate per-vertex.** Rotate each vertex about base. Scale each vertex about base. Mirror each vertex across line. Bulges unchanged for rotate / scale (uniform); mirror NEGATES bulge values (CCW/CW flip). Offset polyline = offset each segment + reconnect; see Phase 4 details — offset for polyline is the most algorithmically heavy of the 4.
+- **A13 — Polyline rotation/scale/mirror operate per-vertex.** Rotate each vertex about base. Scale each vertex about base. Mirror each vertex across line. Bulges unchanged for rotate / scale (uniform); mirror NEGATES bulge values (CCW/CW flip). Offset polyline = offset each segment + reconnect; see Phase 5 details — offset for polyline is the most algorithmically heavy of the 4.
 - **A14 — Rectangle = treat as 4-vertex polyline equivalent for transforms.** Rotate: corners rotate; `localAxisAngle` += Δangle; origin recomputed as min-corner. Scale: corners scale; width/height scale by factor; origin recomputed. Mirror: corners reflect; localAxisAngle reflects; origin recomputed. Offset: rectangle dimensions ±2*offset, centered.
-- **A15 — Operations emit single OperationType per tool invocation.** `'UPDATE'` per primitive in Rotate/Mirror/Scale (current `updatePrimitive` semantic). Offset emits `'CREATE'` (new primitive). Undo replays correctly via existing `emitOperation` machinery (no new operation types needed — ADR-010 unchanged).
+- **A15 — Operations emit single OperationType per tool invocation.** `'UPDATE'` per primitive in Rotate/Scale; `'CREATE'` per primitive in Mirror (mirrored entity is NEW per A6) and Offset; optional `'DELETE'` per source primitive in Mirror when user picks Yes to erase. Undo replays correctly via existing `emitOperation` machinery (no new operation types needed — ADR-010 unchanged).
 
 ## 3.0 User-Visible Behavior Walkthrough (Procedure 01 §1.5.1)
 
@@ -64,15 +64,23 @@ Per the procedure update committed in this run, here's the explicit user-action 
 |---|---|---|---|
 | Press `R` + Enter (no selection) | Tool activates; prompt: "Select objects" | `tools/rotate.ts` Phase 2 + `keyboard/shortcuts.ts` `R: 'rotate'` registration | `rotate.test.ts` ("yields select prompt when selection empty") |
 | Press `R` + Enter (with selection) | Tool activates; prompt: "Specify base point" | `tools/rotate.ts` Phase 2 selection-skip branch | `rotate.test.ts` ("yields base-point prompt directly when selection non-empty") |
-| Click base point in Rotate | Prompt: "Specify reference angle"; rubber-band line from base to cursor | `tools/rotate.ts` Phase 2 (yield 2 with previewBuilder kind: 'line', anchorA: base) | `rotate.test.ts` ("yields reference-angle prompt with line preview from base") |
-| Click reference point in Rotate | Prompt: "Specify rotation angle"; rotated-entities ghost preview | `tools/rotate.ts` Phase 2 (yield 3 with previewBuilder kind: 'rotated-entities') + `paintPreview.ts` Phase 1 dispatch | `rotate.test.ts` ("yields final-angle prompt with rotated-entities preview"); `paintPreview.test.ts` Phase 1 ("renders rotated-entities arm") |
-| Click final point in Rotate | Selected primitives rotated about base by Δangle; tool exits | `tools/rotate.ts` Phase 2 commit + `domain/src/transforms/rotate.ts` per-primitive math | `rotate.test.ts` ("commit rotates primitives by Δangle"); `domain/tests/transforms.test.ts` (per-primitive unit tests) |
-| Type angle in DI pill (Rotate, final-angle prompt) | Pill shows typed value; rubber-band rotation freezes at typed angle on Tab | `tools/rotate.ts` Phase 2 dynamicInput manifest (combineAs 'angle') + B7 lock-gated effective cursor (already shipped) | `rotate.test.ts` ("typed angle commits at locked rotation") |
-| Press `MI` + Enter | Tool activates; "Select objects" or "Specify first mirror line point" | `tools/mirror.ts` Phase 3 + `keyboard/shortcuts.ts` `MI: 'mirror'` | `mirror.test.ts` |
-| Click 2 points in Mirror | Mirrored-entities ghost shows reflection; selected primitives reflected on commit; sources deleted | `tools/mirror.ts` Phase 3 + `paintPreview.ts` mirrored-entities arm + `domain/src/transforms/mirror.ts` | `mirror.test.ts` ("mirrors primitives across line"); `paintPreview.test.ts` ("renders mirrored-entities arm") |
-| Press `SC` + Enter, click base + 2 distance points | Scaled-entities ghost shows scaled preview; commit applies factor | `tools/scale.ts` Phase 4 + `paintPreview.ts` scaled-entities arm + `domain/src/transforms/scale.ts` | `scale.test.ts` |
-| Type number in DI pill (Scale, factor prompt) | Pill shows typed value; rubber-band scaled by typed factor on Tab | `tools/scale.ts` Phase 4 dynamicInput manifest (combineAs 'number') | `scale.test.ts` ("typed factor commits at locked scale") |
-| Press `O` + Enter, click entity, type distance, click side | Offset preview shows parallel entity at typed distance; commit creates new entity | `tools/offset.ts` Phase 5 + `paintPreview.ts` offset-preview arm + `domain/src/transforms/offset.ts` | `offset.test.ts` |
+| Click base point in Rotate | Prompt: `"Specify rotation angle or [Reference]"`; live `'rotated-entities'` ghost preview rotating from 0° as cursor angle changes | `tools/rotate.ts` Phase 2 third prompt (subOptions includes `R: Reference`; previewBuilder = `'rotated-entities'` with `angleRad = atan2(cursor - base)`); `paintPreview.ts` Phase 1 dispatch | `rotate.test.ts` ("third prompt yields rotated-entities preview with live cursor angle"); `paintPreview.test.ts` ("renders rotated-entities arm") |
+| Move cursor in Rotate (post-base) | Ghost rotation angle updates per cursor frame (live preview from 0°) | Runner subscription's `previewBuilder` re-invocation per cursor tick | implicit in the live-preview test above (assert preview shape changes between two cursor positions) |
+| Click final point in Rotate (no Reference sub-option) | Selected primitives rotate about base by `atan2(click - base)`; tool exits | `tools/rotate.ts` Phase 2 commit (rotation = `atan2(point - base)`) + `domain/src/transforms/rotate.ts` per-primitive math | `rotate.test.ts` ("commit rotates primitives by atan2 of click point"); `domain/tests/transforms.test.ts` (per-primitive unit tests) |
+| Type angle in DI pill (Rotate, third prompt) | Pill shows typed value; rubber-band rotation freezes at typed angle on Tab | `tools/rotate.ts` Phase 2 dynamicInput manifest (`combineAs: 'angle'`) + B7 lock-gated effective cursor (already shipped) | `rotate.test.ts` ("typed angle commits at locked rotation") |
+| Press `R` (sub-option) at the third Rotate prompt | Reference sub-flow: yields `"Specify reference angle"` + `"Specify final angle"`; ghost stays at 0° until reference is picked | `tools/rotate.ts` Phase 2 sub-option branch (separate 2-prompt chain) | `rotate.test.ts` ("R sub-option opens 2-click reference-angle flow") |
+| Press `MI` + Enter | Tool activates; "Select objects" (or first mirror-line prompt if pre-selected) | `tools/mirror.ts` Phase 3 + `keyboard/shortcuts.ts` `MI: 'mirror'` | `mirror.test.ts` ("activates via MI shortcut") |
+| Click first mirror line point | Prompt: "Specify second mirror line point"; live `'mirrored-entities'` ghost previews reflection across the line through (p1, cursor) | `tools/mirror.ts` Phase 3 second prompt (previewBuilder = `'mirrored-entities'` with `line: { p1, p2: cursor }`); `paintPreview.ts` mirrored-entities case | `mirror.test.ts` ("second prompt yields mirrored-entities preview with live cursor"); `paintPreview.test.ts` ("renders mirrored-entities arm") |
+| Click second mirror line point | NEW prompt fires: `"Erase source objects? [Yes/No] <No>"` (sub-prompt) | `tools/mirror.ts` Phase 3 fourth yield (subOptions: `[{label: 'Yes', shortcut: 'y'}, {label: 'No', shortcut: 'n'}]`, defaultValue: 'No') | `mirror.test.ts` ("after second click yields erase-source sub-prompt with default No") |
+| Press Enter at erase-source prompt (or click [No]) | Mirrored entities added; sources kept | `tools/mirror.ts` Phase 3 commit (No branch: `addPrimitive(mirroredCopy)` for each source, no delete) | `mirror.test.ts` ("default keeps source"); `mirror.test.ts` ("explicit No keeps source") |
+| Type `Y` or click [Yes] at erase-source prompt | Mirrored entities added; sources DELETED via `deletePrimitive` | `tools/mirror.ts` Phase 3 commit (Yes branch: `addPrimitive` then `deletePrimitive(srcId)` per source) | `mirror.test.ts` ("Y deletes source after mirror") |
+| Press `SC` + Enter, click base | Prompt: `"Specify scale factor or [Reference]"`; live `'scaled-entities'` ghost scaled by `factor = hypot(cursor - base)` | `tools/scale.ts` Phase 4 third prompt + `paintPreview.ts` scaled-entities arm + `domain/src/transforms/scale.ts` | `scale.test.ts` ("third prompt yields scaled-entities preview with live cursor factor") |
+| Type number in DI pill (Scale, factor prompt) | Pill shows typed value; rubber-band scaled by typed factor on Tab | `tools/scale.ts` Phase 4 dynamicInput manifest (combineAs `'number'`) | `scale.test.ts` ("typed factor commits at locked scale") |
+| Press `R` (sub-option) at the Scale factor prompt | Reference sub-flow: yields `"Specify reference distance"` + `"Specify new distance"`; factor = `newDist / refDist` | `tools/scale.ts` Phase 4 sub-option branch | `scale.test.ts` ("R sub-option opens 2-click reference-distance flow") |
+| Press `O` + Enter | Tool activates; "Select object to offset" (or skip if 1 selected) | `tools/offset.ts` Phase 5 + shortcut | `offset.test.ts` |
+| Click entity in Offset | Prompt: "Specify offset distance" with DI manifest | `tools/offset.ts` Phase 5 second prompt | `offset.test.ts` |
+| Type distance in DI pill | Prompt: "Specify point on side to offset" with live `'offset-preview'` ghost following cursor side | `tools/offset.ts` Phase 5 third prompt (previewBuilder = `'offset-preview'` with `side` = sign-of-perpendicular-projection-of-(cursor-source) onto source-normal) | `offset.test.ts` ("third prompt yields offset-preview with live side") |
+| Click side in Offset | New offset entity created; tool exits | `tools/offset.ts` Phase 5 commit + `domain/src/transforms/offset.ts` | `offset.test.ts` ("commit creates offset entity at distance × side") |
 | All 4 tools: Esc at any prompt | Tool aborts; preview clears; selection preserved | Existing `escape` handling in `runner.ts` (no per-tool change needed) | tested implicitly by tool generators returning aborted |
 
 Rows are intended to be exhaustive for the user-observable surface. Codex review should flag any user action this plan promises that's missing a row; conversely, any row whose implementation site is hand-wavy (file:line not findable) is a Blocker.
@@ -249,28 +257,53 @@ Not applicable. This plan operates on existing primitives; no new object types, 
 - **I-MOD-1** — transforms are domain-pure: `packages/domain/src/transforms/` MUST NOT import from `editor-2d`, `project-store`, `react`, `zustand`, or `design-system`. Enforcement: `rg -n "from '@portplanner/(editor-2d\|project-store\|design-system)'\|from 'react'\|from 'zustand'" packages/domain/src/transforms/` → zero matches.
 - **I-MOD-2** — PreviewShape exhaustiveness in paintPreview.ts switch is TypeScript-enforced. Adding a new arm without a switch case fails compile.
 
-### Phase 2 — Rotate tool
+### Phase 2 — Rotate tool (Rev-2 single-prompt + Reference sub-option)
 
-**Goal:** `R + Enter` activates Rotate. select → base → reference angle → final angle commits. DI manifest typed-angle path works (Tab to lock; auto-submit on all-locked).
+**Goal:** `R + Enter` activates Rotate. `select → base → "Specify rotation angle or [Reference]"` with single-prompt live ghost preview rotating from 0°. DI manifest typed-angle path works (Tab to lock). `R` sub-option opens the 2-click Reference sub-flow.
 
 **Files affected:** `packages/editor-2d/src/tools/rotate.ts` (NEW), `packages/editor-2d/tests/rotate.test.ts` (NEW).
 
 **Steps:**
-1. Implement `rotateTool` generator in `packages/editor-2d/src/tools/rotate.ts`. Pattern from `move.ts`:
+1. Implement `rotateTool` generator in `packages/editor-2d/src/tools/rotate.ts`:
    - Read selection from `editorUiStore.getState().selection`. If empty, yield "Select objects".
    - Yield "Specify base point" with `acceptedInputKinds: ['point']`.
-   - Yield "Specify reference angle" with `previewBuilder: (cursor) => ({ kind: 'line', p1: base, cursor })` + `directDistanceFrom: base`.
-   - Yield "Specify rotation angle" with `dynamicInput: { fields: [{ kind: 'angle', label: 'Angle' }], combineAs: 'angle' }`, `previewBuilder: (cursor) => ({ kind: 'rotated-entities', primitives: ghost, base, angleRad: atan2(cursor - base) - referenceAngleRad })`, `dimensionGuidesBuilder: (cursor) => [{ kind: 'angle-arc', pivot: base, baseAngleRad: referenceAngleRad, sweepAngleRad: atan2(cursor - base) - referenceAngleRad, radiusMetric: hypot(cursor - base) }]`, `directDistanceFrom: base`.
-   - Commit: `for (id of selection) updatePrimitive(id, rotatePrimitive(p, base, deltaAngle))`.
-2. Snapshot ghost primitives at base-point-pick time (mirrors move.ts:42-48).
-3. Add to `ESSENTIAL_REGISTRY` in `tools/index.ts` (deferred to Phase 6).
-4. Tests in `tests/rotate.test.ts`:
+   - Snapshot ghost primitives at base-point-pick time (mirrors move.ts:42-48).
+   - Yield the third prompt (live-preview rotation):
+     ```ts
+     const angleInput = yield {
+       text: 'Specify rotation angle or [Reference]',
+       acceptedInputKinds: ['point', 'angle', 'subOption'],
+       subOptions: [{ label: 'Reference', shortcut: 'r' }],
+       directDistanceFrom: base,
+       dynamicInput: { fields: [{ kind: 'angle', label: 'Angle' }], combineAs: 'angle' },
+       previewBuilder: (cursor) => ({
+         kind: 'rotated-entities',
+         primitives: ghost,
+         base,
+         angleRad: Math.atan2(cursor.y - base.y, cursor.x - base.x),
+       }),
+       dimensionGuidesBuilder: (cursor) => [{
+         kind: 'angle-arc',
+         pivot: base,
+         baseAngleRad: 0,
+         sweepAngleRad: Math.atan2(cursor.y - base.y, cursor.x - base.x),
+         radiusMetric: Math.hypot(cursor.x - base.x, cursor.y - base.y),
+       }],
+     };
+     ```
+   - Branch on `angleInput.kind`:
+     - `'subOption'` with `optionLabel === 'Reference'` → enter Reference sub-flow (yield 2 more prompts: "Specify reference angle" with `acceptedInputKinds: ['point']` + "Specify final angle" with same DI shape as above but `previewBuilder` showing rotation by `atan2(cursor - base) - referenceAngleRad`). Commit with `deltaAngle = finalAngleRad - referenceAngleRad`.
+     - `'angle'` → `deltaAngle = angleInput.radians`.
+     - `'point'` → `deltaAngle = atan2(angleInput.point - base)`.
+     - else → abort.
+   - Commit: `for (id of selection) updatePrimitive(id, rotatePrimitive(project.primitives[id], base, deltaAngle))`.
+2. Tests in `tests/rotate.test.ts`:
    - "yields select prompt when selection empty"
    - "yields base-point prompt directly when selection non-empty"
-   - "yields reference-angle prompt with line preview from base"
-   - "yields final-angle prompt with rotated-entities preview"
-   - "commit rotates primitives by Δangle" (use a single line primitive; verify p1/p2 after commit)
-   - "typed angle commits at locked rotation" (DI path)
+   - "third prompt yields rotated-entities preview with live cursor angle" (assert previewBuilder output for two cursor positions; angles differ)
+   - "commit rotates primitives by atan2 of click point" (line primitive; verify p1/p2 after commit)
+   - "typed angle commits at locked rotation" (DI path: feedInput angle Input)
+   - "R sub-option opens 2-click reference-angle flow" (assert sub-option Input transitions to "Specify reference angle" prompt; commit uses `final - reference`)
 
 **Phase 2 mandatory completion gates:**
 
@@ -281,13 +314,36 @@ Not applicable. This plan operates on existing primitives; no new object types, 
 | MOD-P2-Typecheck | `pnpm typecheck` | exit 0 |
 | MOD-P2-Lint | `pnpm check` | exit 0 |
 
-### Phase 3 — Mirror tool
+### Phase 3 — Mirror tool (Rev-2 with erase-source sub-prompt)
 
-**Goal:** `MI + Enter` activates Mirror. select → first mirror line point → second mirror line point commits. Sources kept (per A6 lock).
-
-Same shape as Phase 2 but with mirror-axis-line previewBuilder and `'mirrored-entities'` arm.
+**Goal:** `MI + Enter` activates Mirror. `select → mirror line p1 → mirror line p2` with live ghost; **post-commit erase-source sub-prompt** with default `'No'` (Rev-2 AC parity). `Yes` deletes sources after the mirrored copies are added.
 
 **Files affected:** `packages/editor-2d/src/tools/mirror.ts` (NEW), `packages/editor-2d/tests/mirror.test.ts` (NEW).
+
+**Steps:**
+1. Implement `mirrorTool` generator:
+   - Read selection (or yield "Select objects" if empty).
+   - Snapshot ghost primitives.
+   - Yield "Specify first mirror line point" with `acceptedInputKinds: ['point']`.
+   - Yield "Specify second mirror line point" with previewBuilder = `'mirrored-entities'` (`primitives: ghost`, `line: { p1, p2: cursor }`).
+   - After second click: yield the erase-source sub-prompt:
+     ```ts
+     const eraseInput = yield {
+       text: 'Erase source objects? [Yes/No]',
+       acceptedInputKinds: ['subOption'],
+       subOptions: [{ label: 'Yes', shortcut: 'y' }, { label: 'No', shortcut: 'n' }],
+       defaultValue: 'No',
+     };
+     ```
+   - Compute `eraseSource = eraseInput.kind === 'subOption' && eraseInput.optionLabel === 'Yes'` (default Enter without input → defaultValue 'No' → eraseSource false).
+   - Commit: for each src in selection: `addPrimitive(mirroredCopy(src, line))`. If `eraseSource`: also `deletePrimitive(srcId)`.
+2. Tests in `tests/mirror.test.ts`:
+   - "activates via MI shortcut" (router test in Phase 6)
+   - "second prompt yields mirrored-entities preview with live cursor" (assert previewBuilder output for two cursor positions)
+   - "after second click yields erase-source sub-prompt with default No"
+   - "default keeps source" (Enter without typing → no delete fired)
+   - "explicit No keeps source" (subOption No → no delete)
+   - "Y deletes source after mirror" (subOption Yes → deletePrimitive called per src; addPrimitive called for mirrored copy)
 
 **Phase 3 mandatory completion gates:**
 
@@ -297,9 +353,44 @@ Same shape as Phase 2 but with mirror-axis-line previewBuilder and `'mirrored-en
 | MOD-P3-Tests | `pnpm --filter @portplanner/editor-2d test -- mirror.test.ts` | all pass |
 | MOD-P3-Typecheck + Lint | `pnpm typecheck && pnpm check` | exit 0 |
 
-### Phase 4 — Scale tool
+### Phase 4 — Scale tool (Rev-2 single-prompt + Reference sub-option)
 
-Same shape with reference-distance + new-distance prompts; DI typed-factor path.
+**Goal:** Same single-prompt live-preview shape as Rotate but for uniform scale. `select → base → "Specify scale factor or [Reference]"`. Live ghost factor = `hypot(cursor - base)`. `R` opens 2-click reference-distance sub-flow.
+
+**Files affected:** `packages/editor-2d/src/tools/scale.ts` (NEW), `packages/editor-2d/tests/scale.test.ts` (NEW).
+
+**Steps:**
+1. Implement `scaleTool` generator:
+   - Read selection (or yield "Select objects" if empty).
+   - Yield "Specify base point" with `acceptedInputKinds: ['point']`.
+   - Snapshot ghost primitives.
+   - Yield third prompt:
+     ```ts
+     const factorInput = yield {
+       text: 'Specify scale factor or [Reference]',
+       acceptedInputKinds: ['point', 'number', 'subOption'],
+       subOptions: [{ label: 'Reference', shortcut: 'r' }],
+       directDistanceFrom: base,
+       dynamicInput: { fields: [{ kind: 'number', label: 'Factor' }], combineAs: 'number' },
+       previewBuilder: (cursor) => ({
+         kind: 'scaled-entities',
+         primitives: ghost,
+         base,
+         factor: Math.hypot(cursor.x - base.x, cursor.y - base.y),
+       }),
+     };
+     ```
+   - Branch:
+     - `'subOption'` with `'Reference'` → reference sub-flow (yield "Specify reference distance" + "Specify new distance"; factor = `newDist / refDist`).
+     - `'number'` → factor = `factorInput.value`. Reject `factor <= 0`.
+     - `'point'` → factor = `hypot(point - base)`. Reject `factor === 0`.
+     - else → abort.
+   - Commit: `for (id of selection) updatePrimitive(id, scalePrimitive(project.primitives[id], base, factor))`.
+2. Tests:
+   - "third prompt yields scaled-entities preview with live cursor factor"
+   - "typed factor commits at locked scale"
+   - "R sub-option opens 2-click reference-distance flow"
+   - "factor <= 0 aborts"
 
 **Phase 4 mandatory completion gates:**
 
@@ -383,7 +474,8 @@ Single-entity per A8. DI typed-distance path. Side determined by click position 
 | Mirror's bulge negation may surprise users when polylines have bulges (later, when Fillet introduces them) | Bulges aren't on main yet (Fillet is M1.3b post-this-plan). When Fillet lands, the existing mirror tests cover the negation contract — no rework needed. |
 | Scale with negative factor produces a flipped-and-scaled result; AC behavior is to throw + warn | A5 — `scalePrimitive` throws on `factor === 0`; negative factor allowed (AutoCAD convention: negative scale flips). Test asserts negative-factor case for line + circle. |
 | 4 new PreviewShape arms grow the discriminated union (10 → 14 arms); paintPreview switch + tests get bulkier | TypeScript exhaustiveness check catches missing cases at compile time. Each arm gets ~30 LOC in paintPreview. Net acceptable given the user value. |
-| `directDistanceFrom: base` on rotate's reference-angle prompt may interact with F1 typed-distance entry in surprising ways (rectangle had this issue Phase 5) | Rotate's reference-angle prompt accepts `'point'` only (not `'number'`); F1 typed-distance fires only when `commandBar.acceptedInputKinds.includes('number')`, which it doesn't here. No interaction. |
+| `directDistanceFrom: base` on rotate's third prompt may interact with F1 typed-distance entry in surprising ways (rectangle had this issue Phase 5) | Rotate's third prompt accepts `['point', 'angle', 'subOption']` (not `'number'`); F1 typed-distance fires only when `commandBar.acceptedInputKinds.includes('number')`, which it doesn't here. No interaction. Scale's third prompt DOES accept `'number'`; F1 typed-distance and the DI `combineAs: 'number'` path produce the same Input shape (`{ kind: 'number', value }`), so both route to the same scale-by-factor branch. No conflict. |
+| Mirror's `[Yes/No]` sub-prompt: defaultValue='No' but tool generator must distinguish "Enter with no input" (default) from explicit `[No]` click | `defaultValue` field is read by EditorRoot.handleCommandSubmit on empty Enter to produce the default Input. For sub-options, defaultValue maps to the matching subOption.label; the tool sees `eraseInput.kind === 'subOption' && eraseInput.optionLabel === 'No'` either way (default or explicit). Test covers both paths. |
 | Selection model change (multi-select) post-this-plan could regress modify ops | Each tool reads `editorUiStore.selection` directly; multi-select changes the array length, not the slice shape. Existing tests cover both single and multi-element selection paths. |
 | Modify ops produce N operations per invocation (one per primitive); undo steps through them one at a time | Acceptable per ADR-023. Group-undo (multi-op as one undo step) is M1.3c polish per the plan body. |
 
