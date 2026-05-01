@@ -73,8 +73,44 @@ rather than facts to accept.
 14. **Self-review check**: what would Claude's three internal review
     rounds likely have missed? Look for concerns that a self-reviewer
     wouldn't flag because they share context with the author.
-15. What are the gaps?
-16. Final rating (1-10) + Go/No-Go.
+15. **User-visible behavior walkthrough check (added 2026-05-01)**:
+    if the plan ships any user-observable behavior change (UI, chrome,
+    painter, interactive tool, hotkey, gesture), it MUST contain a
+    populated §1.5.1 User-Visible Behavior Walkthrough table per
+    Claude Procedure 01 §1.5.1. Verify:
+    - Each row has a non-empty "Implementation site" column pointing
+      to a file:line OR a planned-new file. Empty / hand-wavy sites
+      are a Blocker.
+    - Each row's "Test that observes it" column references a test
+      that exercises the **observable** path (chrome render, painter
+      output, store-mutation-after-event), not just commit-time math.
+      Tests that exercise only commit-time semantics while the
+      visible row is mid-action behavior do NOT count.
+    - The set of rows is **complete**: walk the request prose and
+      enumerate every distinct user action the plan promises; each
+      action MUST have a row.
+    Lesson source: M1.3 DI pipeline overhaul Phase 3 reached Codex
+    Round-4 Go 9.8/10 with a populated supported-pair-matrix but no
+    user-visible-behavior walkthrough. The plan covered commit-time
+    combiner correctness; the draft-time visible behavior (rubber-band
+    freezes on Tab) was never wired, requiring two follow-up phases
+    after user manual smoke caught the gap. A required walkthrough
+    table would have surfaced rows with no implementation site at
+    plan-review time.
+16. **Gate-regex anchoring check (added 2026-05-01)**: per Claude
+    Procedure 01 §1.8.1, every grep gate with "exactly N matches" or
+    "zero matches in src" expected output MUST be anchored to
+    declarative sites (`^\s*<symbol>:` for fields, `^\s*function
+    <name>` for functions, etc.). Un-anchored regexes (`rg "<symbol>"`
+    by itself) trip on JSDoc + body reads + test scaffolding,
+    requiring §3.10 mid-execution patches that erode plan integrity.
+    Verify each gate's regex would match ONLY the declarative sites
+    its prose describes when run against the expected post-execution
+    file. Lesson source: M1.3 DI pipeline overhaul Phases 1, 3, 4
+    each required a §3.10 gate-regex patch for the same un-anchored
+    pattern.
+17. What are the gaps?
+18. Final rating (1-10) + Go/No-Go.
 
 ---
 
