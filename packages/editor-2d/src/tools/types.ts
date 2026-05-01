@@ -129,13 +129,20 @@ export type PreviewShape =
       direction: 'window' | 'crossing';
     }
   // M1.3d-Remediation-3 F4 — translucent ghost of entities being moved /
-  // copied (and, when M1.3b ships, rotated / scaled / mirrored). The
-  // arm carries the source primitives + a metric translation. The
-  // painter (drawModifiedEntitiesPreview) strokes each primitive's
+  // copied. The arm carries the source primitives + a metric translation.
+  // The painter (drawModifiedEntitiesPreview) strokes each primitive's
   // outline at the offset using the same canvas.transient.preview_stroke
-  // styling as the other arms. M1.3b extends per-operator usage; for
-  // M1.3d-Rem-3 only move + copy yield this arm.
-  | { kind: 'modified-entities'; primitives: Primitive[]; offsetMetric: Point2D };
+  // styling as the other arms. Move + Copy yield this arm.
+  | { kind: 'modified-entities'; primitives: Primitive[]; offsetMetric: Point2D }
+  // M1.3b simple-transforms Phase 1 — 4 new arms for the modify-operator
+  // cluster (Rotate / Scale / Mirror / Offset). Each carries the metadata
+  // the painter needs to compute the per-primitive transformed outline
+  // (calling the matching domain helper from `@portplanner/domain`). Per
+  // I-MOD-2: paintPreview switch is exhaustive (TS catches missing case).
+  | { kind: 'rotated-entities'; primitives: Primitive[]; base: Point2D; angleRad: number }
+  | { kind: 'scaled-entities'; primitives: Primitive[]; base: Point2D; factor: number }
+  | { kind: 'mirrored-entities'; primitives: Primitive[]; line: { p1: Point2D; p2: Point2D } }
+  | { kind: 'offset-preview'; primitive: Primitive; distance: number; side: 1 | -1 };
 
 export interface Prompt {
   text: string;
