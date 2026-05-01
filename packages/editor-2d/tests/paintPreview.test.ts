@@ -469,6 +469,123 @@ describe('paintPreview — modified-entities arm (F4)', () => {
   });
 });
 
+// M1.3b simple-transforms Phase 1 — 4 new PreviewShape arms.
+// Per plan §3.0 walkthrough rows: each arm produces the visibly-correct
+// transformed geometry via drawPrimitiveOutline.
+describe('paintPreview — M1.3b transform arms', () => {
+  const layerId = LayerId.DEFAULT;
+
+  it('rotated-entities arm: line rotated 90° about origin → swaps x/y', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'rotated-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId,
+            displayOverrides: {},
+            p1: { x: 0, y: 0 },
+            p2: { x: 10, y: 0 },
+          },
+        ],
+        base: { x: 0, y: 0 },
+        angleRad: Math.PI / 2,
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo!.args[0]).toBeCloseTo(0, 6);
+    expect(moveTo!.args[1]).toBeCloseTo(0, 6);
+    expect(lineTo!.args[0]).toBeCloseTo(0, 6);
+    expect(lineTo!.args[1]).toBeCloseTo(10, 6);
+    expect(calls.some((c) => c.method === 'stroke')).toBe(true);
+  });
+
+  it('scaled-entities arm: circle radius × factor at base', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'scaled-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'circle',
+            layerId,
+            displayOverrides: {},
+            center: { x: 0, y: 0 },
+            radius: 5,
+          },
+        ],
+        base: { x: 0, y: 0 },
+        factor: 2,
+      },
+      viewport,
+      dark,
+    );
+    const arc = calls.find((c) => c.method === 'arc');
+    expect(arc!.args[2]).toBeCloseTo(10, 6);
+  });
+
+  it('mirrored-entities arm: line reflected across x-axis flips y', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'mirrored-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId,
+            displayOverrides: {},
+            p1: { x: 0, y: 5 },
+            p2: { x: 10, y: 5 },
+          },
+        ],
+        line: { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } },
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo!.args[1]).toBeCloseTo(-5, 6);
+    expect(lineTo!.args[1]).toBeCloseTo(-5, 6);
+  });
+
+  it('offset-preview arm: line offset by +distance perpendicular', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'offset-preview',
+        primitive: {
+          id: newPrimitiveId(),
+          kind: 'line',
+          layerId,
+          displayOverrides: {},
+          p1: { x: 0, y: 0 },
+          p2: { x: 10, y: 0 },
+        },
+        distance: 3,
+        side: 1,
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo!.args[1]).toBeCloseTo(3, 6);
+    expect(lineTo!.args[1]).toBeCloseTo(3, 6);
+  });
+});
+
 describe('paintPreview — Gate DTP-T6 source-import isolation (I-DTP-9)', () => {
   it('paintPreview.ts does NOT import @portplanner/project-store', () => {
     const src = readFileSync('src/canvas/painters/paintPreview.ts', 'utf8');
