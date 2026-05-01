@@ -68,23 +68,25 @@ export async function* drawPolylineTool(): ToolGenerator {
       // Pivot/anchorA = last committed vertex; anchorB / sweep updates
       // per cursor-tick. Per-loop yield resets buffers (Rev-1 R2-A5).
       dynamicInput: POLYLINE_DI_MANIFEST,
-      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-        // Same shape as draw-line: distance dim from last committed
-        // vertex to cursor; angle arc PIVOT = LINE-SEGMENT START (the
-        // last committed vertex), so the wedge measures the in-flight
-        // segment's angle from horizontal-right at the segment's start.
-        { kind: 'linear-dim', anchorA: lastVertex, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
-        {
-          kind: 'angle-arc',
-          pivot: lastVertex,
-          baseAngleRad: 0,
-          sweepAngleRad: Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x),
-          // Arc radius = full segment length so the arc passes through
-          // the cursor and terminates on the horizontal baseline (same
-          // SSOT contract as draw-line.ts).
-          radiusMetric: Math.hypot(cursor.x - lastVertex.x, cursor.y - lastVertex.y),
-        },
-      ],
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
+        // Phase 6 — anchorA/anchorB swap when cursor in Q3 (sweep <
+        // -π/2) so the distance dim lands on the OUTER side of the
+        // polar arc. Same fix as draw-line.ts.
+        const sweep = Math.atan2(cursor.y - lastVertex.y, cursor.x - lastVertex.x);
+        const flip = sweep < -Math.PI / 2;
+        const dimA = flip ? cursor : lastVertex;
+        const dimB = flip ? lastVertex : cursor;
+        return [
+          { kind: 'linear-dim', anchorA: dimA, anchorB: dimB, offsetCssPx: DIM_OFFSET_CSS },
+          {
+            kind: 'angle-arc',
+            pivot: lastVertex,
+            baseAngleRad: 0,
+            sweepAngleRad: sweep,
+            radiusMetric: Math.hypot(cursor.x - lastVertex.x, cursor.y - lastVertex.y),
+          },
+        ];
+      },
     };
     if (next.kind === 'subOption' && next.optionLabel === 'Close') {
       if (vertices.length < 3) {

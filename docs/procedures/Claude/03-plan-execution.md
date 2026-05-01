@@ -71,6 +71,23 @@ For EACH phase, MUST output these sections in order:
 2. **TODO List** — small, concrete, checkable items.
 3. **Implementation** — what changed (files, functions, types).
 4. **Phase Audit**:
+   - **User-visible behavior walkthrough check (added 2026-05-01).** For
+     every row in the plan's §1.5.1 User-Visible Behavior Walkthrough
+     table that this phase delivers (per the "Implementation site"
+     column), MUST verify the implementation actually produces the
+     visible result by tracing from user-action → router/chrome →
+     state-mutation → render. "Tests pass" is NOT sufficient evidence —
+     tests can pass while delivering only the commit-time math without
+     the mid-action visible affordance. If any row's site fails this
+     trace, MUST follow §3.10 mid-execution deviation protocol to
+     surface the gap (do NOT silently re-classify the row as "deferred"
+     or "out of scope"). Lesson source: M1.3 DI pipeline overhaul
+     Phases 5/6 — Phase 3 plan claimed B7 was delivered by combiner
+     cursor-awareness, but no visible-behavior trace existed for "user
+     types value → rubber-band reflects it" because the runner /
+     previewBuilder were never wired to honor locks. The gap was
+     caught only by user manual smoke after commit, requiring two
+     additional phases to close.
    - Architecture / SSOT / DRY check against binding specs.
    - Module isolation check (GR-3) — no cross-package imports introduced
      that violate the dependency graph.
@@ -105,6 +122,22 @@ For EACH phase, MUST output these sections in order:
 - If a phase includes migration / removal / reroute work, MUST include
   grep gates that return zero results.
 - MUST NOT mark a phase complete if any gate fails.
+
+### 3.2.1) Gate-regex pre-flight (added 2026-05-01)
+
+Before executing the phase's grep gates, MUST mentally simulate each
+"exactly N matches" or "zero matches" gate against the phase's
+expected file state — including JSDoc comments + body reads + test
+scaffolding. If the regex would match those non-declarative sites, the
+gate is over-specified per Procedure 01 §1.8.1 and MUST be tightened
+via §3.10 mid-execution deviation protocol BEFORE running the gate
+(rather than discovering the over-match after-the-fact and patching
+under time pressure).
+
+This prevents the recurring failure mode (M1.3 DI pipeline overhaul
+Phases 1, 3, 4 each required a §3.10 patch for an over-specified
+grep gate). Five seconds of pre-flight saves a multi-step disclosure
++ ack round.
 - **Gate failure recovery**: if a gate fails, MUST fix implementation
   within the same phase, then re-run ALL gates for that phase. Do NOT
   create a new phase for gate fixes. Do NOT proceed until fully green.
@@ -159,6 +192,18 @@ At completion, MUST provide:
    bumped.
 7. Residual risks (if any).
 8. Done Criteria checklist (pass/fail).
+9. **Manual-smoke instruction list (added 2026-05-01).** A bulleted
+   list of the *user actions* the user should manually perform to
+   verify the user-visible behaviors in the plan's §1.5.1 walkthrough
+   table. One bullet per row; each bullet names the exact action
+   sequence + the visible result the user should see. This is the
+   user's verification ritual — they can reproduce it without
+   reading the plan or the diff. Lesson source: M1.3 DI pipeline
+   overhaul Phase 5 claimed "GO" with all gates green, but the user
+   immediately reported "B7 doesn't work at all" because the
+   manual-smoke gap (rubber-band ignores locks) was never on the
+   verification checklist. Including this list in the handoff lets
+   the user run a 60-second sanity pass before trusting the GO.
 
 ---
 

@@ -50,7 +50,21 @@ loop. This procedure MUST NOT fix anything itself.
    (00-architecture-contract.md §0.2)?
 4. Is architecture improved or regressed?
 5. What gaps / regressions remain?
-6. Final rating (1-10) with justification.
+6. **User-visible behavior trace (added 2026-05-01).** For every row
+   in the plan's §1.5.1 User-Visible Behavior Walkthrough table,
+   trace the visible result through the actual diff: which committed
+   file:line produces the visible affordance / pixel / DOM change
+   the row promises? "Tests assert this row" is necessary but not
+   sufficient — tests can pass on the commit-time path while the
+   draft-time / preview-time path is unwired. A row whose claimed
+   visible result has no corresponding diff site is a Blocker. Lesson
+   source: M1.3 DI pipeline overhaul Phases 5/6 — original Phase 3
+   claimed B7 was delivered, all unit tests passed, Codex Round 4
+   returned Go 9.8/10 — but the user's first manual smoke surfaced
+   "doesn't work at all" because the visible result (rubber-band
+   freezes on Tab) had no corresponding diff site (only commit-time
+   combiner was wired, not draft-time previewBuilder).
+7. Final rating (1-10) with justification.
 
 Also explicitly verify each of the following against the relevant ADR:
 

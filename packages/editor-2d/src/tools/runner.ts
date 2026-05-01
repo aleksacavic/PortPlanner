@@ -19,7 +19,28 @@
 //     overlay.previewShape, never to projectStore.
 
 import { type EditorUiState, editorUiActions, editorUiStore } from '../ui-state/store';
+import { computeEffectiveCursor } from './dynamic-input-combine';
 import type { DimensionGuide, Input, Prompt, ToolGenerator, ToolResult } from './types';
+
+import type { Point2D } from '@portplanner/domain';
+
+/**
+ * **M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance)** —
+ * resolve the anchor for `computeEffectiveCursor`. Reads from the
+ * runner-published `commandBar.directDistanceFrom`; falls back to the
+ * first dimensionGuide's anchorA / pivot.
+ */
+function resolveEffectiveCursorAnchor(state: EditorUiState): Point2D | null {
+  const dd = state.commandBar.directDistanceFrom;
+  if (dd) return dd;
+  const guides = state.overlay.dimensionGuides;
+  if (guides && guides.length > 0) {
+    const g0 = guides[0];
+    if (g0?.kind === 'linear-dim') return g0.anchorA;
+    if (g0?.kind === 'angle-arc') return g0.pivot;
+  }
+  return null;
+}
 
 // M1.3d-Remediation-3 F6 — modeless / system tools never user-invoked
 // via shortcut. Excluded from `lastToolId` tracking so spacebar's
@@ -56,6 +77,10 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   const currentPromptRef: { current: Prompt | null } = { current: null };
   let unsubscribePreview: (() => void) | null = null;
   let lastCursorSeen: { x: number; y: number } | null = null;
+  // Phase 6 — dedup also includes the `locked` array signature so Tab
+  // (which mutates locked without moving the cursor) re-fires the
+  // builders. Stored as the joined boolean string; cheap compare.
+  let lastLockedSig = '';
   // M1.3 Round 6 — sync-bootstrap re-entrancy guard. Set true around
   // synchronous builder seed calls (the block at the prompt-yield site
   // below); cleared in finally. `feedInput` checks the flag at entry
@@ -66,6 +91,14 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
   function ensurePreviewSubscription(): void {
     if (unsubscribePreview !== null) return;
     unsubscribePreview = editorUiStore.subscribe((state: EditorUiState) => {
+      // M1.3 DI pipeline overhaul Phase 4 (B8) — freeze rubber-band
+      // (preview + dimensionGuides) while DI recall pill is active.
+      // Per plan A16 / I-DI-11: cursor moves continue (so the recall
+      // pill itself can follow the cursor) but the runner's per-frame
+      // builder calls short-circuit, leaving the previously-rendered
+      // preview shape and dimension guides frozen until the user
+      // accepts (Enter / Space) or cancels (Tab / ArrowDown / Esc) recall.
+      if (state.commandBar.dynamicInput?.recallActive === true) return;
       const cursor = state.overlay.cursor;
       const promptNow = currentPromptRef.current;
       if (!promptNow) return;
@@ -76,14 +109,50 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         lastCursorSeen = null;
         return;
       }
+      // Phase 6 dedup: skip when BOTH the raw cursor AND the locked
+      // signature are unchanged. This lets Tab (which mutates locked
+      // without moving the cursor) re-fire the builders so the
+      // rubber-band reflects the new lock state. Buffer changes alone
+      // don't trigger an update because effective cursor gates on
+      // locked, not buffer-non-empty (per user feedback: rubber-band
+      // should only update on Tab blur, not on each keystroke).
+      const di = state.commandBar.dynamicInput;
+      const lockedSig = di ? di.locked.join(',') : '';
       const last = lastCursorSeen;
-      if (last && last.x === cursor.metric.x && last.y === cursor.metric.y) return;
+      if (
+        last &&
+        last.x === cursor.metric.x &&
+        last.y === cursor.metric.y &&
+        lastLockedSig === lockedSig
+      ) {
+        return;
+      }
       lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+      lastLockedSig = lockedSig;
+      // M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance) —
+      // compute effective cursor honoring DI locks + anchor, so
+      // rubber-band preview + dim guides reflect locked values during
+      // draft. Combiner uses the same math at commit time (with
+      // buffer-non-empty as gate) so Enter without Tab still honors
+      // typed values; rubber-band requires Tab to lock.
+      let effectiveCursor = cursor.metric;
+      if (di) {
+        const anchor = resolveEffectiveCursorAnchor(state);
+        if (anchor) {
+          effectiveCursor = computeEffectiveCursor(
+            di.manifest,
+            di.buffers,
+            di.locked,
+            anchor,
+            cursor.metric,
+          );
+        }
+      }
       if (previewBuilder) {
-        editorUiActions.setPreviewShape(previewBuilder(cursor.metric));
+        editorUiActions.setPreviewShape(previewBuilder(effectiveCursor));
       }
       if (guidesBuilder) {
-        editorUiActions.setDimensionGuides(guidesBuilder(cursor.metric));
+        editorUiActions.setDimensionGuides(guidesBuilder(effectiveCursor));
       }
     });
   }
@@ -150,7 +219,7 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
         // R2-A5). When the prompt has no manifest, clear any leftover.
         // Round 7 Phase 2 extends this with a runner-derived promptKey
         // so the slice can seed dim placeholders from
-        // `lastSubmittedBuffers[promptKey]` if a previous submit
+        // `dynamicInputRecall[promptKey]` if a previous submit
         // recorded values under that key (canonical expression per A16).
         if (prompt.dynamicInput) {
           const promptKey = `${toolId}:${prompt.persistKey ?? promptIndex}`;
@@ -170,12 +239,32 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           if (cursor) {
             inSyncBootstrap = true;
             try {
+              // Phase 5: at sync bootstrap buffers are always empty
+              // (Rev-1 R2-A5 reset on prompt yield), so effective ===
+              // raw — but we route through the helper for symmetry +
+              // future-proofing (any future opt-in to non-empty
+              // initial buffers would be honored automatically).
+              const stateNow = editorUiStore.getState();
+              const di = stateNow.commandBar.dynamicInput;
+              let effectiveCursor = cursor.metric;
+              if (di) {
+                const anchor = resolveEffectiveCursorAnchor(stateNow);
+                if (anchor) {
+                  effectiveCursor = computeEffectiveCursor(
+                    di.manifest,
+                    di.buffers,
+                    di.locked,
+                    anchor,
+                    cursor.metric,
+                  );
+                }
+              }
               if (prompt.previewBuilder) {
-                editorUiActions.setPreviewShape(prompt.previewBuilder(cursor.metric));
-                lastCursorSeen = { x: cursor.metric.x, y: cursor.metric.y };
+                editorUiActions.setPreviewShape(prompt.previewBuilder(effectiveCursor));
+                lastCursorSeen = { x: effectiveCursor.x, y: effectiveCursor.y };
               }
               if (prompt.dimensionGuidesBuilder) {
-                const guides: DimensionGuide[] = prompt.dimensionGuidesBuilder(cursor.metric);
+                const guides: DimensionGuide[] = prompt.dimensionGuidesBuilder(effectiveCursor);
                 editorUiActions.setDimensionGuides(guides);
               } else if (!prompt.dynamicInput) {
                 // Manifest absent → no guides expected; clear leftover.

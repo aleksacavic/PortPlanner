@@ -444,3 +444,191 @@ describe('ToolRunner — M1.3 Round 6 Dynamic Input substrate', () => {
     });
   });
 });
+
+// M1.3 DI pipeline overhaul Phase 4 (B8) — runner subscription freeze
+// while DI recall pill is active. Per plan A16 / I-DI-11: the runner's
+// preview + dimensionGuides re-invocation short-circuits when
+// commandBar.dynamicInput.recallActive is true, leaving the previously-
+// rendered preview frozen until the user accepts/cancels recall.
+describe('ToolRunner — Phase 4 (B8) recall-active rubber-band freeze (I-DI-11)', () => {
+  it('does NOT re-invoke previewBuilder/dimensionGuidesBuilder while recallActive=true', async () => {
+    let previewCalls = 0;
+    let guidesCalls = 0;
+    async function* freezeProbeTool(): ToolGenerator {
+      const manifest: DynamicInputManifest = {
+        fields: [{ kind: 'distance', label: 'D' }],
+        combineAs: 'number',
+      };
+      yield {
+        text: 'probe',
+        acceptedInputKinds: ['point'],
+        dynamicInput: manifest,
+        previewBuilder: (cursor) => {
+          previewCalls += 1;
+          return { kind: 'circle', center: { x: 0, y: 0 }, cursor };
+        },
+        dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
+          guidesCalls += 1;
+          return [
+            {
+              kind: 'linear-dim',
+              anchorA: { x: 0, y: 0 },
+              anchorB: cursor,
+              offsetCssPx: 40,
+            },
+          ];
+        },
+      };
+      return { committed: false, reason: 'aborted' };
+    }
+    // Seed an initial cursor so the synchronous bootstrap fires once.
+    editorUiActions.setCursor({ metric: { x: 1, y: 1 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('freeze-probe', freezeProbeTool);
+    await tick();
+    const previewBeforeRecall = previewCalls;
+    const guidesBeforeRecall = guidesCalls;
+    // Bootstrap fires both builders once (sync seed).
+    expect(previewBeforeRecall).toBeGreaterThanOrEqual(1);
+    expect(guidesBeforeRecall).toBeGreaterThanOrEqual(1);
+    // Move cursor — runner subscription fires; both builders increment.
+    editorUiActions.setCursor({ metric: { x: 2, y: 2 }, screen: { x: 200, y: 200 } });
+    await tick();
+    expect(previewCalls).toBeGreaterThan(previewBeforeRecall);
+    expect(guidesCalls).toBeGreaterThan(guidesBeforeRecall);
+    // Activate recall — subscription should now short-circuit.
+    editorUiActions.setDynamicInputRecallActive(true);
+    const previewAtFreeze = previewCalls;
+    const guidesAtFreeze = guidesCalls;
+    // Move cursor multiple times while recall is active.
+    editorUiActions.setCursor({ metric: { x: 3, y: 3 }, screen: { x: 300, y: 300 } });
+    await tick();
+    editorUiActions.setCursor({ metric: { x: 4, y: 4 }, screen: { x: 400, y: 400 } });
+    await tick();
+    // Builder counters frozen — runner short-circuited each call.
+    expect(previewCalls).toBe(previewAtFreeze);
+    expect(guidesCalls).toBe(guidesAtFreeze);
+    // Cancel recall — subscription resumes for subsequent cursor moves.
+    editorUiActions.setDynamicInputRecallActive(false);
+    editorUiActions.setCursor({ metric: { x: 5, y: 5 }, screen: { x: 500, y: 500 } });
+    await tick();
+    expect(previewCalls).toBeGreaterThan(previewAtFreeze);
+    expect(guidesCalls).toBeGreaterThan(guidesAtFreeze);
+    tool.abort();
+    await tool.done();
+  });
+});
+
+// M1.3 DI pipeline overhaul Phase 7 (regression backfill per Codex
+// Round-2 post-commit audit Done Criteria) — runner subscription's
+// effective-cursor path: locked DI fields constrain the cursor passed
+// to previewBuilder + dimensionGuidesBuilder, while typed-but-unlocked
+// fields do NOT (per Phase 6 user feedback: rubber-band only updates
+// on Tab blur, not on every keystroke). These tests would FAIL against
+// Phase 3-only state (no effective-cursor calc in runner) and PASS
+// against Phase 6 commit (effective cursor gated on locked[]).
+describe('ToolRunner — Phase 7 regression: effective-cursor lock-gating reaches builders', () => {
+  it('locked Distance field shifts the cursor passed to previewBuilder + dimensionGuidesBuilder', async () => {
+    const observedPreviewCursors: { x: number; y: number }[] = [];
+    const observedGuideCursors: { x: number; y: number }[] = [];
+    async function* lockProbeTool(): ToolGenerator {
+      const manifest: DynamicInputManifest = {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      };
+      yield {
+        text: 'probe',
+        acceptedInputKinds: ['point'],
+        dynamicInput: manifest,
+        directDistanceFrom: { x: 0, y: 0 },
+        previewBuilder: (cursor) => {
+          observedPreviewCursors.push({ x: cursor.x, y: cursor.y });
+          return { kind: 'line', p1: { x: 0, y: 0 }, cursor };
+        },
+        dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
+          observedGuideCursors.push({ x: cursor.x, y: cursor.y });
+          return [
+            {
+              kind: 'linear-dim',
+              anchorA: { x: 0, y: 0 },
+              anchorB: cursor,
+              offsetCssPx: 40,
+            },
+          ];
+        },
+      };
+      return { committed: false, reason: 'aborted' };
+    }
+    editorUiActions.setCursor({ metric: { x: 10, y: 0 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('lock-probe', lockProbeTool);
+    await tick();
+    // Sync bootstrap fired with raw cursor (no buffer set yet).
+    const bootstrapPreviewCount = observedPreviewCursors.length;
+    expect(bootstrapPreviewCount).toBeGreaterThanOrEqual(1);
+    // Move cursor far out — raw cursor at (10, 0); typed buffer "5" but
+    // NOT locked → effective cursor === raw cursor (lock-gate per A2).
+    editorUiActions.setDynamicInputFieldBuffer(0, '5');
+    editorUiActions.setCursor({ metric: { x: 20, y: 0 }, screen: { x: 200, y: 100 } });
+    await tick();
+    const beforeLockEntry = observedPreviewCursors[observedPreviewCursors.length - 1]!;
+    // With buffer typed but NOT locked, cursor should be raw (20, 0).
+    expect(beforeLockEntry.x).toBeCloseTo(20, 6);
+    // Now lock field 0 — effective cursor calc activates. Cursor at
+    // (20, 0): unit vector (1, 0); locked distance 5 → effective = (5, 0).
+    // Lock change re-fires subscription via dedup-key change.
+    editorUiActions.setDynamicInputFieldLocked(0, true);
+    await tick();
+    const afterLockEntry = observedPreviewCursors[observedPreviewCursors.length - 1]!;
+    expect(afterLockEntry.x).toBeCloseTo(5, 6);
+    expect(afterLockEntry.y).toBeCloseTo(0, 6);
+    // Same effective cursor reached the dim-guides builder.
+    const lastGuideEntry = observedGuideCursors[observedGuideCursors.length - 1]!;
+    expect(lastGuideEntry.x).toBeCloseTo(5, 6);
+    tool.abort();
+    await tool.done();
+  });
+
+  it('typed buffer alone (no Tab) does NOT shift the cursor — only locked does (per user feedback "only update on Tab blur")', async () => {
+    const observedCursors: { x: number; y: number }[] = [];
+    async function* probeTool(): ToolGenerator {
+      const manifest: DynamicInputManifest = {
+        fields: [
+          { kind: 'distance', label: 'D' },
+          { kind: 'angle', label: 'A' },
+        ],
+        combineAs: 'point',
+      };
+      yield {
+        text: 'probe',
+        acceptedInputKinds: ['point'],
+        dynamicInput: manifest,
+        directDistanceFrom: { x: 0, y: 0 },
+        previewBuilder: (cursor) => {
+          observedCursors.push({ x: cursor.x, y: cursor.y });
+          return { kind: 'line', p1: { x: 0, y: 0 }, cursor };
+        },
+      };
+      return { committed: false, reason: 'aborted' };
+    }
+    editorUiActions.setCursor({ metric: { x: 10, y: 0 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('probe', probeTool);
+    await tick();
+    // Type into buffer 0 (no Tab, no lock) — buffer change alone should
+    // NOT cause the previewBuilder to receive a different cursor.
+    editorUiActions.setDynamicInputFieldBuffer(0, '5');
+    editorUiActions.setDynamicInputFieldBuffer(0, '50');
+    editorUiActions.setDynamicInputFieldBuffer(0, '500');
+    await tick();
+    // Move cursor — preview fires once with raw cursor (typed buffer
+    // is unlocked, so effective === raw).
+    editorUiActions.setCursor({ metric: { x: 20, y: 0 }, screen: { x: 200, y: 100 } });
+    await tick();
+    const lastCursor = observedCursors[observedCursors.length - 1]!;
+    expect(lastCursor.x).toBeCloseTo(20, 6);
+    expect(lastCursor.y).toBeCloseTo(0, 6);
+    tool.abort();
+    await tool.done();
+  });
+});

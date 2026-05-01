@@ -235,6 +235,35 @@ containing:
 
 ---
 
+## 1.5.1) User-Visible Behavior Walkthrough (mandatory section — added 2026-05-01 after M1.3 DI pipeline overhaul Phase 5/6 review-miss postmortem)
+
+Every plan that ships any **user-observable behavior change** (UI, chrome, painter, interactive tool, hotkey, gesture) MUST include a "User-Visible Behavior Walkthrough" table mapping each user action to the *visible result* and the *implementation site* that delivers it.
+
+### Required table format
+
+| User action | Expected visible result | Implementation site (file:line OR planned new) | Test that observes it |
+|-------------|--------------------------|--------------------------------------------------|------------------------|
+| User types `5` in DI Distance pill | Pill shows `Distance: 5` | `DynamicInputPills.tsx` render branch (typed-buffer priority) | `DynamicInputPills.test.tsx:"pill shows typed buffer..."` |
+| User presses Tab on typed Distance | Pill gets a lock icon AND rubber-band freezes at locked distance | `router.ts` Tab handler + `DynamicInputPills.tsx` lock-icon render + `runner.ts` effective-cursor calc | smoke-e2e: `"Tab locks visually + rubber-band reflects lock"` |
+| User clicks while a field is locked | Tool commits using locked value + cursor for the rest | `EditorRoot.tsx` handleCanvasClick lock-aware branch | smoke-e2e or unit |
+
+### Why this exists
+
+**Lesson source: M1.3 DI pipeline overhaul Phase 5/6.** The original Phase 3 plan made the *combiner* cursor-aware (commit-time math) and assumed that closed the B7 user story. Four Codex review rounds and Claude's three-round self-audit all signed off. On execution + manual smoke, the user reported "B7 doesn't work at all" — because the *previewBuilder / dimensionGuidesBuilder* (draft-time, what the user actually sees mid-typing) were never extended to honor locks. The plan tested commit-time semantics in isolation; nobody traced "what does the user see at time T while they're mid-action" through to a code site.
+
+A populated User-Visible Behavior Walkthrough would have surfaced rows like "User presses Tab → rubber-band freezes" with no code site to point at, exposing the gap before execution.
+
+### Rules
+
+- One row per discrete user action that has a distinct visible consequence.
+- "Implementation site" MUST point to either an existing file:line OR a planned-new file with a clear ownership of that visible behavior. "Multiple sites cooperate" is acceptable but each site MUST be listed.
+- "Test that observes it" MUST exist (or be a planned new test in this plan). Tests that exercise *only commit-time math* without ever asserting what the chrome / painter / runner does mid-action do NOT count for visible-behavior rows.
+- Plan-execution audit (Procedure 03 §3.1) walks this table row-by-row; absent or empty rows force a §3.10 mid-execution deviation disclosure.
+
+This section is **non-optional** for plans with user-visible scope. Plans that touch only domain types, extraction logic, or non-UI infrastructure MAY mark this section "Not applicable" with a one-line justification.
+
+---
+
 ## 1.6) Architecture Doc Impact (mandatory section in plan)
 
 Every plan MUST explicitly list which binding specifications will be
@@ -301,6 +330,25 @@ enforcement mechanism. No policy without enforcement.
 
 Claims such as "we will ensure X" without an enforcement mechanism are
 not acceptable.
+
+### 1.8.1) Gate-regex anchoring rule (added 2026-05-01 after M1.3 DI pipeline overhaul §3.10 patches)
+
+Grep gates whose expected output is "exactly N matches" or "zero matches in src" MUST anchor the regex to the **declarative site** they intend to assert (interface declaration, action signature, initial-state assignment) — NOT bare identifier matches that JSDoc, body reads, and test scaffolding will trivially trip.
+
+**Examples of correctly anchored gates:**
+
+- `rg -n "^\s*<fieldName>:" <file>` — matches only field declarations and object-property assignments at the start of a line (modulo indent), not the same identifier in JSDoc body or in a chained property access.
+- `rg -n "^\s*function <name>\b" <file>` — matches the function declaration line, not callers.
+- `rg -n "^export function <name>" <file>` — matches the exported declaration.
+
+**Examples of incorrectly under-anchored gates** (these have caused 4 separate §3.10 patches in M1.3 DI pipeline overhaul Phases 1, 3, 4):
+
+- `rg -n "fieldName"` — matches the field declaration AND every JSDoc reference AND every body read. "Exactly 2 matches" never holds because comments mention the field too.
+- `rg -n "Math.abs(c1.a)"` — matches both the dropped pre-derivation abs (intent of the gate) AND the legitimate retained `Math.abs` at the addPrimitive site (NOT the intent).
+
+**Pre-emit check:** for every grep gate whose expected output is exact ("exactly N", "zero matches"), the plan author MUST mentally simulate `rg` against a representative version of the target file (current source + JSDoc that will reference the symbol) and confirm the regex matches only the declarative sites the gate prose describes. If JSDoc / comments would trip the regex, the regex is too loose.
+
+**Lesson source:** M1.3 DI pipeline overhaul Phases 1+3+4 each required a §3.10 mid-execution patch to tighten an over-specified gate. Each patch was identical in form ("regex tightened from un-anchored `rg -n "X"` to anchored `rg -n "^\s*X:"` after gate execution discovered the un-anchored regex over-matches JSDoc + body reads"). The pattern is now codified above so future plans don't repeat it.
 
 ---
 

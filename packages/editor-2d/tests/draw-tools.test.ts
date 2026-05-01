@@ -14,7 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { lookupTool } from '../src/tools';
 import { startTool } from '../src/tools/runner';
-import { editorUiActions, resetEditorUiStoreForTests } from '../src/ui-state/store';
+import { editorUiActions, editorUiStore, resetEditorUiStoreForTests } from '../src/ui-state/store';
 
 const tick = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
@@ -380,12 +380,13 @@ describe('draw tools yield directDistanceFrom (M1.3d-Rem-3 F1)', () => {
     await gen.return({ committed: false, reason: 'aborted' });
   });
 
-  it('draw-rectangle does NOT yield directDistanceFrom (F3 D-sub-option handles its typed dims)', async () => {
+  it('draw-rectangle YIELDS directDistanceFrom = corner1 (Phase 5 — anchors B7 effective-cursor calc + enables F1 typed-distance entry)', async () => {
     const factory = lookupTool('draw-rectangle')!;
     const gen = factory();
     await gen.next();
-    const second = await gen.next({ kind: 'point', point: { x: 0, y: 0 } });
-    expect((second.value as { directDistanceFrom?: unknown }).directDistanceFrom).toBeUndefined();
+    const corner1 = { x: 7, y: 9 };
+    const second = await gen.next({ kind: 'point', point: corner1 });
+    expect((second.value as { directDistanceFrom?: unknown }).directDistanceFrom).toEqual(corner1);
     await gen.return({ committed: false, reason: 'aborted' });
   });
 });
@@ -679,6 +680,161 @@ describe('M1.3 Round 6 — per-tool DI manifest publish', () => {
     if (guides?.[0]?.kind === 'angle-arc') {
       expect(guides[0].pivot).toEqual({ x: 2, y: 3 });
     }
+    tool.abort();
+    await tool.done();
+  });
+});
+
+// M1.3 DI pipeline overhaul Phase 3 (B7) — rectangle signed-numberPair
+// commit produces correct origin in all 4 quadrants relative to corner1.
+// Plan invariant I-DI-7. Combiner emits signed (a, b) per cursor's
+// quadrant + typed sign; tool re-derives origin = min-corner.
+describe('draw-rectangle Phase 3 signed-numberPair commit (4 quadrants)', () => {
+  beforeEach(() => {
+    resetEditorUiStoreForTests();
+    resetProjectStoreForTests();
+    createNewProject(makeProject());
+    editorUiActions.setActiveLayerId(LayerId.DEFAULT);
+  });
+
+  function tickN(n: number): Promise<void> {
+    let p = Promise.resolve();
+    for (let i = 0; i < n; i += 1) p = p.then(tick);
+    return p;
+  }
+
+  async function commitRectFromNumberPair(
+    corner1: { x: number; y: number },
+    a: number,
+    b: number,
+  ): Promise<{ origin: { x: number; y: number }; width: number; height: number }> {
+    const tool = startTool('draw-rectangle', lookupTool('draw-rectangle')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: corner1 });
+    await tickN(2);
+    tool.feedInput({ kind: 'numberPair', a, b });
+    await tool.done();
+    const rect = Object.values(projectStore.getState().project!.primitives).find(
+      (p) => p.kind === 'rectangle',
+    );
+    if (!rect || rect.kind !== 'rectangle') throw new Error('expected rectangle commit');
+    return { origin: rect.origin, width: rect.width, height: rect.height };
+  }
+
+  it('Q1 (signed +W +H): origin = corner1; rectangle extends +X +Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, 5, 3);
+    expect(r.origin).toEqual({ x: 10, y: 20 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+
+  it('Q2 (signed -W +H): origin shifts left to corner1.x - |W|; rectangle extends -X +Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, -5, 3);
+    expect(r.origin).toEqual({ x: 5, y: 20 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+
+  it('Q3 (signed -W -H): origin shifts left + down to corner1 - (W,H); rectangle extends -X -Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, -5, -3);
+    expect(r.origin).toEqual({ x: 5, y: 17 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+
+  it('Q4 (signed +W -H): origin shifts down to corner1.y - |H|; rectangle extends +X -Y', async () => {
+    const r = await commitRectFromNumberPair({ x: 10, y: 20 }, 5, -3);
+    expect(r.origin).toEqual({ x: 10, y: 17 });
+    expect(r.width).toBe(5);
+    expect(r.height).toBe(3);
+  });
+});
+
+// M1.3 DI pipeline overhaul Phase 7 (regression backfill per Codex
+// Round-2 audit) — Phase 6 fixed a latent bug where the line / polyline
+// distance dim-guide landed on the INNER side of the polar arc when
+// cursor was strictly in Q3 from the anchor (sweepAngleRad < -π/2).
+// Fix: swap anchorA/anchorB in that quadrant so the painter's CCW
+// perpendicular flips 180° to the outer side. These tests assert the
+// dim-guide anchor order based on cursor quadrant.
+describe('Phase 7 regression: line/polyline distance dim guide outer-side (Q3 flip)', () => {
+  beforeEach(() => {
+    resetEditorUiStoreForTests();
+    resetProjectStoreForTests();
+    createNewProject(makeProject());
+    editorUiActions.setActiveLayerId(LayerId.DEFAULT);
+  });
+
+  function getDimGuide(): { anchorA: { x: number; y: number }; anchorB: { x: number; y: number } } {
+    const guides = editorUiStore.getState().overlay.dimensionGuides;
+    expect(guides?.[0]?.kind).toBe('linear-dim');
+    if (guides?.[0]?.kind !== 'linear-dim') throw new Error('expected linear-dim guide');
+    return { anchorA: guides[0].anchorA, anchorB: guides[0].anchorB };
+  }
+
+  function expectClose(
+    actual: { x: number; y: number },
+    expected: { x: number; y: number },
+    label: string,
+  ): void {
+    expect(actual.x).toBeCloseTo(expected.x, 6);
+    expect(actual.y).toBeCloseTo(expected.y, 6);
+    void label;
+  }
+
+  it('line tool: cursor in Q1 (sweep > 0) → anchorA=p1, anchorB=cursor (natural order)', async () => {
+    // Cursor at (5, 5) from p1 (0, 0): sweep = atan2(5, 5) = π/4 (Q1).
+    editorUiActions.setCursor({ metric: { x: 5, y: 5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: 0, y: 0 }, 'p1');
+    expectClose(anchorB, { x: 5, y: 5 }, 'cursor');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('line tool: cursor in Q3 (sweep < -π/2) → SWAPPED anchorA=cursor, anchorB=p1 (Phase 6 outer-side fix)', async () => {
+    // Cursor at (-5, -5) from p1 (0, 0): sweep = atan2(-5, -5) = -3π/4 (Q3).
+    // Without swap: CCW perp falls inside the polar wedge. With swap,
+    // perp flips 180° to outer side.
+    editorUiActions.setCursor({ metric: { x: -5, y: -5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: -5, y: -5 }, 'cursor swapped to anchorA');
+    expectClose(anchorB, { x: 0, y: 0 }, 'p1 swapped to anchorB');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('line tool: cursor in Q4 (sweep in (-π/2, 0)) → no swap (natural order; perp already outer)', async () => {
+    // Cursor at (5, -5) from p1: sweep = atan2(-5, 5) = -π/4 (Q4).
+    editorUiActions.setCursor({ metric: { x: 5, y: -5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-line', lookupTool('draw-line')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: 0, y: 0 }, 'p1');
+    expectClose(anchorB, { x: 5, y: -5 }, 'cursor');
+    tool.abort();
+    await tool.done();
+  });
+
+  it('polyline tool: same Q3 flip applies (Phase 6 fix mirrored from draw-line)', async () => {
+    editorUiActions.setCursor({ metric: { x: -5, y: -5 }, screen: { x: 100, y: 100 } });
+    const tool = startTool('draw-polyline', lookupTool('draw-polyline')!);
+    await tick();
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    await tick();
+    const { anchorA, anchorB } = getDimGuide();
+    expectClose(anchorA, { x: -5, y: -5 }, 'cursor swapped');
+    expectClose(anchorB, { x: 0, y: 0 }, 'lastVertex swapped');
     tool.abort();
     await tool.done();
   });

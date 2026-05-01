@@ -24,10 +24,11 @@
 // commandBar.dynamicInput change.
 
 import type { Point2D } from '@portplanner/domain';
+import { Lock } from 'lucide-react';
 import type { ReactElement } from 'react';
 
-import { type Viewport, metricToScreen } from '../canvas/view-transform';
-import type { DimensionGuide } from '../tools/types';
+import { type ScreenPoint, type Viewport, metricToScreen } from '../canvas/view-transform';
+import type { DimensionGuide, DynamicInputManifest } from '../tools/types';
 import styles from './DynamicInputPills.module.css';
 import { useEditorUi } from './use-editor-ui-store';
 
@@ -39,6 +40,35 @@ const FALLBACK_PILL_OFFSET_Y_PX = 28;
 // Inline-mode (offsetCssPx === 0) pills sit on the segment midpoint with
 // no perpendicular offset.
 
+/**
+ * **M1.3 DI pipeline overhaul Phase 2 (B6) — live cursor read.**
+ *
+ * Compute the displayed value for an empty + unlocked pill from its
+ * matching dimension guide. This is the live cursor-derived value the
+ * user sees update per cursor frame: linear-dim → distance (length of
+ * anchorB - anchorA), angle-arc → degrees (sweepAngleRad converted).
+ *
+ * Per plan A6, no unit suffix appended (recall pill in Phase 4 also
+ * suppresses units). Per plan A15, distance uses 3 decimals; angle
+ * uses 2 decimals.
+ *
+ * Single argument (per plan Phase 2 step 1): the guide carries
+ * everything needed (kind + numeric inputs). The field-kind → format
+ * mapping is bijective with `guide.kind` for the 5-tool matrix.
+ */
+function deriveLivePillValue(guide: DimensionGuide): string {
+  switch (guide.kind) {
+    case 'linear-dim': {
+      const len = Math.hypot(guide.anchorB.x - guide.anchorA.x, guide.anchorB.y - guide.anchorA.y);
+      return len.toFixed(3);
+    }
+    case 'angle-arc': {
+      const deg = (guide.sweepAngleRad * 180) / Math.PI;
+      return deg.toFixed(2);
+    }
+  }
+}
+
 export function DynamicInputPills(): ReactElement | null {
   const cursor = useEditorUi((s) => s.overlay.cursor);
   const inputBuffer = useEditorUi((s) => s.commandBar.inputBuffer);
@@ -46,6 +76,7 @@ export function DynamicInputPills(): ReactElement | null {
   const activePrompt = useEditorUi((s) => s.commandBar.activePrompt);
   const dynEnabled = useEditorUi((s) => s.toggles.dynamicInput);
   const dynamicInput = useEditorUi((s) => s.commandBar.dynamicInput);
+  const dynamicInputRecall = useEditorUi((s) => s.commandBar.dynamicInputRecall);
   const dimensionGuides = useEditorUi((s) => s.overlay.dimensionGuides);
   const viewport = useEditorUi((s) => s.viewport);
 
@@ -61,6 +92,13 @@ export function DynamicInputPills(): ReactElement | null {
     dimensionGuides &&
     dimensionGuides.length === dynamicInput.manifest.fields.length
   ) {
+    // M1.3 DI pipeline overhaul Phase 4 (B8) — recall pill state.
+    // When recallActive: per-field pills get the dimmed style class
+    // (lose focus visually) and a recall pill renders at cursor +
+    // (16, 28) CSS-px showing `${label}=${value} / ...` for the
+    // recalled buffers (most recent submit under the active promptKey).
+    // Plan A13 / A14 / I-DI-10.
+    const recallActive = dynamicInput.recallActive;
     return (
       <>
         {dynamicInput.manifest.fields.map((field, idx) => {
@@ -69,35 +107,58 @@ export function DynamicInputPills(): ReactElement | null {
           const screen = derivePillScreenAnchor(guide, viewport);
           const focused = idx === dynamicInput.activeFieldIdx;
           const buffer = dynamicInput.buffers[idx] ?? '';
-          // Round 7 Phase 2 — dim placeholder. When the active buffer
-          // for this field is empty AND a previously-submitted value
-          // was recorded under the current promptKey, render the
-          // persisted value with reduced opacity. Typing replaces; if
-          // the user hits Enter without typing, the placeholder is
-          // used as the effective buffer (fallback applied at the
-          // EditorRoot.onSubmitDynamicInput boundary).
-          const placeholder = dynamicInput.placeholders[idx] ?? '';
-          const showPlaceholder = buffer.length === 0 && placeholder.length > 0;
+          const isLocked = dynamicInput.locked[idx] ?? false;
+          // M1.3 DI pipeline overhaul Phase 2 (B6) — live-value render.
+          // Render-path priority: typed buffer → typed display (abs)
+          // > locked + empty → blank (degenerate state)
+          // > unlocked + empty → live cursor read from guide.
+          let valueText: string;
+          if (buffer.length > 0) {
+            // Phase 6 — display buffer as-is (including any leading
+            // minus). Phase 2 stripped the minus per A1 ("pill displays
+            // absolute value") but user feedback says the minus must
+            // be visible while typing. The combiner still uses the
+            // signed value for direction inversion.
+            valueText = buffer;
+          } else if (isLocked) {
+            valueText = '';
+          } else {
+            valueText = deriveLivePillValue(guide);
+          }
           const labelPrefix = field.label ? `${field.label}: ` : '';
-          const valueText = showPlaceholder ? placeholder : buffer;
           const text = `${labelPrefix}${valueText}`;
-          const focusClass = focused ? styles.pillFocused : styles.pillDimmed;
-          const placeholderClass = showPlaceholder ? styles.pillPlaceholder : '';
+          // When recallActive, override focus styling — every per-field
+          // pill dims to indicate the recall pill is the active surface.
+          const focusClass = recallActive
+            ? styles.pillDimmed
+            : focused
+              ? styles.pillFocused
+              : styles.pillDimmed;
           return (
             <div
               key={`di-pill-${idx}`}
-              className={`${styles.pill} ${styles.pillCentered} ${focusClass} ${placeholderClass}`}
+              className={`${styles.pill} ${styles.pillCentered} ${focusClass}`}
               data-component="dynamic-input-pill"
               data-pill-index={idx}
-              data-pill-focused={focused ? 'true' : 'false'}
-              data-pill-placeholder={showPlaceholder ? 'true' : 'false'}
+              data-pill-focused={focused && !recallActive ? 'true' : 'false'}
+              data-pill-locked={isLocked ? 'true' : 'false'}
               style={{ left: `${screen.x}px`, top: `${screen.y}px` }}
             >
+              {isLocked ? (
+                <Lock size={10} className={styles.pillLockIcon} aria-label="locked" />
+              ) : null}
               {text}
-              {focused ? <span className={styles.pillCaret} aria-hidden /> : null}
+              {focused && !recallActive ? <span className={styles.pillCaret} aria-hidden /> : null}
             </div>
           );
         })}
+        {recallActive
+          ? renderRecallPill(
+              dynamicInput.manifest,
+              dynamicInputRecall[dynamicInput.promptKey],
+              cursor,
+            )
+          : null}
       </>
     );
   }
@@ -182,4 +243,46 @@ function derivePillScreenAnchor(guide: DimensionGuide, viewport: Viewport): Poin
       return metricToScreen(midpointMetric, viewport);
     }
   }
+}
+
+/**
+ * **M1.3 DI pipeline overhaul Phase 4 (B8) — recall pill render.**
+ *
+ * Render a single pill at the cursor + (16, 28) CSS-px showing the
+ * recalled buffers formatted as `${label}=${value}` joined ` / `
+ * (matches `EditorRoot.tsx:236-241` history convention; per plan A14).
+ * Returns null when:
+ *   - cursor is null (no mousemove yet)
+ *   - recall map has no entry under the active promptKey (defensive —
+ *     router only sets recallActive when an entry exists)
+ *   - recall array length doesn't match the manifest field count
+ *     (corrupted state — graceful degradation).
+ *
+ * Plan A13 / A14 / I-DI-10.
+ */
+function renderRecallPill(
+  manifest: DynamicInputManifest,
+  recall: string[] | undefined,
+  cursor: { metric: Point2D; screen: ScreenPoint } | null,
+): ReactElement | null {
+  if (!cursor) return null;
+  if (!recall || recall.length !== manifest.fields.length) return null;
+  const text = manifest.fields
+    .map((field, i) => {
+      const value = recall[i] ?? '';
+      const label = field.label ?? '';
+      return label ? `${label}=${value}` : value;
+    })
+    .join(' / ');
+  return (
+    <div
+      className={`${styles.pill} ${styles.pillRecall}`}
+      data-component="dynamic-input-recall-pill"
+      style={{
+        transform: `translate(${cursor.screen.x + FALLBACK_PILL_OFFSET_X_PX}px, ${cursor.screen.y + FALLBACK_PILL_OFFSET_Y_PX}px)`,
+      }}
+    >
+      {text}
+    </div>
+  );
 }

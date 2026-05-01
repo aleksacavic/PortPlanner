@@ -61,7 +61,29 @@ after forming independent findings. Compare afterwards.
    (00-architecture-contract.md §0.2)?
 4. Is architecture improved or regressed?
 5. What gaps / regressions remain?
-6. Final rating (1-10) with justification.
+6. **User-visible behavior trace (added 2026-05-01)**: for every row
+   in the plan's §1.5.1 User-Visible Behavior Walkthrough table,
+   trace the visible result through the actual commit diff. Identify
+   the file:line that produces the user-observable affordance / pixel
+   / DOM change the row promises. Verify it's wired to the right
+   trigger (a row claiming "Tab freezes the rubber-band" must trace
+   to a code site that fires *on Tab* and *changes preview rendering*,
+   not just to a unit-test assertion of combine-time math). A row
+   whose claimed visible result has no corresponding diff site is a
+   **Blocker**. Lesson source: M1.3 DI pipeline overhaul — Phase 3
+   passed Codex Round 4 Go 9.8/10 with all unit tests green, but
+   the visible row "rubber-band freezes on Tab" had NO diff site
+   beyond commit-time combiner; user manual smoke immediately caught
+   it as "doesn't work at all," requiring Phases 5-6 follow-up.
+7. **Manual-smoke trace (added 2026-05-01)**: pull the §3.5 manual-
+   smoke instruction list from the executor's handoff. For each
+   bullet (e.g. "press L, click, type 5, Tab"), simulate the action
+   sequence against the diff: which committed lines fire on each
+   step, and does the chain produce the visible result? Bullets
+   whose chain breaks (e.g. "Tab fires router handler ✓ → router
+   sets locked ✓ → runner subscription fires ✗ — no path that
+   re-invokes previewBuilder") are **Blockers**.
+8. Final rating (1-10) with justification.
 
 Also explicitly verify each ADR against the commit:
 

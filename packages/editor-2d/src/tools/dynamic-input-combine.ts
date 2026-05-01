@@ -30,48 +30,89 @@ import type { DynamicInputManifest, Input } from './types';
  * manifest's `combineAs` policy. Pure function. SSOT for the
  * `combineAs` enum + the `'point'` deg→rad conversion.
  *
+ * **M1.3 DI pipeline overhaul Phase 3 (B7) — cursor-aware combining.**
+ * The combiner now reads `cursor` to support:
+ * - 'point' arm: when distance OR angle buffer is empty, derive the
+ *   missing field from the cursor (matches what the live-cursor pill
+ *   displays). Negative typed distance naturally flips 180° via
+ *   signed math (no special-case branch needed).
+ * - 'numberPair' arm: cursor's quadrant determines W/H signs;
+ *   typed sign optionally flips. Cursor direction wins.
+ *
+ * 'number' (circle radius) and 'angle' (xline) arms ignore cursor
+ * per A11 / A12 — single-field, no direction to invert.
+ *
+ * The `locked: boolean[]` slice field is NOT a parameter here — its
+ * semantic role lives in chrome (suppress live read on locked field)
+ * and router (don't re-lock on Tab). Buffer-emptiness alone gates
+ * "use cursor" vs "use typed" per plan A19.
+ *
  * @param manifest — declarative metadata: field kinds + combineAs policy.
  * @param buffers — per-field raw text. `buffers.length` MUST equal `manifest.fields.length`.
- * @param anchor — metric anchor for `combineAs: 'point'` polar conversion (e.g. line p1, polyline last vertex). Ignored by other combineAs arms.
+ * @param anchor — metric anchor for `combineAs: 'point'` polar conversion (e.g. line p1, polyline last vertex) and `combineAs: 'numberPair'` quadrant resolution (rectangle corner1).
+ * @param cursor — most recent canvas cursor metric (lastKnownCursor); may be null when no mousemove has happened yet. When null, the combiner falls back to typed-only semantics if every required buffer is non-empty; if any required buffer is empty AND cursor is null, returns null.
  * @returns `Input` (kind matching the combineAs arm) or `null` on empty / un-parseable buffers.
  */
 export function combineDynamicInputBuffers(
   manifest: DynamicInputManifest,
   buffers: string[],
   anchor: Point2D,
+  cursor: Point2D | null,
 ): Input | null {
   if (buffers.length !== manifest.fields.length) return null;
 
-  // Parse every buffer as a finite number. Empty / NaN → reject.
-  const parsed: number[] = [];
-  for (const raw of buffers) {
-    const trimmed = raw.trim();
-    if (trimmed.length === 0) return null;
-    const n = Number(trimmed);
-    if (!Number.isFinite(n)) return null;
-    parsed.push(n);
-  }
-
   switch (manifest.combineAs) {
     case 'numberPair': {
-      // Plan A7: rectangle's W,H. Re-uses the M1.3d-Rem-5 H1 numberPair
-      // Input arm; same parser semantics inline (Number(raw) +
-      // Number.isFinite, plus per-token trim guard above).
-      if (parsed.length !== 2) return null;
-      const [a, b] = parsed as [number, number];
-      return { kind: 'numberPair', a, b };
+      // M1.3 DI pipeline overhaul Phase 3 (B7) — signed numberPair
+      // with cursor-quadrant direction. Per §4.0.2 and rectangle tool's
+      // post-Phase-3 commit logic (drops Math.abs), the W and H values
+      // are signed: cursor's X-sign × typed-sign × |W|, and likewise
+      // for H. Cursor direction wins; typed sign optionally flips.
+      if (buffers.length !== 2) return null;
+      const wRaw = parseSignedFloat(buffers[0] ?? '');
+      const hRaw = parseSignedFloat(buffers[1] ?? '');
+
+      const w = resolveSignedComponent(wRaw, cursor ? cursor.x - anchor.x : null);
+      if (w === null) return null;
+      const h = resolveSignedComponent(hRaw, cursor ? cursor.y - anchor.y : null);
+      if (h === null) return null;
+      return { kind: 'numberPair', a: w, b: h };
     }
     case 'point': {
-      // Plan A7: polar conversion. ANGLE FIELD IS DEGREES (AC parity);
-      // helper performs deg→rad conversion via (angleDeg * Math.PI) / 180
-      // before applying cos/sin. Anchor supplied by caller (sourced
-      // from overlay.dimensionGuides[0].anchorA at submit time per
-      // plan §10 audit C2.5). SSOT for the conversion lives ONLY in
-      // this file — Gate REM6-P1-AngleUnit asserts EditorRoot.tsx has
-      // zero conversion-symbol matches.
-      if (parsed.length !== 2) return null;
-      const [distance, angleDeg] = parsed as [number, number];
-      const angleRad = (angleDeg * Math.PI) / 180;
+      // M1.3 DI pipeline overhaul Phase 3 (B7) — cursor-aware polar.
+      // Per §4.0.2: distance buffer empty → use hypot(cursor - anchor);
+      // angle buffer empty → use atan2(cursor - anchor). Negative typed
+      // distance naturally flips 180° via signed multiplication.
+      // ANGLE FIELD IS DEGREES (AC parity per ADR-025 §4); helper
+      // performs deg→rad conversion before applying cos/sin.
+      if (buffers.length !== 2) return null;
+
+      // Resolve angleRad (priority: typed buffer > cursor-derived):
+      let angleRad: number;
+      const angleBuf = (buffers[1] ?? '').trim();
+      if (angleBuf.length > 0) {
+        const angleDeg = Number(angleBuf);
+        if (!Number.isFinite(angleDeg)) return null;
+        angleRad = (angleDeg * Math.PI) / 180;
+      } else if (cursor) {
+        angleRad = Math.atan2(cursor.y - anchor.y, cursor.x - anchor.x);
+      } else {
+        return null;
+      }
+
+      // Resolve distance (priority: typed buffer signed > cursor hypot):
+      let distance: number;
+      const distBuf = (buffers[0] ?? '').trim();
+      if (distBuf.length > 0) {
+        const d = Number(distBuf);
+        if (!Number.isFinite(d)) return null;
+        distance = d;
+      } else if (cursor) {
+        distance = Math.hypot(cursor.x - anchor.x, cursor.y - anchor.y);
+      } else {
+        return null;
+      }
+
       return {
         kind: 'point',
         point: {
@@ -81,21 +122,150 @@ export function combineDynamicInputBuffers(
       };
     }
     case 'number': {
-      // Plan A7: circle radius (single-field manifest).
-      if (parsed.length !== 1) return null;
-      const [value] = parsed as [number];
+      // Plan A7 + A11: circle radius (single-field manifest). Cursor
+      // ignored (no direction to invert for a single-field manifest).
+      // Existing semantics preserved — combiner emits raw signed value;
+      // tool's Math.abs reject-zero handles the rest.
+      if (buffers.length !== 1) return null;
+      const raw = (buffers[0] ?? '').trim();
+      if (raw.length === 0) return null;
+      const value = Number(raw);
+      if (!Number.isFinite(value)) return null;
       return { kind: 'number', value };
     }
     case 'angle': {
-      // Round-2: xline direction angle. Single-field [Angle] manifest;
-      // typed value is in DEGREES (AC parity, same convention as the
-      // 'point' arm's angle component). Helper converts deg→rad and
-      // emits { kind: 'angle', radians } so the xline tool can derive
-      // the through-point at any unit length along that direction.
-      if (parsed.length !== 1) return null;
-      const [angleDeg] = parsed as [number];
+      // Plan A7 + A12: xline direction angle. Single-field [Angle]
+      // manifest; cursor ignored (xline is bidirectional). Helper
+      // converts deg→rad as before.
+      if (buffers.length !== 1) return null;
+      const raw = (buffers[0] ?? '').trim();
+      if (raw.length === 0) return null;
+      const angleDeg = Number(raw);
+      if (!Number.isFinite(angleDeg)) return null;
       const angleRad = (angleDeg * Math.PI) / 180;
       return { kind: 'angle', radians: angleRad };
     }
   }
+}
+
+/**
+ * **M1.3 DI pipeline overhaul Phase 5 (B7 visible affordance)** —
+ * compute the effective cursor point honoring DI buffers, used by the
+ * runner subscription so previewBuilder + dimensionGuidesBuilder
+ * receive a cursor that already reflects locked / typed values. Same
+ * math as `combineDynamicInputBuffers` for 'point' / 'numberPair' arms;
+ * 'number' (circle radius) and 'angle' (xline) get analogous one-axis
+ * fixes. Always returns a Point2D (returns rawCursor on parse failure
+ * or arity mismatch — graceful degradation).
+ */
+export function computeEffectiveCursor(
+  manifest: DynamicInputManifest,
+  buffers: string[],
+  locked: boolean[],
+  anchor: Point2D,
+  rawCursor: Point2D,
+): Point2D {
+  if (buffers.length !== manifest.fields.length) return rawCursor;
+  if (locked.length !== buffers.length) return rawCursor;
+
+  // Phase 6 — gate on `locked[idx]` not `buffer non-empty`. Per user
+  // feedback: rubber-band should freeze only when the user explicitly
+  // commits a field via Tab (lock), not on every keystroke. Combiner
+  // (commit-time) still uses buffer-non-empty so Enter without Tab
+  // honors typed values; rubber-band (draft-time) requires Tab.
+  switch (manifest.combineAs) {
+    case 'point': {
+      if (buffers.length !== 2) return rawCursor;
+      let angleRad: number;
+      if (locked[1] && (buffers[1] ?? '').trim().length > 0) {
+        const angleDeg = Number(buffers[1]);
+        if (!Number.isFinite(angleDeg)) return rawCursor;
+        angleRad = (angleDeg * Math.PI) / 180;
+      } else {
+        angleRad = Math.atan2(rawCursor.y - anchor.y, rawCursor.x - anchor.x);
+      }
+      let distance: number;
+      if (locked[0] && (buffers[0] ?? '').trim().length > 0) {
+        const d = Number(buffers[0]);
+        if (!Number.isFinite(d)) return rawCursor;
+        distance = d;
+      } else {
+        distance = Math.hypot(rawCursor.x - anchor.x, rawCursor.y - anchor.y);
+      }
+      return {
+        x: anchor.x + Math.cos(angleRad) * distance,
+        y: anchor.y + Math.sin(angleRad) * distance,
+      };
+    }
+    case 'numberPair': {
+      if (buffers.length !== 2) return rawCursor;
+      const wRaw = locked[0] ? parseSignedFloat(buffers[0] ?? '') : null;
+      const hRaw = locked[1] ? parseSignedFloat(buffers[1] ?? '') : null;
+      const w = resolveSignedComponent(wRaw, rawCursor.x - anchor.x);
+      const h = resolveSignedComponent(hRaw, rawCursor.y - anchor.y);
+      if (w === null || h === null) return rawCursor;
+      return { x: anchor.x + w, y: anchor.y + h };
+    }
+    case 'number': {
+      if (buffers.length !== 1) return rawCursor;
+      if (!locked[0]) return rawCursor;
+      const buf = (buffers[0] ?? '').trim();
+      if (buf.length === 0) return rawCursor;
+      const value = Number(buf);
+      if (!Number.isFinite(value)) return rawCursor;
+      const dx = rawCursor.x - anchor.x;
+      const dy = rawCursor.y - anchor.y;
+      const len = Math.hypot(dx, dy);
+      if (len === 0) return { x: anchor.x + value, y: anchor.y };
+      return {
+        x: anchor.x + (dx / len) * value,
+        y: anchor.y + (dy / len) * value,
+      };
+    }
+    case 'angle': {
+      if (buffers.length !== 1) return rawCursor;
+      if (!locked[0]) return rawCursor;
+      const buf = (buffers[0] ?? '').trim();
+      if (buf.length === 0) return rawCursor;
+      const angleDeg = Number(buf);
+      if (!Number.isFinite(angleDeg)) return rawCursor;
+      const angleRad = (angleDeg * Math.PI) / 180;
+      const len = Math.hypot(rawCursor.x - anchor.x, rawCursor.y - anchor.y);
+      return {
+        x: anchor.x + Math.cos(angleRad) * len,
+        y: anchor.y + Math.sin(angleRad) * len,
+      };
+    }
+  }
+}
+
+/** Parse a typed buffer into a signed float; returns null when empty
+ *  or un-parseable (so caller can fall back to cursor-derived). */
+function parseSignedFloat(buf: string): number | null {
+  const trimmed = buf.trim();
+  if (trimmed.length === 0) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n)) return null;
+  return n;
+}
+
+/** Resolve a signed numberPair component (W or H) per §4.0.2:
+ *  - typed buffer non-empty: cursor's sign × typed sign × |typed|
+ *    (cursor direction wins; typed sign optionally flips).
+ *  - typed buffer empty + cursor non-null: cursor delta as-is.
+ *  - typed buffer empty + cursor null: null (caller propagates as "ignore").
+ *  When cursor delta is exactly 0 (cursor on anchor axis), we treat
+ *  the cursor sign as +1 so a typed value still applies in the +X/+Y
+ *  direction by default. */
+function resolveSignedComponent(typed: number | null, cursorDelta: number | null): number | null {
+  if (typed !== null) {
+    if (cursorDelta !== null) {
+      const cursorSign = cursorDelta >= 0 ? 1 : -1;
+      const typedSign = typed < 0 ? -1 : 1;
+      return cursorSign * typedSign * Math.abs(typed);
+    }
+    return typed;
+  }
+  if (cursorDelta !== null) return cursorDelta;
+  return null;
 }

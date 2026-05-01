@@ -203,6 +203,22 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       return;
     }
     if (key === 'Escape') {
+      // M1.3 DI pipeline overhaul Phase 4 (B8) + Phase 3 (B7) —
+      // multi-step Esc precedence: recall cancellation > unlock all
+      // > existing abort. Plan A3 / I-DI-12.
+      const diBeforeEsc = editorUiStore.getState().commandBar.dynamicInput;
+      // First step (Phase 4): cancel recall if active.
+      if (diBeforeEsc?.recallActive) {
+        e.preventDefault();
+        editorUiActions.setDynamicInputRecallActive(false);
+        return;
+      }
+      // Second step (Phase 3): unlock all locked fields.
+      if (diBeforeEsc?.locked.some(Boolean)) {
+        e.preventDefault();
+        editorUiActions.unlockAllDynamicInputFields();
+        return;
+      }
       // M1.3d-Rem-4 G1: Escape clears the accumulator silently (no
       // activation). G2: Escape also clears the inputBuffer — Esc
       // means "abort everything in flight" (tool, accumulator, buffer).
@@ -219,14 +235,65 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
     // between DI pills regardless of which surface they're typing in.
     // When no DI is active, Tab passes through to native browser
     // behaviour (preserves accessibility for chrome regions).
+    //
+    // M1.3 DI pipeline overhaul Phase 3 (B7) — Tab handler now also
+    // locks a typed field before cycling, and fires implicit submit
+    // when every field becomes locked. Plan A2 + A18 + I-DI-4 + I-DI-5.
     if (key === 'Tab') {
       const di = editorUiStore.getState().commandBar.dynamicInput;
-      if (di && di.manifest.fields.length > 1) {
+      if (di && di.manifest.fields.length > 0) {
         e.preventDefault();
-        cycleDIActiveField(e.shiftKey ? -1 : 1);
+        // M1.3 DI pipeline overhaul Phase 4 (B8) — Tab during recall
+        // cancels back to per-field pill mode (does NOT cycle / lock).
+        // Plan A3 / I-DI-10.
+        if (di.recallActive) {
+          editorUiActions.setDynamicInputRecallActive(false);
+          return;
+        }
+        const idx = di.activeFieldIdx;
+        const buffer = di.buffers[idx] ?? '';
+        // Lock-on-typed (Plan A2): empty field → just navigate; typed
+        // field → freeze it BEFORE cycling. Idempotent if already locked.
+        if (buffer.length > 0 && !di.locked[idx]) {
+          editorUiActions.setDynamicInputFieldLocked(idx, true);
+        }
+        // Cycle navigation only if multi-field. Single-field lock
+        // path falls through to the all-locked auto-submit check.
+        if (di.manifest.fields.length > 1) {
+          cycleDIActiveField(e.shiftKey ? -1 : 1);
+        }
+        // Auto-submit when every field becomes locked (Plan A18).
+        // Re-read state after the lock + cycle mutations so we see
+        // the current `locked` array.
+        const updatedDi = editorUiStore.getState().commandBar.dynamicInput;
+        if (updatedDi?.locked.every(Boolean)) {
+          callbacks.onSubmitDynamicInput(updatedDi.manifest, updatedDi.buffers);
+        }
         return;
       }
-      // No DI active OR single-field manifest — pass through.
+      // No DI active OR zero-field manifest — pass through.
+    }
+    // M1.3 DI pipeline overhaul Phase 4 (B8) — ArrowUp shows recall
+    // pill at cursor when DI active AND a recall entry exists for the
+    // active promptKey. ArrowDown cancels recall (returns to live-
+    // cursor mode). Both intercepted only at canvas focus so chrome
+    // regions retain native arrow-key behavior. Plan I-DI-10 + I-DI-11.
+    if (key === 'ArrowUp' && focus === 'canvas') {
+      const di = editorUiStore.getState().commandBar.dynamicInput;
+      if (!di) return; // no DI active → pass through
+      const recall = editorUiStore.getState().commandBar.dynamicInputRecall[di.promptKey];
+      if (!recall || recall.length === 0) return; // no entry → pass through
+      e.preventDefault();
+      editorUiActions.setDynamicInputRecallActive(true);
+      return;
+    }
+    if (key === 'ArrowDown' && focus === 'canvas') {
+      const di = editorUiStore.getState().commandBar.dynamicInput;
+      if (di?.recallActive) {
+        e.preventDefault();
+        editorUiActions.setDynamicInputRecallActive(false);
+        return;
+      }
     }
     if (key === 'Enter' && focus === 'canvas') {
       // M1.3d-Rem-4 — Enter at canvas focus disambiguation per A10b.
@@ -237,6 +304,19 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       e.preventDefault();
       const cb = editorUiStore.getState().commandBar;
       const activeToolId = editorUiStore.getState().activeToolId;
+      // M1.3 DI pipeline overhaul Phase 4 (B8) — Enter during recall
+      // commits the recalled buffers (NOT the current empty buffers).
+      // Plan I-DI-10. Branch fires BEFORE the standard DI submit so
+      // recall-active short-circuits without falling into the live
+      // path. Recalled buffers feed straight into onSubmitDynamicInput
+      // which routes through the standard combiner + tool feed path.
+      if (cb.dynamicInput?.recallActive && activeToolId !== null) {
+        const recall = cb.dynamicInputRecall[cb.dynamicInput.promptKey];
+        if (recall && recall.length === cb.dynamicInput.manifest.fields.length) {
+          callbacks.onSubmitDynamicInput(cb.dynamicInput.manifest, recall);
+          return;
+        }
+      }
       // (0) DI active + tool active → DI submit (Round 6).
       if (cb.dynamicInput && activeToolId !== null) {
         callbacks.onSubmitDynamicInput(cb.dynamicInput.manifest, cb.dynamicInput.buffers);
@@ -271,6 +351,16 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       e.preventDefault();
       const cb = editorUiStore.getState().commandBar;
       const activeToolId = editorUiStore.getState().activeToolId;
+      // M1.3 DI pipeline overhaul Phase 4 (B8) — Space during recall
+      // commits the recalled buffers (mirrors Enter precedence).
+      // Plan I-DI-10.
+      if (cb.dynamicInput?.recallActive && activeToolId !== null) {
+        const recall = cb.dynamicInputRecall[cb.dynamicInput.promptKey];
+        if (recall && recall.length === cb.dynamicInput.manifest.fields.length) {
+          callbacks.onSubmitDynamicInput(cb.dynamicInput.manifest, recall);
+          return;
+        }
+      }
       // (0) DI active + tool active → DI submit (Round 6 — same
       // precedence as Enter for symmetry).
       if (cb.dynamicInput && activeToolId !== null) {

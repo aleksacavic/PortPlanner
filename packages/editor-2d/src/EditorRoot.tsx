@@ -76,6 +76,13 @@ export function EditorRoot(): ReactElement {
   // across renders — important so canvas-host's paint useEffect doesn't
   // re-subscribe on every parent render.
   const getOverlayRef = useRef<() => OverlayState | null>(() => editorUiStore.getState().overlay);
+  // M1.3 DI pipeline overhaul Phase 6 — handle to the DI-submit
+  // callback, populated by the registerKeyboardRouter useEffect below
+  // and read by handleCanvasClick to commit-on-click when any field
+  // is locked (user feedback: "allow me to finish with a click").
+  const onSubmitDynamicInputRef = useRef<
+    ((manifest: import('./tools/types').DynamicInputManifest, buffers: string[]) => void) | null
+  >(null);
   const [layerManagerOpen, setLayerManagerOpen] = useState(false);
 
   // Auto-set activeLayerId to LayerId.DEFAULT on first project mount so
@@ -195,9 +202,29 @@ export function EditorRoot(): ReactElement {
       // prompt's `directDistanceFrom` as fallback) — the same physical
       // anchor that paintDimensionGuides uses for the linear-dim
       // segment. Plan §7 Phase 1 step 11 + §10 audit C2.5.
+      //
+      // Phase 6 — also stored on `onSubmitDynamicInputRef` so
+      // handleCanvasClick can call it when user clicks while a DI
+      // field is locked (commit-on-click).
       onSubmitDynamicInput: (manifest, buffers) => {
+        onSubmitDynamicInputRef.current?.(manifest, buffers);
+        // Body is duplicated as the ref body below for inline call from
+        // handleCanvasClick.
+        return;
+      },
+    });
+  }, []);
+
+  // M1.3 DI pipeline overhaul Phase 6 — DI-submit body, callable from
+  // either the keyboard router (Enter / Space / Tab-all-locked path) OR
+  // handleCanvasClick (commit-on-click when any field is locked). Set
+  // up once on mount; reads slice + tool ref on every call.
+  useEffect(() => {
+    onSubmitDynamicInputRef.current = (manifest, buffers) => {
+      {
         const cb = editorUiStore.getState().commandBar;
-        const guides = editorUiStore.getState().overlay.dimensionGuides;
+        const overlay = editorUiStore.getState().overlay;
+        const guides = overlay.dimensionGuides;
         // Resolve anchor: linear-dim guide carries anchorA (line p1);
         // angle-arc guide carries pivot. Fall back to
         // commandBar.directDistanceFrom (set by the runner from
@@ -210,30 +237,34 @@ export function EditorRoot(): ReactElement {
           }
         }
         if (!anchor) anchor = cb.directDistanceFrom;
-        // Round 7 Phase 2 — placeholder fallback at the submit
-        // boundary. For each empty buffer slot, substitute the
-        // persisted placeholder value (if any). This keeps the
-        // combiner pure (it still receives a flat string[] and
-        // doesn't know about lastSubmittedBuffers); empty-buffer +
-        // empty-placeholder still produces null per the combiner's
-        // existing parse-failure semantics.
-        const placeholders = cb.dynamicInput?.placeholders ?? [];
-        const effectiveBuffers = buffers.map((b, i) => {
-          if (b.length > 0) return b;
-          return placeholders[i] ?? '';
-        });
+        // M1.3 DI pipeline overhaul Phase 4 (B8) — placeholder fallback
+        // path RETIRED. Combiner receives raw `buffers` directly. Empty
+        // buffer slots fall back to cursor-derived values inside the
+        // combiner (Phase 3 cursor-aware logic) for `'point'` and
+        // `'numberPair'` arms; for `'number'` / `'angle'` arms an empty
+        // buffer is rejected (combiner returns null → ignore submit).
+        // The recall mechanic is now ArrowUp-driven (router fires
+        // onSubmitDynamicInput with the recalled buffers when Enter /
+        // Space pressed while recallActive). Plan I-DI-9.
+        //
+        // M1.3 DI pipeline overhaul Phase 3 (B7) — thread cursor for
+        // cursor-aware combining. `lastKnownCursor` survives the user
+        // moving onto the command bar (where overlay.cursor is null);
+        // it's never cleared once set.
+        const cursor = overlay.lastKnownCursor;
         const input = combineDynamicInputBuffers(
           manifest,
-          effectiveBuffers,
+          buffers,
           anchor ?? { x: 0, y: 0 },
+          cursor,
         );
         if (input === null) {
           // Empty / un-parseable buffers — ignore submit (buffers stay
           // intact so the user can edit). Plan §3 A7.
           return;
         }
-        // Append history mirror of the EFFECTIVE buffers (joined with " / ").
-        const rawJoin = effectiveBuffers
+        // Append history mirror of the raw buffers (joined with " / ").
+        const rawJoin = buffers
           .map((b, i) => {
             const label = manifest.fields[i]?.label;
             return label ? `${label}=${b}` : b;
@@ -248,16 +279,16 @@ export function EditorRoot(): ReactElement {
         }
         // Round 7 Phase 2 — record the submitted buffers under the
         // active promptKey BEFORE clearDynamicInput wipes the slice.
-        // I-BPER-1: writes only to editorUiStore; never to project /
-        // IndexedDB / API. Locked by REM7-P2-NoPersistenceLeak.
+        // I-DI-13: writes only to editorUiStore; never to project /
+        // IndexedDB / API.
         const promptKey = cb.dynamicInput?.promptKey;
         if (promptKey !== undefined) {
-          editorUiActions.recordSubmittedBuffers(promptKey, effectiveBuffers);
+          editorUiActions.recordSubmittedBuffers(promptKey, buffers);
         }
         runningToolRef.current?.feedInput(input);
         editorUiActions.clearDynamicInput();
-      },
-    });
+      }
+    };
   }, []);
 
   // ResizeObserver — keep canvasWidthCss / canvasHeightCss / dpr in
@@ -488,6 +519,21 @@ export function EditorRoot(): ReactElement {
   }
 
   const handleCanvasClick = (metric: Point2D, screen: { x: number; y: number }): void => {
+    // M1.3 DI pipeline overhaul Phase 6 — when ANY DI field is locked,
+    // a click commits the DI submit using the current buffers (locked
+    // values + live cursor for unlocked fields). User feedback: "if I
+    // locked one value by typing it, allow me to finish with a click."
+    // This branch fires BEFORE the regular click-eat so a partial-lock
+    // state is committable via click. Calls onSubmitDynamicInputRef
+    // which mirrors the keyboard Enter/Space DI submit path (combiner
+    // → feedInput → clearDynamicInput + history append + recall record).
+    const cbState = editorUiStore.getState().commandBar;
+    const activeTool = editorUiStore.getState().activeToolId;
+    if (cbState.dynamicInput?.locked.some(Boolean) && activeTool !== null) {
+      const di = cbState.dynamicInput;
+      onSubmitDynamicInputRef.current?.(di.manifest, di.buffers);
+      return;
+    }
     // M1.3d-Remediation-4 G2 — click-eat: when the inputBuffer has
     // content, the user is mid-typing a value into the Dynamic Input
     // pill. AC parity: the buffer takes precedence; clicks are silently
