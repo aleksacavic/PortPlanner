@@ -223,11 +223,23 @@ export function registerKeyboardRouter(callbacks: KeyboardRouterCallbacks): () =
       // activation). G2: Escape also clears the inputBuffer — Esc
       // means "abort everything in flight" (tool, accumulator, buffer).
       // M1.3 Round 6: Esc also clears DI manifest + buffers.
+      // Final fallback: when nothing else is in flight (no tool, no
+      // accumulator, no buffer, empty DI) AND a selection exists,
+      // Escape deselects — AC parity for "Esc clears selection".
+      const stateBeforeEsc = editorUiStore.getState();
+      const noToolFlight =
+        stateBeforeEsc.activeToolId === null &&
+        accumulator.length === 0 &&
+        stateBeforeEsc.commandBar.inputBuffer.length === 0 &&
+        stateBeforeEsc.commandBar.dynamicInput === null;
       clearAccumulator();
       editorUiActions.setInputBuffer('');
       editorUiActions.clearDynamicInput();
       callbacks.onAbortCurrentTool();
       editorUiActions.setFocusHolder('canvas');
+      if (noToolFlight && stateBeforeEsc.selection.length > 0) {
+        editorUiActions.setSelection([]);
+      }
       return;
     }
     // M1.3 Round 6 — Tab / Shift+Tab cycles activeFieldIdx when DI is

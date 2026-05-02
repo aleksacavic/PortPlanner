@@ -66,3 +66,13 @@ export {
 } from './schemas';
 
 export { LoadFailure, deserialize, serialize } from './serialize';
+
+// M1.3b simple-transforms Phase 1 — per-primitive transform helpers.
+// Pure domain functions consumed by editor-2d tools (rotate / mirror /
+// scale / offset) and previewBuilders.
+export {
+  mirrorPrimitive,
+  offsetPrimitive,
+  rotatePrimitive,
+  scalePrimitive,
+} from './transforms';

@@ -87,6 +87,12 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               className={styles.input}
               value={name}
               onChange={(e) => setName(e.target.value)}
+              // Stop keystrokes from bubbling to the window-level
+              // keyboard router — otherwise letters typed here would
+              // accumulate into the canvas tool-shortcut buffer (e.g.,
+              // typing "Untitled" would leave "U" in the accumulator
+              // and activate Undo on the next Enter).
+              onKeyDown={(e) => e.stopPropagation()}
               maxLength={100}
               aria-invalid={error !== null}
             />

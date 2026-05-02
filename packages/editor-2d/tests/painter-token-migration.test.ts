@@ -130,7 +130,7 @@ describe('painter-token-migration — every overlay painter consumes numeric chr
 
   it('paintCrosshair lineWidth = crosshair_stroke_width × dpr (1 × 1 = 1)', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'full', viewport, dark);
     expect(lastLineWidth(calls)).toBeCloseTo(1, 6);
   });
 

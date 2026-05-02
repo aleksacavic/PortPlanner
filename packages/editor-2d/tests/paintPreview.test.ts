@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // paintPreview tests for M1.3d Phase 4.
 //
 // Verifies that each PreviewShape arm dispatches the correct path
@@ -5,6 +6,8 @@
 // DTP-T6 / I-DTP-9).
 
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { dark } from '@portplanner/design-system';
 import { LayerId, newPrimitiveId } from '@portplanner/domain';
 import { describe, expect, it } from 'vitest';
@@ -293,7 +296,7 @@ describe('paintPreview — modified-entities arm (F4)', () => {
     expect(calls.some((c) => c.method === 'closePath')).toBe(true);
   });
 
-  it('rectangle: ctx.rect at offset origin with the original dimensions', () => {
+  it('rectangle: 4-corner walk at offset origin (axis-aligned case)', () => {
     const { ctx, calls } = makeCtxRecorder();
     paintPreview(
       ctx,
@@ -316,8 +319,50 @@ describe('paintPreview — modified-entities arm (F4)', () => {
       viewport,
       dark,
     );
-    const rect = calls.find((c) => c.method === 'rect');
-    expect(rect?.args).toEqual([10, 5, 8, 4]);
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    expect(moveTos[0]?.args).toEqual([10, 5]);
+    // Walks SW → SE → NE → NW for an axis-aligned rect (cos=1, sin=0).
+    expect(lineTos[0]?.args).toEqual([18, 5]);
+    expect(lineTos[1]?.args).toEqual([18, 9]);
+    expect(lineTos[2]?.args).toEqual([10, 9]);
+    expect(calls.some((c) => c.method === 'closePath')).toBe(true);
+  });
+
+  it('rectangle: localAxisAngle=π/2 walks the rotated frame (preview painter respects rotation)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'rectangle',
+            layerId,
+            displayOverrides: {},
+            origin: { x: 0, y: 0 },
+            width: 10,
+            height: 4,
+            localAxisAngle: Math.PI / 2,
+          },
+        ],
+        offsetMetric: { x: 0, y: 0 },
+      },
+      viewport,
+      dark,
+    );
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    // SW=(0,0); SE rotated 90°CCW → (0, 10); NE → (-4, 10); NW → (-4, 0).
+    expect(moveTos[0]?.args[0]).toBeCloseTo(0, 6);
+    expect(moveTos[0]?.args[1]).toBeCloseTo(0, 6);
+    expect(lineTos[0]?.args[0]).toBeCloseTo(0, 6);
+    expect(lineTos[0]?.args[1]).toBeCloseTo(10, 6);
+    expect(lineTos[1]?.args[0]).toBeCloseTo(-4, 6);
+    expect(lineTos[1]?.args[1]).toBeCloseTo(10, 6);
+    expect(lineTos[2]?.args[0]).toBeCloseTo(-4, 6);
+    expect(lineTos[2]?.args[1]).toBeCloseTo(0, 6);
   });
 
   it('circle: ctx.arc full sweep at offset center, original radius', () => {
@@ -469,9 +514,133 @@ describe('paintPreview — modified-entities arm (F4)', () => {
   });
 });
 
+// M1.3b simple-transforms Phase 1 — 4 new PreviewShape arms.
+// Per plan §3.0 walkthrough rows: each arm produces the visibly-correct
+// transformed geometry via drawPrimitiveOutline.
+describe('paintPreview — M1.3b transform arms', () => {
+  const layerId = LayerId.DEFAULT;
+
+  it('rotated-entities arm: line rotated 90° about origin → swaps x/y', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'rotated-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId,
+            displayOverrides: {},
+            p1: { x: 0, y: 0 },
+            p2: { x: 10, y: 0 },
+          },
+        ],
+        base: { x: 0, y: 0 },
+        angleRad: Math.PI / 2,
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo!.args[0]).toBeCloseTo(0, 6);
+    expect(moveTo!.args[1]).toBeCloseTo(0, 6);
+    expect(lineTo!.args[0]).toBeCloseTo(0, 6);
+    expect(lineTo!.args[1]).toBeCloseTo(10, 6);
+    expect(calls.some((c) => c.method === 'stroke')).toBe(true);
+  });
+
+  it('scaled-entities arm: circle radius × factor at base', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'scaled-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'circle',
+            layerId,
+            displayOverrides: {},
+            center: { x: 0, y: 0 },
+            radius: 5,
+          },
+        ],
+        base: { x: 0, y: 0 },
+        factor: 2,
+      },
+      viewport,
+      dark,
+    );
+    const arc = calls.find((c) => c.method === 'arc');
+    expect(arc!.args[2]).toBeCloseTo(10, 6);
+  });
+
+  it('mirrored-entities arm: line reflected across x-axis flips y', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'mirrored-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId,
+            displayOverrides: {},
+            p1: { x: 0, y: 5 },
+            p2: { x: 10, y: 5 },
+          },
+        ],
+        line: { p1: { x: 0, y: 0 }, p2: { x: 1, y: 0 } },
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo!.args[1]).toBeCloseTo(-5, 6);
+    expect(lineTo!.args[1]).toBeCloseTo(-5, 6);
+  });
+
+  it('offset-preview arm: line offset by +distance perpendicular', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'offset-preview',
+        primitive: {
+          id: newPrimitiveId(),
+          kind: 'line',
+          layerId,
+          displayOverrides: {},
+          p1: { x: 0, y: 0 },
+          p2: { x: 10, y: 0 },
+        },
+        distance: 3,
+        side: 1,
+      },
+      viewport,
+      dark,
+    );
+    const moveTo = calls.find((c) => c.method === 'moveTo');
+    const lineTo = calls.find((c) => c.method === 'lineTo');
+    expect(moveTo!.args[1]).toBeCloseTo(3, 6);
+    expect(lineTo!.args[1]).toBeCloseTo(3, 6);
+  });
+});
+
 describe('paintPreview — Gate DTP-T6 source-import isolation (I-DTP-9)', () => {
   it('paintPreview.ts does NOT import @portplanner/project-store', () => {
-    const src = readFileSync('src/canvas/painters/paintPreview.ts', 'utf8');
+    // Resolve the source path relative to this test file so the assertion
+    // works regardless of the cwd vitest is invoked from (package vs
+    // repo root vs CI shells).
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      resolve(here, '..', 'src', 'canvas', 'painters', 'paintPreview.ts'),
+      'utf8',
+    );
     expect(src).not.toMatch(/from\s+['"]@portplanner\/project-store['"]/);
   });
 });

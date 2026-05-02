@@ -1,3 +1,9 @@
+// @vitest-environment jsdom
+// Window-level KeyboardEvent dispatch + DOM listeners require a browser-
+// like runtime. The package vitest config sets jsdom by default; this
+// directive makes the file portable when vitest is invoked from the repo
+// root or other shells that resolve the root config first (env: node).
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { registerKeyboardRouter, unregisterKeyboardRouterForTests } from '../src/keyboard/router';
@@ -163,6 +169,38 @@ describe('keyboard router', () => {
     pressKey('Enter');
     expect(mocks.onActivateTool).toHaveBeenCalledWith('copy');
     expect(mocks.onSubOption).not.toHaveBeenCalled();
+  });
+
+  // M1.3b simple-transforms Phase 6 — router activation tests for the 4
+  // new modify operators (R / MI / SC / O).
+  it('activates rotate via R shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('R');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('rotate');
+  });
+
+  it('activates mirror via MI shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('M');
+    pressKey('I');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('mirror');
+  });
+
+  it('activates scale via SC shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('S');
+    pressKey('C');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('scale');
+  });
+
+  it('activates offset via O shortcut', () => {
+    editorUiActions.setFocusHolder('canvas');
+    pressKey('O');
+    pressKey('Enter');
+    expect(mocks.onActivateTool).toHaveBeenCalledWith('offset');
   });
 
   // M1.3d Phase 8 — F7 toggle-crosshair (I-DTP-20).

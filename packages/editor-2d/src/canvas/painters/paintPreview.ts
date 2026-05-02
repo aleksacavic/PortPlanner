@@ -19,7 +19,14 @@
 // names are intentionally omitted here.
 
 import type { SemanticTokens } from '@portplanner/design-system';
-import type { Point2D, Primitive } from '@portplanner/domain';
+import {
+  type Point2D,
+  type Primitive,
+  mirrorPrimitive,
+  offsetPrimitive,
+  rotatePrimitive,
+  scalePrimitive,
+} from '@portplanner/domain';
 
 import type { PreviewShape } from '../../tools/types';
 import type { Viewport } from '../view-transform';
@@ -86,6 +93,18 @@ export function paintPreview(
     case 'modified-entities':
       drawModifiedEntitiesPreview(ctx, shape);
       break;
+    case 'rotated-entities':
+      drawRotatedEntitiesPreview(ctx, shape);
+      break;
+    case 'scaled-entities':
+      drawScaledEntitiesPreview(ctx, shape);
+      break;
+    case 'mirrored-entities':
+      drawMirroredEntitiesPreview(ctx, shape);
+      break;
+    case 'offset-preview':
+      drawOffsetPreview(ctx, shape);
+      break;
   }
 
   ctx.restore();
@@ -105,6 +124,70 @@ function drawModifiedEntitiesPreview(
   for (const p of primitives) {
     drawShiftedPrimitiveOutline(ctx, p, offsetMetric);
   }
+}
+
+// M1.3b simple-transforms Phase 1 — 4 new modify-operator preview
+// helpers. Each delegates per-primitive transform to the domain helper
+// (rotate / scale / mirror / offset) then strokes the resulting outline
+// via the existing `drawPrimitiveOutline` shape-dispatch (zero offset).
+function drawRotatedEntitiesPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { primitives: Primitive[]; base: Point2D; angleRad: number },
+): void {
+  const { primitives, base, angleRad } = shape;
+  for (const p of primitives) {
+    drawPrimitiveOutline(ctx, rotatePrimitive(p, base, angleRad));
+  }
+}
+
+function drawScaledEntitiesPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { primitives: Primitive[]; base: Point2D; factor: number },
+): void {
+  const { primitives, base, factor } = shape;
+  // Skip rendering when factor === 0 (degenerate per I-MOD-7); domain
+  // helper would throw. Defensive — tools reject this at submit time.
+  if (factor === 0) return;
+  for (const p of primitives) {
+    drawPrimitiveOutline(ctx, scalePrimitive(p, base, factor));
+  }
+}
+
+function drawMirroredEntitiesPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { primitives: Primitive[]; line: { p1: Point2D; p2: Point2D } },
+): void {
+  const { primitives, line } = shape;
+  for (const p of primitives) {
+    drawPrimitiveOutline(ctx, mirrorPrimitive(p, line));
+  }
+}
+
+function drawOffsetPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { primitive: Primitive; distance: number; side: 1 | -1 },
+): void {
+  const { primitive, distance, side } = shape;
+  if (distance <= 0) return; // defensive — tools reject at submit time
+  // The domain helper throws for unsupported / degenerate cases (e.g.,
+  // bulged polylines, point primitives, sub-zero radii). The preview
+  // skips rendering rather than crashing.
+  try {
+    drawPrimitiveOutline(ctx, offsetPrimitive(primitive, distance, side));
+  } catch {
+    // No preview available for this configuration; tool's commit-time
+    // path will surface the same error to the user.
+  }
+}
+
+/**
+ * Stroke a primitive's outline at its current geometry (no offset, no
+ * transform applied here — caller has already produced the transformed
+ * Primitive via the domain helper). Mirrors `drawShiftedPrimitiveOutline`
+ * but with `off = (0, 0)` baked in for clarity at the call site.
+ */
+function drawPrimitiveOutline(ctx: CanvasRenderingContext2D, p: Primitive): void {
+  drawShiftedPrimitiveOutline(ctx, p, { x: 0, y: 0 });
 }
 
 function drawShiftedPrimitiveOutline(
@@ -145,8 +228,21 @@ function drawShiftedPrimitiveOutline(
       return;
     }
     case 'rectangle': {
+      // Walk the 4 corners through the local frame (mirrors paintRectangle.ts)
+      // so a non-zero `localAxisAngle` actually rotates the preview ghost.
+      // Pre-fix this used `ctx.rect(...)` which is axis-aligned in canvas
+      // space and silently ignored localAxisAngle — making rotated/mirrored
+      // ghosts render at angle 0.
+      const cos = Math.cos(p.localAxisAngle);
+      const sin = Math.sin(p.localAxisAngle);
+      const ox = p.origin.x + off.x;
+      const oy = p.origin.y + off.y;
       ctx.beginPath();
-      ctx.rect(p.origin.x + off.x, p.origin.y + off.y, p.width, p.height);
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ox + p.width * cos, oy + p.width * sin);
+      ctx.lineTo(ox + p.width * cos - p.height * sin, oy + p.width * sin + p.height * cos);
+      ctx.lineTo(ox - p.height * sin, oy + p.height * cos);
+      ctx.closePath();
       ctx.stroke();
       return;
     }

@@ -13,10 +13,14 @@ import { drawXlineTool } from './draw/draw-xline';
 import { eraseTool } from './erase';
 import { escapeTool } from './escape';
 import { layerManagerTool } from './layer-manager';
+import { mirrorTool } from './mirror';
 import { moveTool } from './move';
+import { offsetTool } from './offset';
 import { panTool } from './pan';
 import { propertiesTool } from './properties';
 import { redoTool } from './redo';
+import { rotateTool } from './rotate';
+import { scaleTool } from './scale';
 import { selectTool } from './select';
 import type { ToolGenerator } from './types';
 import { undoTool } from './undo';
@@ -27,6 +31,10 @@ const ESSENTIAL_REGISTRY: Partial<Record<ToolId, () => ToolGenerator>> = {
   erase: eraseTool,
   move: moveTool,
   copy: copyTool,
+  rotate: rotateTool,
+  mirror: mirrorTool,
+  scale: scaleTool,
+  offset: offsetTool,
   undo: undoTool,
   redo: redoTool,
   zoom: zoomTool,
