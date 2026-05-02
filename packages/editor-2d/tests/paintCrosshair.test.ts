@@ -58,15 +58,35 @@ describe('paintCrosshair — mode dispatch (full / pickbox / pick-point)', () =>
     expect(calls.find((c) => c.method === 'stroke')).toBeDefined();
   });
 
-  it('renders pickbox-only (no arms) for mode=pickbox', () => {
+  it('renders 4 short arms + pickbox for mode=pickbox', () => {
     const { ctx, calls } = makeCtxRecorder();
     paintCrosshair(ctx, { x: 0, y: 0 }, 'pickbox', viewport, dark);
-    // Pickbox-only: sizePct=0 → no arms; only the strokeRect for the pickbox.
+    // Pickbox mode = AC's minimum CURSORSIZE: short arms (sizePct=5) AND
+    // the strokeRect pickbox. Regression test for the SSOT-migration bug
+    // where pickbox mode was wired to sizePct=0 and lost its arms.
     const moveTos = calls.filter((c) => c.method === 'moveTo');
     const lineTos = calls.filter((c) => c.method === 'lineTo');
-    expect(moveTos).toHaveLength(0);
-    expect(lineTos).toHaveLength(0);
+    expect(moveTos).toHaveLength(4);
+    expect(lineTos).toHaveLength(4);
     expect(calls.find((c) => c.method === 'strokeRect')).toBeDefined();
+  });
+
+  it('pickbox arm length matches pick-point arm length (parity invariant)', () => {
+    const { ctx: pbCtx, calls: pbCalls } = makeCtxRecorder();
+    paintCrosshair(pbCtx, { x: 0, y: 0 }, 'pickbox', viewport, dark);
+    const { ctx: ppCtx, calls: ppCalls } = makeCtxRecorder();
+    paintCrosshair(ppCtx, { x: 0, y: 0 }, 'pick-point', viewport, dark);
+
+    // Both modes share sizePct=5; only the pickbox-gap differs. The
+    // outer endpoints (max-distance moveTo target on each axis) MUST
+    // sit at the same canvas-relative extent for both modes.
+    const cxCanvas = (viewport.canvasWidthCss / 2) * viewport.dpr;
+    const outerExtent = (calls: CtxCall[]): number => {
+      const moveTos = calls.filter((c) => c.method === 'moveTo');
+      const xs = moveTos.map((c) => c.args[0] as number);
+      return Math.abs(cxCanvas - Math.min(...xs));
+    };
+    expect(outerExtent(pbCalls)).toBe(outerExtent(ppCalls));
   });
 
   it('renders 4 short cross arms with NO pickbox for mode=pick-point', () => {

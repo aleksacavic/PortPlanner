@@ -6,7 +6,7 @@
 // caller.
 //
 //   full      — long arms spanning the canvas + pickbox      (F7 default)
-//   pickbox   — pickbox only, no arms                        (F7 minimum)
+//   pickbox   — short cross + pickbox                        (F7 minimum)
 //   pick-point — short cross + NO pickbox                    (point-pick prompts)
 //
 // AutoCAD-style cursor: the pickbox doubles as the click target when no
@@ -31,7 +31,7 @@ export type CrosshairMode = 'full' | 'pickbox' | 'pick-point';
 
 interface CrosshairVisual {
   /** % of canvas height for cross arm length. Special: 100 → full canvas
-   *  (arms span the whole viewport). 0 → no arms (pickbox-only mode). */
+   *  (arms span the whole viewport). 0 → no arms. */
   sizePct: number;
   /** Render the 10×10 CSS-px pickbox at the cursor center. */
   showPickbox: boolean;
@@ -39,9 +39,13 @@ interface CrosshairVisual {
 
 const VISUAL_BY_MODE: Record<CrosshairMode, CrosshairVisual> = {
   full: { sizePct: 100, showPickbox: true },
-  pickbox: { sizePct: 0, showPickbox: true },
-  // Pick-point: small cross indicates "pick a metric point now"; no
-  // pickbox so the cursor doesn't look like a hit-test selector.
+  // Pickbox mode = AC's "minimum CURSORSIZE" — short arms (~15 device px
+  // at the F7 5% setting) flanking a pickbox. The pre-SSOT painter took
+  // sizePct=5 directly and rendered both arms + pickbox; the SSOT mapping
+  // preserves that visual.
+  pickbox: { sizePct: 5, showPickbox: true },
+  // Pick-point: same short arms but NO pickbox so the cursor doesn't look
+  // like a hit-test selector during a point-pick prompt.
   'pick-point': { sizePct: 5, showPickbox: false },
 };
 
