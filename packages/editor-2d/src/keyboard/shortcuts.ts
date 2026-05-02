@@ -14,6 +14,8 @@ export type ToolId =
   | 'mirror'
   | 'scale'
   | 'offset'
+  | 'fillet'
+  | 'chamfer'
   | 'undo'
   | 'redo'
   | 'zoom'
@@ -44,6 +46,7 @@ export const SINGLE_LETTER_SHORTCUTS: Record<string, ToolId> = {
   C: 'copy',
   R: 'rotate',
   O: 'offset',
+  F: 'fillet',
   U: 'undo',
   Z: 'zoom',
   P: 'pan',
@@ -56,6 +59,7 @@ export const MULTI_LETTER_SHORTCUTS: Record<string, ToolId> = {
   LA: 'layer-manager',
   MI: 'mirror',
   SC: 'scale',
+  CHA: 'chamfer',
   PT: 'draw-point',
   PL: 'draw-polyline',
   REC: 'draw-rectangle',
@@ -94,6 +98,8 @@ export const TOOL_DISPLAY_NAMES: Record<ToolId, string | null> = {
   mirror: 'MIRROR',
   scale: 'SCALE',
   offset: 'OFFSET',
+  fillet: 'FILLET',
+  chamfer: 'CHAMFER',
   undo: 'UNDO',
   redo: 'REDO',
   zoom: 'ZOOM',

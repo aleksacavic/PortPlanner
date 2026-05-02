@@ -12,6 +12,7 @@ import { drawRectangleTool } from './draw/draw-rectangle';
 import { drawXlineTool } from './draw/draw-xline';
 import { eraseTool } from './erase';
 import { escapeTool } from './escape';
+import { filletTool } from './fillet';
 import { layerManagerTool } from './layer-manager';
 import { mirrorTool } from './mirror';
 import { moveTool } from './move';
@@ -35,6 +36,7 @@ const ESSENTIAL_REGISTRY: Partial<Record<ToolId, () => ToolGenerator>> = {
   mirror: mirrorTool,
   scale: scaleTool,
   offset: offsetTool,
+  fillet: filletTool,
   undo: undoTool,
   redo: redoTool,
   zoom: zoomTool,

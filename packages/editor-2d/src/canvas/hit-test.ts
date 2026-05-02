@@ -100,6 +100,32 @@ export function hitTest(
   return bestId;
 }
 
+/** Find the closest primitive to a metric-space point within `tolerance`,
+ *  or null. Used by interactive tools (Fillet, Chamfer) that receive
+ *  'point' inputs from canvas clicks and need to identify which entity
+ *  the user clicked AND retain the click coordinate as a pickHint for
+ *  downstream domain helpers. */
+export function findEntityAtMetricPoint(
+  cursor: Point2D,
+  primitives: Record<PrimitiveId, Primitive>,
+  tolerance: number,
+): { id: PrimitiveId; primitive: Primitive } | null {
+  let bestId: PrimitiveId | null = null;
+  let bestPrim: Primitive | null = null;
+  let bestDist = Number.POSITIVE_INFINITY;
+  for (const id in primitives) {
+    const p = primitives[id as PrimitiveId];
+    if (!p) continue;
+    const d = distanceTo(cursor, p);
+    if (d <= tolerance && d < bestDist) {
+      bestId = id as PrimitiveId;
+      bestPrim = p;
+      bestDist = d;
+    }
+  }
+  return bestId && bestPrim ? { id: bestId, primitive: bestPrim } : null;
+}
+
 function distanceTo(cursor: Point2D, p: Primitive): number {
   switch (p.kind) {
     case 'point':

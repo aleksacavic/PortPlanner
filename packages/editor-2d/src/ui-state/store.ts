@@ -310,6 +310,12 @@ export interface EditorUiState {
   focusStack: FocusHolder[];
   overlay: OverlayState;
   modifiers: ModifiersState;
+  /** M1.3b fillet-chamfer Phase 2 — session-persistent fillet radius
+   *  (set via the `[Radius]` sub-option, persists across F invocations). */
+  fillet: { radius: number };
+  /** M1.3b fillet-chamfer Phase 3 — session-persistent chamfer distances
+   *  (set via the `[Distance]` sub-option, persist across CHA invocations). */
+  chamfer: { d1: number; d2: number };
 }
 
 const HISTORY_CAP = 200;
@@ -367,6 +373,8 @@ export const createInitialEditorUiState = (): EditorUiState => ({
     dimensionGuides: null,
   },
   modifiers: { shift: false },
+  fillet: { radius: 1.0 },
+  chamfer: { d1: 0.5, d2: 0.5 },
 });
 
 export const editorUiStore = createStore<EditorUiState>()(
@@ -410,6 +418,19 @@ export const editorUiActions = {
   toggleGsnap(): void {
     editorUiStore.setState((s) => {
       s.toggles.gsnap = !s.toggles.gsnap;
+    });
+  },
+  setFilletRadius(r: number): void {
+    if (r <= 0) return;
+    editorUiStore.setState((s) => {
+      s.fillet.radius = r;
+    });
+  },
+  setChamferDistances(d1: number, d2: number): void {
+    if (d1 <= 0 || d2 <= 0) return;
+    editorUiStore.setState((s) => {
+      s.chamfer.d1 = d1;
+      s.chamfer.d2 = d2;
     });
   },
   toggleDynamicInput(): void {
