@@ -1,7 +1,7 @@
 # Operator Shortcut Registry
 
-**Version:** 2.3.0
-**Date:** 2026-05-01
+**Version:** 2.4.0
+**Date:** 2026-05-03
 **Authority:** ADR-023 (`docs/adr/023-tool-state-machine-and-command-bar.md`); extended by ADR-025 (`docs/adr/025-dynamic-input-manifest-v2.md`, supersedes ADR-024) for the multi-field Dynamic Input behaviour described under §M1.3 below.
 
 This registry is the going-forward source of truth for keyboard
@@ -75,8 +75,8 @@ is the snapshot at supersession; this file is the active registry.
 | `MI` | Mirror | M1.3b simple-transforms Phase 3. Flow: select → mirror line p1 → mirror line p2 with live ghost reflection. After p2 commits, fires `"Erase source objects? [Yes/No] <No>"` sub-prompt — default `No` keeps source; explicit Yes deletes via `deletePrimitive` per source. |
 | `SC` | Scale | M1.3b simple-transforms Phase 4. Flow: select → base → "Specify scale factor or [Reference]" with single-prompt live ghost scaled by `factor = hypot(cursor - base)` (AC convention). `R` sub-option opens 2-click reference-distance sub-flow. DI typed-number (combineAs `'number'`) supported. Per I-MOD-7: `factor === 0` rejected; `factor < 0` allowed (AC flip semantics). |
 | `O` | Offset | M1.3b simple-transforms Phase 5. Flow: select entity (single-entity in V1) → "Specify offset distance" (DI typed-number) → "Specify point on side to offset" with live ghost preview. Side determined by sign of perpendicular projection of (cursor - source) onto source-normal. |
-| `F` | Fillet | |
-| `CHA` | Chamfer | |
+| `F` | Fillet | M1.3b fillet-chamfer Phase 2. V1: two-line + polyline-internal + line+polyline-endpoint. R sub-option sets fillet radius (persists across runs in `editorUiStore.fillet.radius`). Parallel lines / interior polyline segment / closed-polyline endpoints / two-different-polylines / non-line-or-polyline pairs rejected with command-bar message. Domain helpers in `packages/domain/src/transforms/fillet.ts`; tool in `packages/editor-2d/src/tools/fillet.ts`. Closes Codex Round-2 quality gap #2 from prior simple-transforms cluster (polyline preview painter bulge support). |
+| `CHA` | Chamfer | M1.3b fillet-chamfer Phase 3. V1: two-distance method only (`[mEthod]` distance-vs-angle alternation deferred). D sub-option sets both distances sequentially (persist in `editorUiStore.chamfer.{d1,d2}`). Same reject paths as Fillet, mirrored for chamfer. Domain helpers in `packages/domain/src/transforms/chamfer.ts`; tool in `packages/editor-2d/src/tools/chamfer.ts`. |
 | `TR` | Trim | |
 | `EX` | Extend | |
 | `J` | Join | PEDIT-style; required by ADR-016 for multi-primitive merge |
@@ -141,6 +141,7 @@ until the user commits with Enter or aborts with Esc).
 
 | Version | Date | Change |
 |---|---|---|
+| 2.4.0 | 2026-05-03 | Add `F` → Fillet, `CHA` → Chamfer (2 modify operators). M1.3b fillet-chamfer cluster — see plan `docs/plans/feature/m1-3b-fillet-chamfer.md`. Closes M1.3b cluster Codex Round-2 quality gap #2 (polyline preview painter bulge support) plus ADR-016 §170 hit-test + osnap MID bulge gaps. **Minor bump** per registry governance ("Adding a new shortcut: minor version bump") — applied once for the 2-shortcut bundle. |
 | 2.3.0 | 2026-05-01 | Add `R` → Rotate, `MI` → Mirror, `SC` → Scale, `O` → Offset (4 simple-transform modify operators). M1.3b simple-transforms cluster — see plan `docs/plans/feature/m1-3b-simple-transforms.md`. **Minor bump** per registry governance ("Adding a new shortcut: minor version bump") — applied once for the 4-shortcut bundle since they ship in a single PR cluster. |
 | 2.2.0 | 2026-05-01 | Add `ArrowUp` → DI recall-pill show (canvas focus when `commandBar.dynamicInput.manifest !== null` AND `commandBar.dynamicInputRecall[promptKey]` non-empty) + `ArrowDown` → DI recall cancel. M1.3 DI pipeline overhaul Phase 4 (B8) — see plan `docs/plans/feature/m1-3-di-pipeline-overhaul.md`. Replaces the Round 7 Phase 2 dim-placeholder pre-fill mechanic via GR-1 clean-break (placeholder slice field, render branch, EditorRoot fallback path, and smoke-e2e scenario all retired). **Minor bump** per registry governance ("Adding a new shortcut: minor version bump"). |
 | 2.1.0 | 2026-04-29 | Add `Tab` / `Shift+Tab` → DI cycle next/previous field (canvas / bar focus when `commandBar.dynamicInput.manifest !== null` AND `manifest.fields.length > 1`; pass-through otherwise to preserve keyboard accessibility for chrome regions). M1.3 Round 6 multi-field Dynamic Input — see ADR-024 for the manifest contract. **Minor bump** per registry governance ("Adding a new shortcut: minor version bump"). |
