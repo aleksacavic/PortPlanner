@@ -16,7 +16,7 @@ import type { PrimitiveId, Project } from '@portplanner/domain';
 
 import type { Grip, OverlayState } from '../ui-state/store';
 import { paintGrid, paintPrimitive } from './painters';
-import { paintCrosshair } from './painters/paintCrosshair';
+import { paintCrosshair, resolveCrosshairMode } from './painters/paintCrosshair';
 import { paintDimensionGuides } from './painters/paintDimensionGuides';
 import { paintHoverHighlight } from './painters/paintHoverHighlight';
 import { paintPreview } from './painters/paintPreview';
@@ -87,8 +87,16 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     // Phase 8 — cursor crosshair (FIRST in overlay z-order so it sits
     // behind everything else but above entities). Only paints when
     // the cursor is over the canvas (overlay.cursor non-null).
-    if (overlay.cursor && viewport.crosshairSizePct > 0) {
-      paintCrosshair(ctx, overlay.cursor.metric, viewport.crosshairSizePct, viewport, dark);
+    // Skip the crosshair entirely when the user has disabled it
+    // (crosshairSizePct === 0) AND no pick-point prompt is overriding.
+    // Pick-point always renders so the user gets the affordance even if
+    // they previously F7'd the cursor off.
+    if (overlay.cursor && (overlay.pointPickActive || viewport.crosshairSizePct > 0)) {
+      const mode = resolveCrosshairMode({
+        pointPickActive: overlay.pointPickActive,
+        userSizePct: viewport.crosshairSizePct,
+      });
+      paintCrosshair(ctx, overlay.cursor.metric, mode, viewport, dark);
     }
     // Phase 5 — hover highlight (lower z, renders below selection).
     if (overlay.hoverEntity) {

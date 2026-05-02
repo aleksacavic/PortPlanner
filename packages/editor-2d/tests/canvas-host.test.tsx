@@ -30,6 +30,7 @@ const viewport: Viewport = {
 function makeOverlay(): OverlayState {
   return {
     cursor: null,
+    pointPickActive: false,
     snapTarget: null,
     guides: [],
     selectionHandles: [],

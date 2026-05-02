@@ -193,6 +193,14 @@ export interface OverlayState {
    */
   cursor: { metric: Point2D; screen: ScreenPoint } | null;
   /**
+   * True when the active prompt accepts a 'point' input — drives the
+   * `pick-point` crosshair mode (small cross, no pickbox). Mirrored
+   * from `commandBar.acceptedInputKinds.includes('point')` whenever
+   * `setPrompt` is called, so paint() can derive the cursor mode from
+   * the overlay snapshot alone (no additional store reads per frame).
+   */
+  pointPickActive: boolean;
+  /**
    * Snap target highlighted under the cursor (with kind + point), or
    * `null` when no tool awaits a 'point' input or all snap toggles
    * are off (I-DTP-7). Written by EditorRoot's snap-on-cursor effect
@@ -346,6 +354,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
   focusStack: [],
   overlay: {
     cursor: null,
+    pointPickActive: false,
     snapTarget: null,
     guides: [],
     selectionHandles: [],
@@ -422,6 +431,8 @@ export const editorUiActions = {
       s.commandBar.inputBuffer = '';
       s.commandBar.acceptedInputKinds = acceptedInputKinds;
       s.commandBar.directDistanceFrom = directDistanceFrom;
+      // SSOT mirror: drives the `pick-point` crosshair mode resolver.
+      s.overlay.pointPickActive = acceptedInputKinds.includes('point');
     });
   },
   appendHistory(entry: CommandBarHistoryEntry): void {

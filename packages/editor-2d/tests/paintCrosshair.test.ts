@@ -9,7 +9,7 @@
 import { dark } from '@portplanner/design-system';
 import { describe, expect, it } from 'vitest';
 
-import { paintCrosshair } from '../src/canvas/painters/paintCrosshair';
+import { paintCrosshair, resolveCrosshairMode } from '../src/canvas/painters/paintCrosshair';
 import type { Viewport } from '../src/canvas/view-transform';
 
 const viewport: Viewport = {
@@ -47,84 +47,79 @@ function makeCtxRecorder(): { ctx: CanvasRenderingContext2D; calls: CtxCall[] } 
   return { ctx: new Proxy({}, handler) as unknown as CanvasRenderingContext2D, calls };
 }
 
-describe('paintCrosshair — full vs pickbox preset (I-DTP-19 + R2b pickbox)', () => {
-  it('renders 4 line segments (2 horizontal arms + 2 vertical arms) at sizePct=100', () => {
+describe('paintCrosshair — mode dispatch (full / pickbox / pick-point)', () => {
+  it('renders 4 line segments (2 horizontal arms + 2 vertical arms) for mode=full', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'full', viewport, dark);
     const moveTos = calls.filter((c) => c.method === 'moveTo');
     const lineTos = calls.filter((c) => c.method === 'lineTo');
-    // R2b: was 2 moveTo + 2 lineTo (continuous lines); now 4+4 (arms with
-    // pickbox gap).
     expect(moveTos).toHaveLength(4);
     expect(lineTos).toHaveLength(4);
     expect(calls.find((c) => c.method === 'stroke')).toBeDefined();
   });
 
-  it('renders 4 line segments at sizePct=5 (pickbox preset)', () => {
+  it('renders pickbox-only (no arms) for mode=pickbox', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 5, viewport, dark);
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'pickbox', viewport, dark);
+    // Pickbox-only: sizePct=0 → no arms; only the strokeRect for the pickbox.
     const moveTos = calls.filter((c) => c.method === 'moveTo');
     const lineTos = calls.filter((c) => c.method === 'lineTo');
-    // sizePct=5 → crossLen=30 device px → halfH=halfV=15 → arms still
-    // visible (halfH > pbHalf), so all 4 segments draw.
-    expect(moveTos).toHaveLength(4);
-    expect(lineTos).toHaveLength(4);
+    expect(moveTos).toHaveLength(0);
+    expect(lineTos).toHaveLength(0);
+    expect(calls.find((c) => c.method === 'strokeRect')).toBeDefined();
   });
 
-  it('full-canvas extents are larger than pickbox extents', () => {
-    const { ctx: fullCtx, calls: fullCalls } = makeCtxRecorder();
-    paintCrosshair(fullCtx, { x: 0, y: 0 }, 100, viewport, dark);
-    const { ctx: pickCtx, calls: pickCalls } = makeCtxRecorder();
-    paintCrosshair(pickCtx, { x: 0, y: 0 }, 5, viewport, dark);
+  it('renders 4 short cross arms with NO pickbox for mode=pick-point', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'pick-point', viewport, dark);
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    // sizePct=5 → halfH=halfV=15 device px → arms visible.
+    expect(moveTos).toHaveLength(4);
+    expect(lineTos).toHaveLength(4);
+    // No pickbox — that's the whole point of pick-point mode.
+    expect(calls.find((c) => c.method === 'strokeRect')).toBeUndefined();
+  });
 
-    // R2b: each axis is now TWO segments (left arm + right arm). Compare
-    // the outer extent of the leftmost arm: from `cx-halfH` to `cx-pbHalf`.
-    // The further-from-cx endpoint is the moveTo at `cx-halfH`.
+  it('full mode arms span the canvas; pick-point arms are short', () => {
+    const { ctx: fullCtx, calls: fullCalls } = makeCtxRecorder();
+    paintCrosshair(fullCtx, { x: 0, y: 0 }, 'full', viewport, dark);
+    const { ctx: pickCtx, calls: pickCalls } = makeCtxRecorder();
+    paintCrosshair(pickCtx, { x: 0, y: 0 }, 'pick-point', viewport, dark);
+
     const cxCanvas = (viewport.canvasWidthCss / 2) * viewport.dpr;
     const leftmostExtent = (calls: CtxCall[]): number => {
       const moveTos = calls.filter((c) => c.method === 'moveTo');
-      // Find the smallest X-value moveTo (leftmost arm origin).
       const xs = moveTos.map((c) => c.args[0] as number);
-      const minX = Math.min(...xs);
-      return Math.abs(cxCanvas - minX);
+      return Math.abs(cxCanvas - Math.min(...xs));
     };
     expect(leftmostExtent(fullCalls)).toBeGreaterThan(leftmostExtent(pickCalls));
   });
 
-  it('sizePct=0 is a no-op (no path commands)', () => {
-    const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 0, viewport, dark);
-    expect(calls).toEqual([]);
-  });
-
   it('reads color from canvas.transient.crosshair', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'full', viewport, dark);
     const strokeSet = calls.find((c) => c.method === 'set:strokeStyle');
     expect(strokeSet?.args[0]).toBe(dark.canvas.transient.crosshair);
   });
 
   it('resets transform to identity (screen-space)', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'full', viewport, dark);
     const setT = calls.find((c) => c.method === 'setTransform');
     expect(setT?.args).toEqual([1, 0, 0, 1, 0, 0]);
   });
 
   it('"solid" sentinel produces empty dash array (no setLineDash content)', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'full', viewport, dark);
     const setLineDash = calls.find((c) => c.method === 'setLineDash');
     expect(setLineDash?.args[0]).toEqual([]);
   });
 
-  // M1.3d-Remediation R2b — new pickbox + segment-clear assertions.
-
-  it('R2b: draws a pickbox square at the cursor (strokeRect with PICKBOX_HALF_CSS extent)', () => {
+  it('full mode: pickbox at cursor (strokeRect with PICKBOX_HALF_CSS extent)', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 5, y: 0 }, 100, viewport, dark);
-    // Cursor metric (5, 0) → screen (450, 300). dpr=1 → device (450, 300).
-    // Pickbox top-left = (cx - pbHalf, cy - pbHalf) = (445, 295). Side = 10.
+    paintCrosshair(ctx, { x: 5, y: 0 }, 'full', viewport, dark);
     const strokeRect = calls.find((c) => c.method === 'strokeRect');
     expect(strokeRect).toBeDefined();
     const [rx, ry, w, h] = strokeRect!.args as [number, number, number, number];
@@ -134,25 +129,50 @@ describe('paintCrosshair — full vs pickbox preset (I-DTP-19 + R2b pickbox)', (
     expect(h).toBe(PICKBOX_HALF_CSS * 2);
   });
 
-  it('R2b: line segments do not cross the pickbox region (cx ± pbHalf gap)', () => {
+  it('full mode: arms skip the pickbox region (cx ± pbHalf gap)', () => {
     const { ctx, calls } = makeCtxRecorder();
-    paintCrosshair(ctx, { x: 0, y: 0 }, 100, viewport, dark);
-    // Cursor at metric (0, 0) → screen (400, 300). dpr=1.
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'full', viewport, dark);
     const cx = 400;
     const cy = 300;
     const pbHalf = PICKBOX_HALF_CSS;
-    // Every moveTo / lineTo endpoint MUST sit at cx ± pbHalf or beyond on
-    // the X axis (for horizontal arms) OR at cy ± pbHalf or beyond on the
-    // Y axis (for vertical arms). In other words: no endpoint may be
-    // strictly inside the pickbox square (exclusive boundary).
     const pathCalls = calls.filter((c) => c.method === 'moveTo' || c.method === 'lineTo');
     for (const c of pathCalls) {
       const [x, y] = c.args as [number, number];
       const insidePickbox = Math.abs(x - cx) < pbHalf && Math.abs(y - cy) < pbHalf;
-      expect(
-        insidePickbox,
-        `${c.method}(${x}, ${y}) sits inside the pickbox region [${cx - pbHalf}, ${cx + pbHalf}] × [${cy - pbHalf}, ${cy + pbHalf}]`,
-      ).toBe(false);
+      expect(insidePickbox, `${c.method}(${x}, ${y}) sits inside the pickbox region`).toBe(false);
     }
+  });
+
+  it('pick-point mode: arms run continuously through the cursor (no pickbox gap)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'pick-point', viewport, dark);
+    const cx = 400;
+    const cy = 300;
+    // Without pickbox, the inner endpoints sit AT the cursor itself
+    // (gap=0). Each axis still has 2 segments because the painter writes
+    // moveTo(outer) → lineTo(0) twice; assert at least one endpoint
+    // touches the cursor center.
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    const allEndpoints = [...moveTos, ...lineTos].map((c) => c.args as [number, number]);
+    const atCenter = allEndpoints.some(([x, y]) => x === cx && y === cy);
+    expect(atCenter).toBe(true);
+  });
+});
+
+describe('resolveCrosshairMode — SSOT precedence rule', () => {
+  it('point-pick wins over user toggle (full)', () => {
+    expect(resolveCrosshairMode({ pointPickActive: true, userSizePct: 100 })).toBe('pick-point');
+  });
+  it('point-pick wins over user toggle (pickbox)', () => {
+    expect(resolveCrosshairMode({ pointPickActive: true, userSizePct: 5 })).toBe('pick-point');
+  });
+  it('no point-pick + sizePct >= 50 → full', () => {
+    expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 100 })).toBe('full');
+    expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 50 })).toBe('full');
+  });
+  it('no point-pick + sizePct < 50 → pickbox', () => {
+    expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 5 })).toBe('pickbox');
+    expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 0 })).toBe('pickbox');
   });
 });

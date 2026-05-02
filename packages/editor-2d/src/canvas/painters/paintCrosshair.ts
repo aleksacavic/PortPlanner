@@ -1,25 +1,19 @@
-// paintCrosshair — cursor crosshair painter (M1.3d Phase 8 +
-// M1.3d-Remediation R2b).
+// paintCrosshair — cursor crosshair painter.
 //
-// Two visual modes via continuous CURSORSIZE % (viewport.crosshairSizePct):
-//   sizePct >= 100 → full-canvas crosshair (lines spanning the entire
-//                    canvas — AutoCAD CURSORSIZE default)
-//   sizePct <  100 → centered cross of length sizePct/100 * canvasHeight
-//   sizePct === 0  → no-op (caller may also gate on cursor presence)
+// SSOT for crosshair modes. Three discrete modes; the resolver maps the
+// (point-pick prompt, user-toggled F7 size) inputs to a single mode and
+// the painter dispatches on it. No more raw `sizePct` plumbing in the
+// caller.
 //
-// AutoCAD-style cursor (R2b — Codex Round-1 + Round-2 + Round-3 cleared):
-// the cross lines are TRIMMED around a small pickbox square at the cursor
-// (PICKBOX_HALF_CSS = 5 → 10×10 CSS-px square). The pickbox doubles as
-// the click target when no tool is active. Each axis becomes TWO
-// segments (a left / right arm or a top / bottom arm) skipping the
-// pickbox region; the pickbox itself is a strokeRect.
+//   full      — long arms spanning the canvas + pickbox      (F7 default)
+//   pickbox   — pickbox only, no arms                        (F7 minimum)
+//   pick-point — short cross + NO pickbox                    (point-pick prompts)
 //
-// Defensive `halfH > pbHalf` / `halfV > pbHalf` guards: if the user
-// (or a future settings slider) lands sizePct so small that the arm
-// length is shorter than the pickbox half-extent, the arm is omitted
-// rather than emitting a backwards-drawn segment. F7 only reaches
-// 100 or 5 today (halfH at sizePct=5 = 15 device px > pbHalf=5),
-// so the guards are pure forward-compat.
+// AutoCAD-style cursor: the pickbox doubles as the click target when no
+// tool is active and tags the cursor center with a 10×10 CSS-px square.
+// Each axis becomes TWO segments (left/right or top/bottom arms) skipping
+// the pickbox region; the pickbox itself is a strokeRect. Defensive
+// `halfH > pbHalf` / `halfV > pbHalf` guards omit zero-or-negative arms.
 //
 // Color from canvas.transient.crosshair. Dash pattern from
 // canvas.transient.crosshair_dash ('solid' sentinel → no dashing).
@@ -31,14 +25,46 @@ import type { Point2D } from '@portplanner/domain';
 import { type Viewport, metricToScreen } from '../view-transform';
 import { parseDashPattern, parseNumericToken } from './_tokens';
 
+/** Discriminated cursor styles. SSOT — every consumer routes through
+ *  `resolveCrosshairMode` to pick one of these. */
+export type CrosshairMode = 'full' | 'pickbox' | 'pick-point';
+
+interface CrosshairVisual {
+  /** % of canvas height for cross arm length. Special: 100 → full canvas
+   *  (arms span the whole viewport). 0 → no arms (pickbox-only mode). */
+  sizePct: number;
+  /** Render the 10×10 CSS-px pickbox at the cursor center. */
+  showPickbox: boolean;
+}
+
+const VISUAL_BY_MODE: Record<CrosshairMode, CrosshairVisual> = {
+  full: { sizePct: 100, showPickbox: true },
+  pickbox: { sizePct: 0, showPickbox: true },
+  // Pick-point: small cross indicates "pick a metric point now"; no
+  // pickbox so the cursor doesn't look like a hit-test selector.
+  'pick-point': { sizePct: 5, showPickbox: false },
+};
+
+/** Resolve the cursor mode from the two orthogonal inputs:
+ *    - pointPickActive: the active prompt expects a metric point
+ *    - userSizePct: the user's F7 toggle (50+ → full, else → pickbox)
+ *  Pick-point wins over the user toggle. SSOT for the precedence rule. */
+export function resolveCrosshairMode(args: {
+  pointPickActive: boolean;
+  userSizePct: number;
+}): CrosshairMode {
+  if (args.pointPickActive) return 'pick-point';
+  return args.userSizePct >= 50 ? 'full' : 'pickbox';
+}
+
 export function paintCrosshair(
   ctx: CanvasRenderingContext2D,
   cursor: Point2D,
-  sizePct: number,
+  mode: CrosshairMode,
   viewport: Viewport,
   tokens: SemanticTokens,
 ): void {
-  if (sizePct <= 0) return;
+  const { sizePct, showPickbox } = VISUAL_BY_MODE[mode];
   const transient = tokens.canvas.transient;
   const dash = parseDashPattern(transient.crosshair_dash);
   const dpr = viewport.dpr;
@@ -56,6 +82,9 @@ export function paintCrosshair(
   if (sizePct >= 100) {
     halfH = canvasW;
     halfV = canvasH;
+  } else if (sizePct <= 0) {
+    halfH = 0;
+    halfV = 0;
   } else {
     const crossLen = (sizePct / 100) * canvasH;
     halfH = crossLen / 2;
@@ -69,26 +98,29 @@ export function paintCrosshair(
   ctx.setLineDash(dash.map((n) => n * dpr));
 
   ctx.beginPath();
-  // Horizontal arms — skip the pickbox region [cx-pbHalf, cx+pbHalf].
-  if (halfH > pbHalf) {
+  // Pick-point mode hides the pickbox, so cross arms run all the way
+  // through the cursor (no gap). Other modes skip the pickbox region.
+  const armGap = showPickbox ? pbHalf : 0;
+  if (halfH > armGap) {
     ctx.moveTo(cx - halfH, cy);
-    ctx.lineTo(cx - pbHalf, cy);
-    ctx.moveTo(cx + pbHalf, cy);
+    ctx.lineTo(cx - armGap, cy);
+    ctx.moveTo(cx + armGap, cy);
     ctx.lineTo(cx + halfH, cy);
   }
-  // Vertical arms — skip the pickbox region [cy-pbHalf, cy+pbHalf].
-  if (halfV > pbHalf) {
+  if (halfV > armGap) {
     ctx.moveTo(cx, cy - halfV);
-    ctx.lineTo(cx, cy - pbHalf);
-    ctx.moveTo(cx, cy + pbHalf);
+    ctx.lineTo(cx, cy - armGap);
+    ctx.moveTo(cx, cy + armGap);
     ctx.lineTo(cx, cy + halfV);
   }
   ctx.stroke();
 
-  // Pickbox square at the cursor — outlined, no fill (snap glyph + other
-  // overlay-pass painters paint AFTER paintCrosshair so they win z-order
-  // when they overlap the pickbox region).
-  ctx.strokeRect(cx - pbHalf, cy - pbHalf, pbHalf * 2, pbHalf * 2);
+  if (showPickbox) {
+    // Pickbox square at the cursor — outlined, no fill (snap glyph and
+    // other overlay-pass painters paint AFTER paintCrosshair so they
+    // win z-order when they overlap the pickbox region).
+    ctx.strokeRect(cx - pbHalf, cy - pbHalf, pbHalf * 2, pbHalf * 2);
+  }
 
   ctx.restore();
 }
