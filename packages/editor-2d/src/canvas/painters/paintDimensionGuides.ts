@@ -235,12 +235,21 @@ function paintAngleArc(
   const counterclockwise = sweepAngleRad < 0;
   const polarEndX = pivot.x + Math.cos(baseAngleRad) * radiusMetric;
   const polarEndY = pivot.y + Math.sin(baseAngleRad) * radiusMetric;
+  // Witness line — baseline extending from pivot to the cursor direction.
+  // The polar baseline above shows the "from" of the arc (baseAngleRad);
+  // this draws the "to" so the user sees both rays terminating the arc.
+  const cursorEndX = pivot.x + Math.cos(endAngleRad) * radiusMetric;
+  const cursorEndY = pivot.y + Math.sin(endAngleRad) * radiusMetric;
 
   ctx.save();
   ctx.setLineDash(dashedPatternCss.map((n) => n / metricToPx));
   ctx.beginPath();
   ctx.moveTo(pivot.x, pivot.y);
   ctx.lineTo(polarEndX, polarEndY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(pivot.x, pivot.y);
+  ctx.lineTo(cursorEndX, cursorEndY);
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(pivot.x, pivot.y, radiusMetric, baseAngleRad, endAngleRad, counterclockwise);
