@@ -82,6 +82,18 @@ export async function* rotateTool(): ToolGenerator {
       acceptedInputKinds: ['point'],
       directDistanceFrom: base,
       previewBuilder: (cursor) => ({ kind: 'line', p1: base, cursor }),
+      // Same angle-arc witness lines as the single-prompt path: polar
+      // baseline at 0° + cursor-direction line + sweep arc, so the user
+      // sees the reference angle they're picking.
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
+        {
+          kind: 'angle-arc',
+          pivot: base,
+          baseAngleRad: 0,
+          sweepAngleRad: Math.atan2(cursor.y - base.y, cursor.x - base.x),
+          radiusMetric: Math.hypot(cursor.x - base.x, cursor.y - base.y),
+        },
+      ],
     };
     if (refInput.kind !== 'point') return { committed: false, reason: 'aborted' };
     const referenceAngleRad = Math.atan2(refInput.point.y - base.y, refInput.point.x - base.x);
@@ -97,6 +109,18 @@ export async function* rotateTool(): ToolGenerator {
         base,
         angleRad: Math.atan2(cursor.y - base.y, cursor.x - base.x) - referenceAngleRad,
       }),
+      // Arc baseline = the reference angle just picked (so the visible
+      // sweep represents the actual delta to be applied), cursor ray =
+      // the new angle being chosen. Together they bracket the rotation.
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
+        {
+          kind: 'angle-arc',
+          pivot: base,
+          baseAngleRad: referenceAngleRad,
+          sweepAngleRad: Math.atan2(cursor.y - base.y, cursor.x - base.x) - referenceAngleRad,
+          radiusMetric: Math.hypot(cursor.x - base.x, cursor.y - base.y),
+        },
+      ],
     };
     if (finalInput.kind === 'point') {
       const finalAngleRad = Math.atan2(finalInput.point.y - base.y, finalInput.point.x - base.x);
