@@ -17,8 +17,9 @@
 import { type Primitive, type PrimitiveId, scalePrimitive } from '@portplanner/domain';
 import { projectStore, updatePrimitive } from '@portplanner/project-store';
 
+import { DIM_OFFSET_CSS } from '../canvas/painters/paintDimensionGuides';
 import { editorUiStore } from '../ui-state/store';
-import type { ToolGenerator } from './types';
+import type { DimensionGuide, ToolGenerator } from './types';
 
 export async function* scaleTool(): ToolGenerator {
   let selection = editorUiStore.getState().selection;
@@ -70,6 +71,12 @@ export async function* scaleTool(): ToolGenerator {
       acceptedInputKinds: ['point'],
       directDistanceFrom: base,
       previewBuilder: (cursor) => ({ kind: 'line', p1: base, cursor }),
+      // Witness lines + offset dim line along base→cursor (mirrors
+      // draw-line / draw-circle radius pattern). User sees the
+      // reference distance being measured.
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
+        { kind: 'linear-dim', anchorA: base, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
+      ],
     };
     if (refInput.kind !== 'point') return { committed: false, reason: 'aborted' };
     const refDist = Math.hypot(refInput.point.x - base.x, refInput.point.y - base.y);
@@ -86,6 +93,12 @@ export async function* scaleTool(): ToolGenerator {
         base,
         factor: Math.hypot(cursor.x - base.x, cursor.y - base.y) / refDist,
       }),
+      // Same linear-dim along base→cursor for the new distance — the
+      // resulting factor is newDist/refDist, so showing newDist visibly
+      // matches what the user types or clicks.
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
+        { kind: 'linear-dim', anchorA: base, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
+      ],
     };
     let newDist: number;
     if (newInput.kind === 'point') {
