@@ -1,3 +1,9 @@
+// @vitest-environment jsdom
+// Window-level KeyboardEvent dispatch + DOM listeners require a browser-
+// like runtime. The package vitest config sets jsdom by default; this
+// directive makes the file portable when vitest is invoked from the repo
+// root or other shells that resolve the root config first (env: node).
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { registerKeyboardRouter, unregisterKeyboardRouterForTests } from '../src/keyboard/router';

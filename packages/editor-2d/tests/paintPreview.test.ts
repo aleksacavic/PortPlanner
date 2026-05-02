@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // paintPreview tests for M1.3d Phase 4.
 //
 // Verifies that each PreviewShape arm dispatches the correct path
@@ -5,6 +6,8 @@
 // DTP-T6 / I-DTP-9).
 
 import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { dark } from '@portplanner/design-system';
 import { LayerId, newPrimitiveId } from '@portplanner/domain';
 import { describe, expect, it } from 'vitest';
@@ -588,7 +591,14 @@ describe('paintPreview — M1.3b transform arms', () => {
 
 describe('paintPreview — Gate DTP-T6 source-import isolation (I-DTP-9)', () => {
   it('paintPreview.ts does NOT import @portplanner/project-store', () => {
-    const src = readFileSync('src/canvas/painters/paintPreview.ts', 'utf8');
+    // Resolve the source path relative to this test file so the assertion
+    // works regardless of the cwd vitest is invoked from (package vs
+    // repo root vs CI shells).
+    const here = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      resolve(here, '..', 'src', 'canvas', 'painters', 'paintPreview.ts'),
+      'utf8',
+    );
     expect(src).not.toMatch(/from\s+['"]@portplanner\/project-store['"]/);
   });
 });
