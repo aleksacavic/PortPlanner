@@ -157,6 +157,32 @@ A10. **Selection order is asymmetric-tolerant.** Tool detects each picked entity
 
 **Goal:** Pure domain helpers for the 6 transform cases (3 fillet + 3 chamfer). Two new `PreviewShape` arms with painter cases. Close the three §170 gaps so production bulged polylines render/hit-test/snap correctly.
 
+#### 6.1.0) Closed-polyline decision table (added Rev-2 after Codex Round-1 High-risk #1)
+
+This is the SSOT for who rejects what across the domain/tool boundary. Resolves the prior wording-level ambiguity between A4/A9 (assumptions) and step 2 below (`filletPolylineCorner` throw semantics) vs. Phase 2 step 2 (tool-level interior-segment rejection).
+
+| Input | Owner that decides | Action | Domain throw / tool message |
+|---|---|---|---|
+| `filletPolylineCorner(p, K, R)` where vertex K has TWO adjacent segments (open `1 ≤ K ≤ N-2` OR closed any K) | **domain** | Compute and return modified polyline | (no throw) |
+| `filletPolylineCorner(p, K, R)` where `p.closed === false` AND `K === 0` OR `K === N-1` | **domain** | Throw — endpoint vertex of open polyline has only one adjacent segment, no corner exists | `Error("filletPolylineCorner: open polyline endpoint vertex has no corner")` |
+| `filletPolylineCorner(p, K, R)` where computed trim distance ≥ adjacent segment length | **domain** | Throw | `Error("filletPolylineCorner: radius too large for adjacent segment length")` |
+| `filletLineAndPolylineEndpoint(line, ah, p, polylineEndpoint, R)` where `p.closed === true` | **domain** | Throw — closed polylines have no endpoint segment | `Error("filletLineAndPolylineEndpoint: polyline must be open (closed polylines have no endpoint)")` |
+| Tool: user picks Line A + Line B (different IDs) | **tool** | Dispatch → `filletTwoLines` | (no message — happy path) |
+| Tool: user picks Polyline P twice (same ID) with both pickHints near interior vertex K (open `1 ≤ K ≤ N-2` OR closed any K) | **tool** | Dispatch → `filletPolylineCorner(p, K, R)`; `K` resolved from pickHints (closest qualifying vertex to either pick) | (no message) |
+| Tool: user picks Polyline P twice (same ID) with pickHints near vertex 0 or N-1 of OPEN polyline | **tool** | Reject pre-domain-call (open polyline endpoint vertex isn't a corner) | command-bar: `"Fillet: open polyline endpoint vertex is not a corner — pick an interior vertex"` |
+| Tool: user picks Line A + OPEN Polyline P with P's pickHint near vertex 0 or N-1 | **tool** | Dispatch → `filletLineAndPolylineEndpoint(A, ah, P, 0 or -1, R)` | (no message) |
+| Tool: user picks Line A + OPEN Polyline P with P's pickHint near interior vertex (NOT 0 or N-1) | **tool** | Reject pre-domain-call (interior segment fillet deferred) | command-bar: `"Fillet: only polyline endpoint segments supported (interior segment fillet deferred to follow-up)"` |
+| Tool: user picks Line A + CLOSED Polyline P (any pickHint) | **tool** | Reject pre-domain-call (closed polylines have no endpoint) | command-bar: `"Fillet: closed polyline has no endpoint segment — pick the polyline twice for an interior fillet, or pick a different pair"` |
+| Tool: user picks two DIFFERENT polylines | **tool** | Reject | command-bar: `"Fillet: two-different-polylines not supported in V1"` |
+| Tool: user picks any pair containing point/circle/arc/xline/rectangle | **tool** | Reject | command-bar: `"Fillet: pair not supported in V1"` |
+| Domain throws unexpectedly mid-commit (e.g., trim-too-large not caught by tool pre-check) | **tool** | Catch domain `Error.message`, surface to command bar verbatim, abort run with 0 ops | command-bar: domain error message |
+
+**Boundary contract:** the tool MUST classify the pair AND check tool-level rejections (closed-polyline-endpoint, interior-segment, two-different-polylines, non-supported kinds) BEFORE calling any domain helper. Domain helpers throw only on their narrow contract violations (single-adjacent vertex, closed polyline passed to endpoint helper, geometry-too-large). Both layers contribute to the user experience but they don't overlap their concerns.
+
+Same table applies to `chamferPolylineCorner` / `chamferLineAndPolylineEndpoint` substituting `(d1, d2)` for `R` and the chamfer messages (`"Chamfer: ..."`).
+
+
+
 **Files:** see §3.1.
 
 **Steps:**
@@ -258,15 +284,25 @@ A10. **Selection order is asymmetric-tolerant.** Tool detects each picked entity
 
 **Invariants:**
 
-- **I-FC-5:** each tool commit emits exactly the expected ops per pair-type. Enforcement: per-test assertion of `projectStore.getState().project.primitives` before/after + `zundo` op count.
+- **I-FC-5:** each tool commit emits exactly the expected ops per pair-type. Enforcement: per-test assertion of `projectStore.getState().project.primitives` before/after.
 - **I-FC-6:** aborted tool runs (escape, parallel reject, interior reject, trim-exceeds reject) commit ZERO ops. Enforcement: presence test "abort emits 0 ops".
 - **I-FC-7:** `editorUiStore.fillet.radius` persists across tool runs. Enforcement: test "second F invocation reuses radius from first".
+- **I-FC-8 (zundo temporal step parity — added Rev-2 after Codex Round-1 High-risk #2):** zundo's `pastStates.length` increases by exactly N after a tool commit, where N matches the §3.0-walkthrough-asserted op count for the pair-type:
+  - two-line Fillet → +3
+  - polyline-internal Fillet → +1
+  - mixed line+polyline-endpoint Fillet → +3
+  - aborted run (any cause) → +0
+
+  Enforcement: per-test snapshot `projectStore.getState() /* zundo middleware exposes pastStates */` length before / after each commit. Test names: `"two-line fillet zundo step-count is 3"`, `"polyline-internal fillet zundo step-count is 1"`, `"mixed fillet zundo step-count is 3"`, `"aborted fillet zundo step-count is 0"`.
+
+  Why this matters per Codex finding: AC parity claims (§5 Undo/Redo) require N successive Ctrl+Z presses to restore pre-Fillet state. If the zundo middleware groups ops, that contract breaks silently. The gate locks step count at every commit path.
 
 **Mandatory completion gates (Phase 2):**
 
-- **Gate FC-P2-Tests:** `pnpm --filter editor-2d test fillet` → all pass; ≥12 it() blocks.
-- **Gate FC-P2-Typecheck:** clean.
-- **Gate FC-P2-NoStaleAbortMessage:** `rg -n "Fillet:" packages/editor-2d/src/tools/fillet.ts` → 2 matches (the two abort messages exactly as specified above).
+- **Gate FC-P2-Tests:** `pnpm --filter editor-2d test fillet` → all pass; ≥15 it() blocks (12 walkthrough cases + 3 zundo step-count cases + abort case = 16 minimum, allow 15+ for robustness).
+- **Gate FC-P2-Typecheck:** `pnpm typecheck` clean.
+- **Gate FC-P2-NoStaleAbortMessage:** `rg -n "Fillet:" packages/editor-2d/src/tools/fillet.ts` → 5 matches (the five tool-level abort messages from the §6.1.0 decision table: open-poly-endpoint, interior-segment, closed-poly-endpoint, two-different-polylines, pair-not-supported).
+- **Gate FC-P2-ZundoStepCount:** `pnpm --filter editor-2d test fillet -t "zundo step-count"` → all 4 it() blocks pass (three pair-types + abort).
 
 ### Phase 3 — Chamfer tool (`CHA`)
 
@@ -289,12 +325,14 @@ A10. **Selection order is asymmetric-tolerant.** Tool detects each picked entity
 
 5. Tests in `chamfer.test.ts` (~12 cases) — mirror Fillet structure with chamfer-specific outputs.
 
-**Invariants:** I-FC-5 / I-FC-6 / I-FC-7 (with `chamfer` slice instead of `fillet`) apply identically.
+**Invariants:** I-FC-5 / I-FC-6 / I-FC-7 / I-FC-8 (with `chamfer` slice instead of `fillet`) apply identically. Chamfer zundo step counts: two-line +3, polyline-internal +1, mixed +3, aborted +0 (same shapes; chamfer's CREATE is a LinePrimitive instead of an ArcPrimitive but step count identical).
 
 **Mandatory completion gates (Phase 3):**
 
-- **Gate FC-P3-Tests:** `pnpm --filter editor-2d test chamfer` → all pass; ≥12 it() blocks.
-- **Gate FC-P3-Typecheck:** clean.
+- **Gate FC-P3-Tests:** `pnpm --filter editor-2d test chamfer` → all pass; ≥15 it() blocks.
+- **Gate FC-P3-Typecheck:** `pnpm typecheck` clean.
+- **Gate FC-P3-NoStaleAbortMessage:** `rg -n "Chamfer:" packages/editor-2d/src/tools/chamfer.ts` → 5 matches (mirror of FC-P2-NoStaleAbortMessage).
+- **Gate FC-P3-ZundoStepCount:** `pnpm --filter editor-2d test chamfer -t "zundo step-count"` → all 4 it() blocks pass.
 
 ### Phase 4 — Wiring + registry
 
@@ -313,13 +351,55 @@ A10. **Selection order is asymmetric-tolerant.** Tool detects each picked entity
 
 **Mandatory completion gates (Phase 4):**
 
-- **Gate FC-P4-RegistryDrift:**
+> File-format note (added Rev-2 after Codex Round-1 Blocker #2): `shortcuts.ts` is a TypeScript file with object-literal shortcut maps (per the read at `packages/editor-2d/src/keyboard/shortcuts.ts:40-65` — `SINGLE_LETTER_SHORTCUTS`, `MULTI_LETTER_SHORTCUTS`, `ToolId` union). `docs/operator-shortcuts.md` is a markdown file with pipe-delimited table rows. The gates below match each file's actual syntax.
+
+- **Gate FC-P4-RegistryDrift-ToolId** (TypeScript union additions):
   ```
-  rg -n "^\| `F` \||^\| `CHA` \|" packages/editor-2d/src/keyboard/shortcuts.ts
+  rg -n "^\s+\| 'fillet'\s*$" packages/editor-2d/src/keyboard/shortcuts.ts
+  rg -n "^\s+\| 'chamfer'\s*$" packages/editor-2d/src/keyboard/shortcuts.ts
   ```
-  (or equivalent — both shortcut rows present).
-- **Gate FC-P4-DocVersion:** `head -5 docs/operator-shortcuts.md | rg "^\*\*Version:\*\* 2\.4\.0"` matches.
-- **Gate FC-P4-FullSuite:** `pnpm typecheck && pnpm check && pnpm test` all green; tests across all packages pass.
+  Expected: each command returns exactly 1 match (the `ToolId` union additions).
+- **Gate FC-P4-RegistryDrift-Single-F** (single-letter Fillet entry):
+  ```
+  rg -n "^\s+F: 'fillet',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts
+  ```
+  Expected: exactly 1 match (the `SINGLE_LETTER_SHORTCUTS` `F: 'fillet'` row).
+- **Gate FC-P4-RegistryDrift-Multi-CHA** (multi-letter Chamfer entry):
+  ```
+  rg -n "^\s+CHA: 'chamfer',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts
+  ```
+  Expected: exactly 1 match (the `MULTI_LETTER_SHORTCUTS` `CHA: 'chamfer'` row).
+- **Gate FC-P4-RegistryDrift-DisplayNames** (`TOOL_DISPLAY_NAMES` exhaustiveness — TypeScript will fail typecheck if missing, but a positive grep guards against accidental `null` shadow):
+  ```
+  rg -n "^\s+fillet: 'FILLET',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts
+  rg -n "^\s+chamfer: 'CHAMFER',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts
+  ```
+  Expected: each returns exactly 1 match.
+- **Gate FC-P4-DocFillet** (markdown table row in operator-shortcuts.md `### M1.3b — Promotion + modify operators` section):
+  ```
+  rg -n "^\| \`F\` \| Fillet \|" docs/operator-shortcuts.md
+  ```
+  Expected: exactly 1 match.
+- **Gate FC-P4-DocChamfer**:
+  ```
+  rg -n "^\| \`CHA\` \| Chamfer \|" docs/operator-shortcuts.md
+  ```
+  Expected: exactly 1 match.
+- **Gate FC-P4-DocVersion**:
+  ```
+  rg -n "^\*\*Version:\*\* 2\.4\.0\s*$" docs/operator-shortcuts.md
+  ```
+  Expected: exactly 1 match (line 3 of the file post-bump).
+- **Gate FC-P4-DocChangelog** (changelog row appended):
+  ```
+  rg -n "^\| 2\.4\.0 \|" docs/operator-shortcuts.md
+  ```
+  Expected: exactly 1 match.
+- **Gate FC-P4-FullSuite**:
+  ```
+  pnpm typecheck && pnpm check && pnpm test
+  ```
+  Expected: all packages green; ToolId exhaustiveness in `TOOL_DISPLAY_NAMES` enforced by TypeScript at compile time.
 
 ---
 
@@ -357,19 +437,43 @@ A10. **Selection order is asymmetric-tolerant.** Tool detects each picked entity
 
 ---
 
-## 9) Done Criteria (objective pass/fail)
+## 9) Done Criteria (objective pass/fail — every row maps to a gate ID)
 
-- [ ] All 6 domain helpers exported and tested (Gate FC-P1-DomainTests + I-FC-1)
-- [ ] PreviewShape extended with `fillet-preview` + `chamfer-preview` arms; painter dispatches both
-- [ ] `drawShiftedPrimitiveOutline` polyline branch handles bulges via shared `arcParamsFromBulge` SSOT (I-FC-2)
-- [ ] `hit-test.ts` polyline branch handles bulges (I-FC-3)
-- [ ] `osnap.ts` MID handles bulges (I-FC-4)
-- [ ] `filletTool` wired and tested per §3.0 walkthrough (I-FC-5/6/7)
-- [ ] `chamferTool` wired and tested per §3.0 walkthrough
-- [ ] `F` and `CHA` shortcuts registered in `shortcuts.ts`
-- [ ] `docs/operator-shortcuts.md` 2.4.0 with both rows populated + changelog entry
-- [ ] All gates green: typecheck, biome, full test suite
-- [ ] Manual smoke verifies all 4 §8 scenarios
+> Rev-2 (Codex Round-1 Blocker #3): every Done Criteria row MUST map to a named gate with command + expected output. Rows previously requiring "manual smoke" are moved to §9.1 (Acceptance verification, post-gate, pre-merge — separate from objective gates).
+
+| # | Done Criteria | Gate ID | Command | Expected output |
+|---|---|---|---|---|
+| 1 | 6 domain helpers exported + tested | FC-P1-DomainTests | `pnpm --filter @portplanner/domain test transforms-fillet transforms-chamfer` | ≥20 it() blocks pass; 0 fail |
+| 2 | Domain modules import only from `@portplanner/domain` | FC-P1-DomainPurity | `rg -n "^import .* from '@portplanner/(editor-2d\|project-store\|design-system\|project-store-react)'" packages/domain/src/transforms/fillet.ts packages/domain/src/transforms/chamfer.ts` | 0 matches |
+| 3 | `arcParamsFromBulge` declared in exactly one site (SSOT) | FC-P1-ArcParamsSSOT | `rg -n "^export function arcParamsFromBulge" packages/editor-2d/src/canvas/painters/` | exactly 1 match in `_polylineGeometry.ts` |
+| 4 | Preview painter polyline branch arc-aware | FC-P1-PainterTests | `pnpm --filter editor-2d test paintPreview` | ≥2 new it() blocks pass: "bulged polyline arc segment" + "fillet-preview" arm |
+| 5 | Hit-test polyline branch arc-aware | FC-P1-PainterTests (same suite) | `pnpm --filter editor-2d test hit-test` | ≥1 new it() block: "bulged polyline segment uses arc distance" |
+| 6 | Osnap MID polyline branch arc-aware | FC-P1-PainterTests (same suite) | `pnpm --filter editor-2d test osnap` | ≥1 new it() block: "bulged polyline midpoint at arc midpoint" |
+| 7 | Phase 1 typecheck + biome clean | FC-P1-Typecheck + FC-P1-Biome | `pnpm typecheck && pnpm check` | exit 0; 0 errors |
+| 8 | `filletTool` wired with all walkthrough cases passing | FC-P2-Tests | `pnpm --filter editor-2d test fillet` | ≥15 it() blocks pass |
+| 9 | Fillet zundo step-count locked per pair-type | FC-P2-ZundoStepCount | `pnpm --filter editor-2d test fillet -t "zundo step-count"` | 4/4 pass (two-line +3, polyline-internal +1, mixed +3, abort +0) |
+| 10 | Fillet tool emits exactly the 5 expected abort messages | FC-P2-NoStaleAbortMessage | `rg -n "Fillet:" packages/editor-2d/src/tools/fillet.ts` | exactly 5 matches |
+| 11 | `chamferTool` wired with all walkthrough cases passing | FC-P3-Tests | `pnpm --filter editor-2d test chamfer` | ≥15 it() blocks pass |
+| 12 | Chamfer zundo step-count locked per pair-type | FC-P3-ZundoStepCount | `pnpm --filter editor-2d test chamfer -t "zundo step-count"` | 4/4 pass |
+| 13 | Chamfer tool emits exactly the 5 expected abort messages | FC-P3-NoStaleAbortMessage | `rg -n "Chamfer:" packages/editor-2d/src/tools/chamfer.ts` | exactly 5 matches |
+| 14 | `ToolId` union extended with `'fillet'` and `'chamfer'` | FC-P4-RegistryDrift-ToolId | `rg -n "^\s+\| 'fillet'\s*$" packages/editor-2d/src/keyboard/shortcuts.ts && rg -n "^\s+\| 'chamfer'\s*$" packages/editor-2d/src/keyboard/shortcuts.ts` | each: exactly 1 match |
+| 15 | `F → fillet` in `SINGLE_LETTER_SHORTCUTS` | FC-P4-RegistryDrift-Single-F | `rg -n "^\s+F: 'fillet',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts` | exactly 1 match |
+| 16 | `CHA → chamfer` in `MULTI_LETTER_SHORTCUTS` | FC-P4-RegistryDrift-Multi-CHA | `rg -n "^\s+CHA: 'chamfer',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts` | exactly 1 match |
+| 17 | `TOOL_DISPLAY_NAMES` exhaustive for fillet + chamfer | FC-P4-RegistryDrift-DisplayNames | `rg -n "^\s+fillet: 'FILLET',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts && rg -n "^\s+chamfer: 'CHAMFER',\s*$" packages/editor-2d/src/keyboard/shortcuts.ts` | each: exactly 1 match |
+| 18 | `docs/operator-shortcuts.md` `F` row populated | FC-P4-DocFillet | `rg -n "^\| \`F\` \| Fillet \|" docs/operator-shortcuts.md` | exactly 1 match |
+| 19 | `docs/operator-shortcuts.md` `CHA` row populated | FC-P4-DocChamfer | `rg -n "^\| \`CHA\` \| Chamfer \|" docs/operator-shortcuts.md` | exactly 1 match |
+| 20 | `operator-shortcuts.md` version bumped 2.3.0 → 2.4.0 | FC-P4-DocVersion | `rg -n "^\*\*Version:\*\* 2\.4\.0\s*$" docs/operator-shortcuts.md` | exactly 1 match |
+| 21 | Changelog row appended for 2.4.0 | FC-P4-DocChangelog | `rg -n "^\| 2\.4\.0 \|" docs/operator-shortcuts.md` | exactly 1 match |
+| 22 | Full test suite green across all packages | FC-P4-FullSuite | `pnpm typecheck && pnpm check && pnpm test` | exit 0; baseline 555 editor-2d + 90 domain → target 584 + 110 |
+
+### 9.1) Acceptance verification (post-gate, pre-merge)
+
+These are **non-gate** smoke checks performed on the running app after all gates above pass. They are not part of objective Done Criteria but are the user-facing acceptance signal before opening the merge PR. Procedure 03 §3.10 mid-execution discovery captures any drift from these scenarios as a separate process step.
+
+- A1. Draw two intersecting LinePrimitives → `F` → click both → rounded corner appears, lines visibly trimmed, arc selectable independently from each line.
+- A2. Draw an open 4-vertex polyline → `F` → click polyline twice near vertex K=1 → polyline now has 5 vertices and visibly rounded corner.
+- A3. Draw a line meeting a polyline at the polyline's first vertex → `F` → click both → line trimmed, polyline endpoint moved, new arc bridges them.
+- A4. Repeat A1–A3 with `CHA` → identical flow, straight chamfer segment instead of arc.
 
 ---
 
@@ -391,6 +495,7 @@ A10. **Selection order is asymmetric-tolerant.** Tool detects each picked entity
 
 | Plan claim citing a code construct | File read at authoring time | Match status |
 |---|---|---|
+| **Procedure 02 prerequisite — architecture contract baseline** (§0.2 binding ADR list; §0.4 GR-1/GR-2/GR-3; §0.7 deviation protocol) | `docs/procedures/Claude/00-architecture-contract.md:26-50, 131-228, 261-355` | **Match — all referenced ADRs (016/020/023/001) confirmed binding; ADR-010 confirmed superseded by ADR-020 per §0.2 line 52-54; no deviations proposed so §0.7 not invoked** |
 | `PolylinePrimitive { vertices, bulges, closed }` shape | `packages/domain/src/types/primitive.ts:65-70` | Match |
 | `bulges` length refine in Zod schema | `packages/domain/src/schemas/primitive.schema.ts:56-58` | Match |
 | ADR-016 Appendix A: `d = R·tan(θ/2)`; `bulge = tan(θ/4)`; "one UPDATE op" (polyline-internal) | `docs/adr/016-drawing-model.md:191-203` | Match |
