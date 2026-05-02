@@ -414,6 +414,7 @@ Same table applies to `chamferPolylineCorner` / `chamferLineAndPolylineEndpoint`
 | I-FC-5 | Tool commits emit exact op counts per pair-type | 2, 3 | Per-test before/after assertions |
 | I-FC-6 | Aborted tool runs commit zero ops | 2, 3 | Presence tests |
 | I-FC-7 | `editorUiStore.{fillet,chamfer}` radius/distances persist across runs | 2, 3 | Tests |
+| I-FC-8 | zundo `pastStates.length` step parity per pair-type (two-line +3, polyline-internal +1, mixed +3, abort +0) — locks AC-parity undo claim | 2, 3 | Gates FC-P2-ZundoStepCount + FC-P3-ZundoStepCount; grounded in §11 against `packages/project-store/src/store.ts:23-30` (temporal middleware) and `tests/zundo.test.ts:32-55` (pastStates contract) |
 
 ---
 
@@ -484,7 +485,7 @@ These are **non-gate** smoke checks performed on the running app after all gates
 | Polyline interior-segment Fillet rejection feels limiting in real use | Documented in command-bar message; Join (`J`, deferred to topological cluster) + future plan unblocks |
 | `offset.ts` still throws on bulged polylines (existing limitation) | Pre-existing; restated in JSDoc; M1.3c bulged-polyline offset closes |
 | User expects `[Multiple]` for chained corner fillets | V1 scope per A8; multi-corner = re-invoke F. Acceptable. |
-| Closed-polyline endpoint Fillet edge case | Closed polylines have no "endpoint" — vertex 0 IS interior. Tool rejects via interior-segment guard message. |
+| Closed-polyline endpoint Fillet edge case (user picks Line + closed Polyline expecting endpoint behavior) | §6.1.0 decision table routes this to the **closed-polyline-specific tool reject path** with command-bar message `"Fillet: closed polyline has no endpoint segment — pick the polyline twice for an interior fillet, or pick a different pair"`. Closed polylines have no endpoint by topology; users CAN still polyline-internal-Fillet any vertex of a closed polyline (every vertex of a closed polyline has two adjacent segments — the wrap-around makes vertex 0 a corner). |
 | Bulge-aware osnap modes beyond MID (PERP, TAN, NEAR) still chord-approximated | Per `osnap.ts:9` these modes are M1.3c scope. Documented as M1.3c follow-up. |
 | Bulge-aware intersection (`snap/intersection.ts`) still line-only | Per snap-engine-extension Phase 1, intersections are line/line only; circle/arc pairs are M1.3c. Same scope cap. |
 | Hit-test arc-distance helper might mis-clamp at sweep boundary | Mitigation: I-FC-3 test exercises both ends of sweep range + interior; failure visible at gate. |
@@ -510,6 +511,7 @@ These are **non-gate** smoke checks performed on the running app after all gates
 | `osnap.ts` polyline midpoint uses chord midpoint | `packages/editor-2d/src/snap/osnap.ts:99` region | Match (inferred from comment + grep) — Phase 1 step 8 closes |
 | `Operation.targetKind` discriminant + CRUD types per ADR-020 | `docs/adr/020-project-sync.md:42-60` | Match |
 | ToolGenerator pattern (async generator yielding prompts) | `packages/editor-2d/src/tools/rotate.ts:25-37` | Match |
+| **zundo temporal middleware contract** — `temporal()` wraps `projectStore` with `partialize: { project }`; each `set()` call (i.e., each `addPrimitive` / `updatePrimitive` / `deletePrimitive` invocation) produces exactly one `pastStates` entry. `projectStore.temporal.getState().pastStates` is the SSOT array (length-counted per I-FC-8). | `packages/project-store/src/store.ts:23-30` (middleware wiring) + `packages/project-store/tests/zundo.test.ts:32-55` (pastStates shape + `.length` assertions in existing tests; Rev-3 tests reuse the same `projectStore.temporal.getState().pastStates` access pattern) | **Match — drives Codex Round-2 H2 closure.** Each domain mutation maps 1:1 to a pastStates entry per the existing zundo wiring; AC parity claim in §5 holds: N-undo restores pre-Fillet state because zundo middleware does not group `set()` calls. |
 | `editorUiStore.viewport.crosshairSizePct` mode resolver routes pick-point on point prompts | `packages/editor-2d/src/canvas/painters/paintCrosshair.ts:30-58` | Match |
 | `PreviewShape` discriminated union site for new arm appending | `packages/editor-2d/src/tools/types.ts:117-145` | Match |
 
@@ -517,7 +519,33 @@ All grounding rows: **Match**. No mismatches that would force plan revision per 
 
 ---
 
-## Plan Review Handoff
+## Appendix — Scrutiny Assessment and Actions (Codex Procedure 02 §2.10)
+
+Per-finding decision log across review rounds. Maintained in revision-history order.
+
+### Round 1 (review of Rev-1 at `a385157`)
+
+| # | Finding | Severity | Decision | Rationale | Plan updates (Rev-2 at `f4900a1`) |
+|---|---|---|---|---|---|
+| B1 | Procedure 02 prerequisite not evidenced — `00-architecture-contract.md` not cited in §11 grounding | Blocker | **Agree (resolved)** | Procedure-gap in handoff packet, not plan logic defect | §11 — added explicit row citing `00-architecture-contract.md:26-50, 131-228, 261-355` (binding ADR list / GR-1/2/3 / deviation protocol) |
+| B2 | Gate FC-P4-RegistryDrift used markdown-pipe regex against TypeScript `shortcuts.ts` | Blocker | **Agree (resolved)** | Author error in gate command construction | Phase 4 — split into 8 file-format-correct sub-gates: `-ToolId / -Single-F / -Multi-CHA / -DisplayNames` (TS) + `-DocFillet / -DocChamfer / -DocVersion / -DocChangelog` (markdown). Inline file-format note added. |
+| B3 | Done Criteria mixed manual smoke with objective gates | Blocker | **Agree (resolved)** | Procedure-adherence gap in closure section | §9 — converted to 22-row gate-mapped table; manual smoke moved to non-gate §9.1 acceptance verification |
+| H1 | Closed-polyline handling ambiguity (domain throw vs tool reject) | High-risk | **Agree (resolved)** | Wording-level cross-section ambiguity | §6.1.0 — added 11-row closed-polyline decision table with Owner column (domain/tool) + exact throw/message text |
+| H2 | Undo/redo claims AC parity but no explicit gate for temporal step-count semantics | High-risk | **Agree (functional fix in Rev-2; grounding row added Rev-3)** | Test coverage was strong but evidence-anchoring weak — see Round 2 below for full closure | Rev-2: invariant I-FC-8 + Gates FC-P2-ZundoStepCount / FC-P3-ZundoStepCount. Phase 2/3 test minimum bumped ≥12 → ≥15. |
+
+### Round 2 (review of Rev-2 at `f4900a1`)
+
+Rating: **9.3 / 10 Go (conditional-hardening recommended).** Three open items, no blockers.
+
+| # | Finding | Severity | Decision | Rationale | Plan updates (Rev-3, this commit) |
+|---|---|---|---|---|---|
+| H2-residual | Zundo step-count gates strong but plan-vs-code grounding row missing in §11 — plan asserts "pastStates length" without citing the store contract site | High-risk (partial-open) | **Agree (resolved)** | Codex correct — strict evidence mode requires the contract to live in the §11 grounding table, not only in phase text. Functional gates were already in Rev-2; Rev-3 closes the documentary side. | §11 — added zundo contract row citing `packages/project-store/src/store.ts:23-30` (temporal middleware wiring with `partialize: { project }`) + `packages/project-store/tests/zundo.test.ts:32-55` (existing tests that exercise the same `projectStore.temporal.getState().pastStates` SSOT pattern that I-FC-8 reuses). |
+| Consistency-1 | I-FC-8 introduced in Phase 2/3 text but absent from §7 Invariants summary table | Quality gap (consistency drift) | **Agree (resolved)** | Local SSOT paper-cut — phase text and invariants table must mirror | §7 — added I-FC-8 row to the invariants summary with Phase 2/3 ownership, gate references (FC-P2/P3-ZundoStepCount), and §11 grounding pointer |
+| Consistency-2 | §10 closed-polyline risk row mitigation said "interior-segment guard message", but Rev-2's §6.1.0 decision table now uses the more specific closed-polyline message path | Quality gap (wording drift) | **Agree (resolved)** | Stale wording from Rev-1 carried into Rev-2 §10 unchanged | §10 — closed-polyline risk row rewritten to reference the §6.1.0-specified `"Fillet: closed polyline has no endpoint segment — pick the polyline twice for an interior fillet, or pick a different pair"` message. Adds clarifying note that closed-polyline interior-vertex Fillet IS supported (every vertex of a closed polyline has two adjacent segments via wrap-around). |
+
+**Round 2 closure status:** all three open items addressed in Rev-3. Rev-3 introduces no new architectural surface; all changes are documentary tightening per Codex's "conditional-hardening" recommendation.
+
+
 
 **Plan:** `docs/plans/feature/m1-3b-fillet-chamfer.md`
 **Branch:** `feature/m1-3b-fillet-chamfer`
