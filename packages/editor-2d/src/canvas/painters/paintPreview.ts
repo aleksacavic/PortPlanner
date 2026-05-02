@@ -228,8 +228,21 @@ function drawShiftedPrimitiveOutline(
       return;
     }
     case 'rectangle': {
+      // Walk the 4 corners through the local frame (mirrors paintRectangle.ts)
+      // so a non-zero `localAxisAngle` actually rotates the preview ghost.
+      // Pre-fix this used `ctx.rect(...)` which is axis-aligned in canvas
+      // space and silently ignored localAxisAngle — making rotated/mirrored
+      // ghosts render at angle 0.
+      const cos = Math.cos(p.localAxisAngle);
+      const sin = Math.sin(p.localAxisAngle);
+      const ox = p.origin.x + off.x;
+      const oy = p.origin.y + off.y;
       ctx.beginPath();
-      ctx.rect(p.origin.x + off.x, p.origin.y + off.y, p.width, p.height);
+      ctx.moveTo(ox, oy);
+      ctx.lineTo(ox + p.width * cos, oy + p.width * sin);
+      ctx.lineTo(ox + p.width * cos - p.height * sin, oy + p.width * sin + p.height * cos);
+      ctx.lineTo(ox - p.height * sin, oy + p.height * cos);
+      ctx.closePath();
       ctx.stroke();
       return;
     }

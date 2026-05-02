@@ -296,7 +296,7 @@ describe('paintPreview — modified-entities arm (F4)', () => {
     expect(calls.some((c) => c.method === 'closePath')).toBe(true);
   });
 
-  it('rectangle: ctx.rect at offset origin with the original dimensions', () => {
+  it('rectangle: 4-corner walk at offset origin (axis-aligned case)', () => {
     const { ctx, calls } = makeCtxRecorder();
     paintPreview(
       ctx,
@@ -319,8 +319,50 @@ describe('paintPreview — modified-entities arm (F4)', () => {
       viewport,
       dark,
     );
-    const rect = calls.find((c) => c.method === 'rect');
-    expect(rect?.args).toEqual([10, 5, 8, 4]);
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    expect(moveTos[0]?.args).toEqual([10, 5]);
+    // Walks SW → SE → NE → NW for an axis-aligned rect (cos=1, sin=0).
+    expect(lineTos[0]?.args).toEqual([18, 5]);
+    expect(lineTos[1]?.args).toEqual([18, 9]);
+    expect(lineTos[2]?.args).toEqual([10, 9]);
+    expect(calls.some((c) => c.method === 'closePath')).toBe(true);
+  });
+
+  it('rectangle: localAxisAngle=π/2 walks the rotated frame (preview painter respects rotation)', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'rectangle',
+            layerId,
+            displayOverrides: {},
+            origin: { x: 0, y: 0 },
+            width: 10,
+            height: 4,
+            localAxisAngle: Math.PI / 2,
+          },
+        ],
+        offsetMetric: { x: 0, y: 0 },
+      },
+      viewport,
+      dark,
+    );
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    // SW=(0,0); SE rotated 90°CCW → (0, 10); NE → (-4, 10); NW → (-4, 0).
+    expect(moveTos[0]?.args[0]).toBeCloseTo(0, 6);
+    expect(moveTos[0]?.args[1]).toBeCloseTo(0, 6);
+    expect(lineTos[0]?.args[0]).toBeCloseTo(0, 6);
+    expect(lineTos[0]?.args[1]).toBeCloseTo(10, 6);
+    expect(lineTos[1]?.args[0]).toBeCloseTo(-4, 6);
+    expect(lineTos[1]?.args[1]).toBeCloseTo(10, 6);
+    expect(lineTos[2]?.args[0]).toBeCloseTo(-4, 6);
+    expect(lineTos[2]?.args[1]).toBeCloseTo(0, 6);
   });
 
   it('circle: ctx.arc full sweep at offset center, original radius', () => {
