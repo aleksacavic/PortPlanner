@@ -2,6 +2,7 @@
 // router resolves shortcuts to ToolId then looks up the factory here.
 
 import type { ToolId } from '../keyboard/shortcuts';
+import { chamferTool } from './chamfer';
 import { copyTool } from './copy';
 import { drawArcTool } from './draw/draw-arc';
 import { drawCircleTool } from './draw/draw-circle';
@@ -37,6 +38,7 @@ const ESSENTIAL_REGISTRY: Partial<Record<ToolId, () => ToolGenerator>> = {
   scale: scaleTool,
   offset: offsetTool,
   fillet: filletTool,
+  chamfer: chamferTool,
   undo: undoTool,
   redo: redoTool,
   zoom: zoomTool,
