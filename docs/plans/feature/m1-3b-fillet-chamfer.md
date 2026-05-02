@@ -545,6 +545,30 @@ Rating: **9.3 / 10 Go (conditional-hardening recommended).** Three open items, n
 
 **Round 2 closure status:** all three open items addressed in Rev-3. Rev-3 introduces no new architectural surface; all changes are documentary tightening per Codex's "conditional-hardening" recommendation.
 
+---
+
+## Post-execution notes (Procedure 03)
+
+### Phase 1 — pickHint semantic clarified (2026-05-03)
+
+**Discovered during execution:** Plan §6.1.0 row 1 and Phase 1 step 2 described the pickHint convention as "the kept endpoint is the one **farther from** `*Hint`". This wording is inverted from AC parity behavior. AC's actual convention: the user clicks near the side they want to **keep** — so the kept endpoint is the one **closer to** the click point.
+
+**Codified convention:** `filletTwoLines` / `filletLineAndPolylineEndpoint` (and the chamfer mirrors) implement the AC convention — kept endpoint = the line endpoint with smaller distance to its pick hint. `chamferTwoLines.k1IsP1` and `filletTwoLines.k1IsP1` checks use `<=` to enforce this.
+
+**Why this matters:** in the X-cross configuration (two crossing lines), pickHints determine which of the four quadrants the fillet/chamfer arc lands in. AC convention picks the quadrant where the user clicked; the inverted convention would pick the diagonally opposite quadrant — confusing users.
+
+**Plan text not amended in place** (Procedure 01 §1.10 keeps approved plan immutable post-approval). This Post-execution note is the canonical record. Phase 2 tool (`tools/fillet.ts`) will pass the user's click point as pickHint; the AC convention here ensures end-to-end intuitive behavior.
+
+**Tests verifying behavior:** `domain/tests/transforms-fillet.test.ts:50-71` (90° corner case where `p1Hint=(4,0)` keeps `p2=(5,0)` and trims `p1=(-5,0)` → confirms closer-endpoint convention).
+
+### Phase 1 — completion summary
+
+- **Files created:** `packages/editor-2d/src/canvas/painters/_polylineGeometry.ts` (arcParamsFromBulge SSOT + pointOnArcAtMidAngle); `packages/domain/src/transforms/{fillet,chamfer}.ts`; `packages/domain/tests/transforms-{fillet,chamfer}.test.ts`.
+- **Files modified:** `paintPolyline.ts` (re-exports from `_polylineGeometry`), `paintPreview.ts` (bulge-aware polyline branch + 2 new dispatcher cases), `hit-test.ts` (arc-aware polyline distance), `snap/osnap.ts` (arc-aware polyline midpoint), `tools/types.ts` (PreviewShape + 2 case types), `domain/src/transforms/index.ts`, `domain/src/index.ts`, `editor-2d/tests/{paintPreview,hit-test,snap}.test.ts`.
+- **Tests:** domain 90 → 120 (+30); editor-2d 555 → 561 (+6: 3 paintPreview, 2 hit-test, 1 snap).
+- **Gates passed:** FC-P1-DomainPurity (0 matches), FC-P1-ArcParamsSSOT (1 match in `_polylineGeometry.ts`), FC-P1-DomainTests (120 pass), FC-P1-PainterTests (paintPreview/hit-test/snap pass), FC-P1-Typecheck clean, FC-P1-Biome clean.
+- **ADR-016 §170 closure:** preview painter, hit-test, osnap MID all bulge-aware. Production bulged polylines (introduced by Phase 2/3 tools) will render / snap / hit-test correctly.
+
 
 
 **Plan:** `docs/plans/feature/m1-3b-fillet-chamfer.md`

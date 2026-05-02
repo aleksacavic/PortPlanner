@@ -3,7 +3,13 @@
 // ToolRunner drives the generator and routes canvas / keyboard / bar
 // inputs in.
 
-import type { Point2D, Primitive, TargetKind } from '@portplanner/domain';
+import type {
+  LinePrimitive,
+  Point2D,
+  PolylinePrimitive,
+  Primitive,
+  TargetKind,
+} from '@portplanner/domain';
 
 export interface SubOption {
   label: string;
@@ -142,7 +148,62 @@ export type PreviewShape =
   | { kind: 'rotated-entities'; primitives: Primitive[]; base: Point2D; angleRad: number }
   | { kind: 'scaled-entities'; primitives: Primitive[]; base: Point2D; factor: number }
   | { kind: 'mirrored-entities'; primitives: Primitive[]; line: { p1: Point2D; p2: Point2D } }
-  | { kind: 'offset-preview'; primitive: Primitive; distance: number; side: 1 | -1 };
+  | { kind: 'offset-preview'; primitive: Primitive; distance: number; side: 1 | -1 }
+  // M1.3b fillet-chamfer Phase 1 — preview arms for the three pair-types
+  // each tool dispatches over (per plan §6.1.0). The painter builds the
+  // ghost geometry by calling the matching domain helper from
+  // `@portplanner/domain` (filletTwoLines / filletPolylineCorner / etc.).
+  | { kind: 'fillet-preview'; case: FilletPreviewCase }
+  | { kind: 'chamfer-preview'; case: ChamferPreviewCase };
+
+export type FilletPreviewCase =
+  | {
+      pairType: 'two-line';
+      l1: LinePrimitive;
+      l2: LinePrimitive;
+      pickHints: { p1Hint: Point2D; p2Hint: Point2D };
+      radius: number;
+    }
+  | {
+      pairType: 'polyline-internal';
+      polyline: PolylinePrimitive;
+      vertexIdx: number;
+      radius: number;
+    }
+  | {
+      pairType: 'line-polyline-end';
+      line: LinePrimitive;
+      lineHint: Point2D;
+      polyline: PolylinePrimitive;
+      polylineEndpoint: 0 | -1;
+      radius: number;
+    };
+
+export type ChamferPreviewCase =
+  | {
+      pairType: 'two-line';
+      l1: LinePrimitive;
+      l2: LinePrimitive;
+      pickHints: { p1Hint: Point2D; p2Hint: Point2D };
+      d1: number;
+      d2: number;
+    }
+  | {
+      pairType: 'polyline-internal';
+      polyline: PolylinePrimitive;
+      vertexIdx: number;
+      d1: number;
+      d2: number;
+    }
+  | {
+      pairType: 'line-polyline-end';
+      line: LinePrimitive;
+      lineHint: Point2D;
+      polyline: PolylinePrimitive;
+      polylineEndpoint: 0 | -1;
+      d1: number;
+      d2: number;
+    };
 
 export interface Prompt {
   text: string;

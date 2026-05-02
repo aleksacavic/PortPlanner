@@ -19,6 +19,7 @@
 import type { Point2D, Primitive } from '@portplanner/domain';
 
 import { gripsOf } from '../canvas/grip-positions';
+import { arcParamsFromBulge, pointOnArcAtMidAngle } from '../canvas/painters/_polylineGeometry';
 import { intersect, selfIntersect } from './intersection';
 
 export type OsnapKind = 'endpoint' | 'midpoint' | 'intersection' | 'node' | 'quadrant';
@@ -97,11 +98,22 @@ function midpointsOf(p: Primitive): Point2D[] {
     case 'line':
       return [midpoint(p.p1, p.p2)];
     case 'polyline': {
+      // M1.3b fillet-chamfer Phase 1 — bulge-aware polyline midpoint
+      // closes ADR-016 §170 osnap MID gap. Straight segments use chord
+      // midpoint (unchanged); bulged segments use arc midpoint at
+      // (startAngle + endAngle)/2 from the arc center.
       const out: Point2D[] = [];
       const n = p.vertices.length;
       const segCount = p.closed ? n : n - 1;
       for (let k = 0; k < segCount; k++) {
-        out.push(midpoint(p.vertices[k]!, p.vertices[(k + 1) % n]!));
+        const a = p.vertices[k]!;
+        const b = p.vertices[(k + 1) % n]!;
+        const bulge = p.bulges[k] ?? 0;
+        if (bulge === 0) {
+          out.push(midpoint(a, b));
+        } else {
+          out.push(pointOnArcAtMidAngle(arcParamsFromBulge(a, b, bulge)));
+        }
       }
       return out;
     }

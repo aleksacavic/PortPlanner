@@ -111,6 +111,31 @@ describe('OSNAP candidates (M1.3a subset)', () => {
     expect(nodes).toHaveLength(1);
     expect(nodes[0]?.point).toEqual({ x: 5, y: 0 });
   });
+
+  // M1.3b fillet-chamfer Phase 1 — bulged polyline segment midpoint
+  // is the ARC midpoint (point on the circle at mid-angle), NOT the
+  // chord midpoint. Closes ADR-016 §170 osnap MID gap.
+  it('midpoint of a BULGED polyline segment is the arc midpoint, not the chord midpoint', () => {
+    const poly: Primitive = {
+      id: newPrimitiveId(),
+      kind: 'polyline',
+      layerId: LayerId.DEFAULT,
+      displayOverrides: {},
+      vertices: [
+        { x: 0, y: 0 },
+        { x: 2, y: 0 },
+      ],
+      bulges: [Math.tan(Math.PI / 8)], // 90° arc
+      closed: false,
+    };
+    const cands = gatherOsnapCandidates([poly]);
+    const mid = cands.find((c) => c.kind === 'midpoint');
+    // Arc center (1, 1), radius √2. Mid-angle = -π/2 → arc midpoint (1, 1-√2).
+    expect(mid?.point.x).toBeCloseTo(1, 9);
+    expect(mid?.point.y).toBeCloseTo(1 - Math.SQRT2, 9);
+    // Chord midpoint would be (1, 0) — explicitly NOT this value.
+    expect(mid?.point.y).not.toBeCloseTo(0, 3);
+  });
 });
 
 // Phase 2 (snap-engine-extension) — circle snap candidates per

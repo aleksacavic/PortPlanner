@@ -22,14 +22,21 @@ import type { SemanticTokens } from '@portplanner/design-system';
 import {
   type Point2D,
   type Primitive,
+  chamferLineAndPolylineEndpoint,
+  chamferPolylineCorner,
+  chamferTwoLines,
+  filletLineAndPolylineEndpoint,
+  filletPolylineCorner,
+  filletTwoLines,
   mirrorPrimitive,
   offsetPrimitive,
   rotatePrimitive,
   scalePrimitive,
 } from '@portplanner/domain';
 
-import type { PreviewShape } from '../../tools/types';
+import type { ChamferPreviewCase, FilletPreviewCase, PreviewShape } from '../../tools/types';
 import type { Viewport } from '../view-transform';
+import { arcParamsFromBulge } from './_polylineGeometry';
 import { parseNumericToken } from './_tokens';
 
 /**
@@ -104,6 +111,12 @@ export function paintPreview(
       break;
     case 'offset-preview':
       drawOffsetPreview(ctx, shape);
+      break;
+    case 'fillet-preview':
+      drawFilletPreview(ctx, shape);
+      break;
+    case 'chamfer-preview':
+      drawChamferPreview(ctx, shape);
       break;
   }
 
@@ -215,13 +228,28 @@ function drawShiftedPrimitiveOutline(
       return;
     }
     case 'polyline': {
+      // M1.3b fillet-chamfer Phase 1 — bulge-aware preview rendering
+      // closes ADR-016 §170 ("straight-only shortcuts are Blockers")
+      // for the preview painter. Mirrors paintPolyline.ts entity-painter
+      // arc walk via the shared `arcParamsFromBulge` SSOT.
       if (p.vertices.length === 0) return;
+      const n = p.vertices.length;
+      const segCount = p.closed ? n : n - 1;
       ctx.beginPath();
       const first = p.vertices[0]!;
       ctx.moveTo(first.x + off.x, first.y + off.y);
-      for (let i = 1; i < p.vertices.length; i += 1) {
-        const v = p.vertices[i]!;
-        ctx.lineTo(v.x + off.x, v.y + off.y);
+      for (let k = 0; k < segCount; k += 1) {
+        const a = p.vertices[k]!;
+        const b = p.vertices[(k + 1) % n]!;
+        const aShifted = { x: a.x + off.x, y: a.y + off.y };
+        const bShifted = { x: b.x + off.x, y: b.y + off.y };
+        const bulge = p.bulges[k] ?? 0;
+        if (bulge === 0) {
+          ctx.lineTo(bShifted.x, bShifted.y);
+        } else {
+          const arc = arcParamsFromBulge(aShifted, bShifted, bulge);
+          ctx.arc(arc.cx, arc.cy, arc.radius, arc.startAngle, arc.endAngle, arc.counterClockwise);
+        }
       }
       if (p.closed) ctx.closePath();
       ctx.stroke();
@@ -408,4 +436,98 @@ function circumcircle(
   const cy = (ax2 * (c.x - b.x) + bx2 * (a.x - c.x) + cx2 * (b.x - a.x)) / d;
   const r = Math.hypot(a.x - cx, a.y - cy);
   return { cx, cy, r };
+}
+
+// M1.3b fillet-chamfer Phase 1 — fillet/chamfer preview helpers. Each
+// delegates per-pair-type math to the matching domain helper, then
+// strokes the result (modified primitives + new arc/segment) using the
+// shared `drawPrimitiveOutline` SSOT plus a direct ctx.arc / ctx.line
+// call for the new geometry. Wrapped in try/catch — when the domain
+// helper throws (parallel sources, trim-too-large, etc.) the preview
+// renders nothing rather than crashing; the tool's commit path will
+// surface the same error to the user.
+
+function drawFilletPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { case: FilletPreviewCase },
+): void {
+  const { case: c } = shape;
+  try {
+    if (c.pairType === 'two-line') {
+      const r = filletTwoLines(c.l1, c.l2, c.radius, c.pickHints);
+      drawPrimitiveOutline(ctx, r.l1Updated);
+      drawPrimitiveOutline(ctx, r.l2Updated);
+      ctx.beginPath();
+      ctx.arc(
+        r.newArc.center.x,
+        r.newArc.center.y,
+        r.newArc.radius,
+        r.newArc.startAngle,
+        r.newArc.endAngle,
+      );
+      ctx.stroke();
+    } else if (c.pairType === 'polyline-internal') {
+      const r = filletPolylineCorner(c.polyline, c.vertexIdx, c.radius);
+      drawPrimitiveOutline(ctx, r);
+    } else {
+      const r = filletLineAndPolylineEndpoint(
+        c.line,
+        c.lineHint,
+        c.polyline,
+        c.polylineEndpoint,
+        c.radius,
+      );
+      drawPrimitiveOutline(ctx, r.lineUpdated);
+      drawPrimitiveOutline(ctx, r.polylineUpdated);
+      ctx.beginPath();
+      ctx.arc(
+        r.newArc.center.x,
+        r.newArc.center.y,
+        r.newArc.radius,
+        r.newArc.startAngle,
+        r.newArc.endAngle,
+      );
+      ctx.stroke();
+    }
+  } catch {
+    // domain helper rejected this configuration; render nothing.
+  }
+}
+
+function drawChamferPreview(
+  ctx: CanvasRenderingContext2D,
+  shape: { case: ChamferPreviewCase },
+): void {
+  const { case: c } = shape;
+  try {
+    if (c.pairType === 'two-line') {
+      const r = chamferTwoLines(c.l1, c.l2, c.d1, c.d2, c.pickHints);
+      drawPrimitiveOutline(ctx, r.l1Updated);
+      drawPrimitiveOutline(ctx, r.l2Updated);
+      ctx.beginPath();
+      ctx.moveTo(r.newSegment.p1.x, r.newSegment.p1.y);
+      ctx.lineTo(r.newSegment.p2.x, r.newSegment.p2.y);
+      ctx.stroke();
+    } else if (c.pairType === 'polyline-internal') {
+      const r = chamferPolylineCorner(c.polyline, c.vertexIdx, c.d1, c.d2);
+      drawPrimitiveOutline(ctx, r);
+    } else {
+      const r = chamferLineAndPolylineEndpoint(
+        c.line,
+        c.lineHint,
+        c.polyline,
+        c.polylineEndpoint,
+        c.d1,
+        c.d2,
+      );
+      drawPrimitiveOutline(ctx, r.lineUpdated);
+      drawPrimitiveOutline(ctx, r.polylineUpdated);
+      ctx.beginPath();
+      ctx.moveTo(r.newSegment.p1.x, r.newSegment.p1.y);
+      ctx.lineTo(r.newSegment.p2.x, r.newSegment.p2.y);
+      ctx.stroke();
+    }
+  } catch {
+    // domain helper rejected this configuration; render nothing.
+  }
 }

@@ -645,6 +645,130 @@ describe('paintPreview — Gate DTP-T6 source-import isolation (I-DTP-9)', () =>
   });
 });
 
+// M1.3b fillet-chamfer Phase 1 — preview painter now bulge-aware
+// (closes Codex Round-2 quality gap #2 from the prior simple-transforms
+// cluster) + 2 new dispatch arms (fillet-preview / chamfer-preview).
+describe('paintPreview — bulged polyline & fillet/chamfer preview (Phase 1)', () => {
+  it('modified-entities polyline preview emits ctx.arc for bulged segments', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'modified-entities',
+        primitives: [
+          {
+            id: newPrimitiveId(),
+            kind: 'polyline',
+            layerId: LayerId.DEFAULT,
+            displayOverrides: {},
+            vertices: [
+              { x: 0, y: 0 },
+              { x: 2, y: 0 },
+            ],
+            bulges: [Math.tan(Math.PI / 8)],
+            closed: false,
+          },
+        ],
+        offsetMetric: { x: 0, y: 0 },
+      },
+      viewport,
+      dark,
+    );
+    const arcCall = calls.find((c) => c.method === 'arc');
+    expect(arcCall).toBeDefined();
+    // Pre-fix the polyline preview branch used only ctx.lineTo for
+    // every segment, regardless of bulge. This regression test locks
+    // the bulge-aware path.
+  });
+
+  it('fillet-preview two-line arm draws the trimmed lines + new arc', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'fillet-preview',
+        case: {
+          pairType: 'two-line',
+          l1: {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId: LayerId.DEFAULT,
+            displayOverrides: {},
+            p1: { x: -5, y: 0 },
+            p2: { x: 5, y: 0 },
+          },
+          l2: {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId: LayerId.DEFAULT,
+            displayOverrides: {},
+            p1: { x: 0, y: -5 },
+            p2: { x: 0, y: 5 },
+          },
+          pickHints: { p1Hint: { x: 4, y: 0 }, p2Hint: { x: 0, y: 4 } },
+          radius: 2,
+        },
+      },
+      viewport,
+      dark,
+    );
+    // Two trimmed lines → 2× moveTo+lineTo; one new arc → ctx.arc().
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    const arcs = calls.filter((c) => c.method === 'arc');
+    expect(moveTos.length).toBeGreaterThanOrEqual(2);
+    expect(lineTos.length).toBeGreaterThanOrEqual(2);
+    expect(arcs.length).toBe(1);
+    const arcArgs = arcs[0]!.args;
+    // Arc center at (2, 2), radius 2 (per filletTwoLines geometry test).
+    expect(arcArgs[0]).toBeCloseTo(2, 9);
+    expect(arcArgs[1]).toBeCloseTo(2, 9);
+    expect(arcArgs[2]).toBe(2);
+  });
+
+  it('chamfer-preview two-line arm draws the trimmed lines + new straight chamfer segment', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintPreview(
+      ctx,
+      {
+        kind: 'chamfer-preview',
+        case: {
+          pairType: 'two-line',
+          l1: {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId: LayerId.DEFAULT,
+            displayOverrides: {},
+            p1: { x: -5, y: 0 },
+            p2: { x: 5, y: 0 },
+          },
+          l2: {
+            id: newPrimitiveId(),
+            kind: 'line',
+            layerId: LayerId.DEFAULT,
+            displayOverrides: {},
+            p1: { x: 0, y: -5 },
+            p2: { x: 0, y: 5 },
+          },
+          pickHints: { p1Hint: { x: 4, y: 0 }, p2Hint: { x: 0, y: 4 } },
+          d1: 1,
+          d2: 1,
+        },
+      },
+      viewport,
+      dark,
+    );
+    // Two trimmed lines + one chamfer line. NO ctx.arc().
+    const arcs = calls.filter((c) => c.method === 'arc');
+    expect(arcs).toHaveLength(0);
+    // 3 moveTo + 3 lineTo (l1 trimmed + l2 trimmed + chamfer segment).
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    expect(moveTos).toHaveLength(3);
+    expect(lineTos).toHaveLength(3);
+  });
+});
+
 // Round 7 backlog B3 — paintPreview no longer renders embedded
 // transient labels (paintTransientLabel was wiped wholesale). The
 // per-arm angleRad rotation assertions are obsolete and removed; DI

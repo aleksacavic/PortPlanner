@@ -76,3 +76,21 @@ export {
   rotatePrimitive,
   scalePrimitive,
 } from './transforms';
+
+// M1.3b fillet-chamfer Phase 1 — fillet + chamfer per-pair-type helpers.
+export {
+  chamferLineAndPolylineEndpoint,
+  chamferPolylineCorner,
+  chamferTwoLines,
+  filletLineAndPolylineEndpoint,
+  filletPolylineCorner,
+  filletTwoLines,
+} from './transforms';
+export type {
+  ChamferLinePolylineResult,
+  ChamferSegmentGeometry,
+  ChamferTwoLinesResult,
+  FilletArcGeometry,
+  FilletLinePolylineResult,
+  FilletTwoLinesResult,
+} from './transforms';
