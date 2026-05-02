@@ -14,7 +14,12 @@
 //            factor = newDist / refDist.
 //   4. Commit: for each id, updatePrimitive(id, scalePrimitive(p, base, factor)).
 
-import { type Primitive, type PrimitiveId, scalePrimitive } from '@portplanner/domain';
+import {
+  type Point2D,
+  type Primitive,
+  type PrimitiveId,
+  scalePrimitive,
+} from '@portplanner/domain';
 import { projectStore, updatePrimitive } from '@portplanner/project-store';
 
 import { DIM_OFFSET_CSS } from '../canvas/painters/paintDimensionGuides';
@@ -82,27 +87,52 @@ export async function* scaleTool(): ToolGenerator {
     const refDist = Math.hypot(refInput.point.x - base.x, refInput.point.y - base.y);
     if (refDist === 0) return { committed: false, reason: 'aborted' };
 
+    // Freeze the new-distance cursor onto the reference ray (AC parity):
+    // user picked a direction at the previous prompt; the new distance
+    // is measured along THAT direction, not wherever the cursor wanders.
+    // Signed projection lets a click on the opposite side of base flip
+    // the result (negative factor — consistent with the single-prompt
+    // path's flip semantic per I-MOD-7).
+    const refAngleRad = Math.atan2(refInput.point.y - base.y, refInput.point.x - base.x);
+    const cosRef = Math.cos(refAngleRad);
+    const sinRef = Math.sin(refAngleRad);
+    const projectOntoRefRay = (cursor: Point2D): { point: Point2D; signedDist: number } => {
+      const t = (cursor.x - base.x) * cosRef + (cursor.y - base.y) * sinRef;
+      return {
+        point: { x: base.x + t * cosRef, y: base.y + t * sinRef },
+        signedDist: t,
+      };
+    };
+
     const newInput = yield {
       text: 'Specify new distance (pick a point)',
       acceptedInputKinds: ['point', 'number'],
       directDistanceFrom: base,
       dynamicInput: { fields: [{ kind: 'distance', label: 'Distance' }], combineAs: 'number' },
-      previewBuilder: (cursor) => ({
-        kind: 'scaled-entities',
-        primitives: ghostPrimitives,
-        base,
-        factor: Math.hypot(cursor.x - base.x, cursor.y - base.y) / refDist,
-      }),
-      // Same linear-dim along base→cursor for the new distance — the
-      // resulting factor is newDist/refDist, so showing newDist visibly
-      // matches what the user types or clicks.
-      dimensionGuidesBuilder: (cursor): DimensionGuide[] => [
-        { kind: 'linear-dim', anchorA: base, anchorB: cursor, offsetCssPx: DIM_OFFSET_CSS },
-      ],
+      previewBuilder: (cursor) => {
+        const { signedDist } = projectOntoRefRay(cursor);
+        return {
+          kind: 'scaled-entities',
+          primitives: ghostPrimitives,
+          base,
+          factor: signedDist / refDist,
+        };
+      },
+      // Dim line follows the projected point — visibly snaps to the
+      // reference ray so the user sees the angle is locked.
+      dimensionGuidesBuilder: (cursor): DimensionGuide[] => {
+        const { point: projected } = projectOntoRefRay(cursor);
+        return [
+          { kind: 'linear-dim', anchorA: base, anchorB: projected, offsetCssPx: DIM_OFFSET_CSS },
+        ];
+      },
     };
     let newDist: number;
     if (newInput.kind === 'point') {
-      newDist = Math.hypot(newInput.point.x - base.x, newInput.point.y - base.y);
+      // Project the click onto the reference ray; off-axis clicks become
+      // the perpendicular foot of their projection, matching the live
+      // preview the user saw.
+      newDist = projectOntoRefRay(newInput.point).signedDist;
     } else if (newInput.kind === 'number') {
       newDist = newInput.value;
     } else {
