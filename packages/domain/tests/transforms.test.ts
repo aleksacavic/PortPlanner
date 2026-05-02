@@ -194,6 +194,27 @@ describe('scalePrimitive', () => {
     expect(r.origin.y).toBeCloseTo(6, 6);
     expect(r.localAxisAngle).toBeCloseTo(0, 6);
   });
+  it('rectangle: negative factor with localAxisAngle=π/4 — re-anchor handles non-axis-aligned source', () => {
+    // SW=(0,0), localAxisAngle=π/4, w=10, h=4. NE_world derives from
+    // SW + R(π/4)·(10, 4). Scale by -1 about base=(0,0): NE_world flips
+    // through origin → that becomes new SW. localAxisAngle preserved
+    // (negative scale doesn't rotate, just flips through base).
+    const r0 = rect();
+    r0.origin = { x: 0, y: 0 };
+    r0.width = 10;
+    r0.height = 4;
+    r0.localAxisAngle = Math.PI / 4;
+    const r = scalePrimitive(r0, ZERO, -1) as RectanglePrimitive;
+    const cos = Math.cos(Math.PI / 4);
+    const sin = Math.sin(Math.PI / 4);
+    const expectedNeWorldX = 10 * cos - 4 * sin;
+    const expectedNeWorldY = 10 * sin + 4 * cos;
+    expect(r.origin.x).toBeCloseTo(-expectedNeWorldX, 6);
+    expect(r.origin.y).toBeCloseTo(-expectedNeWorldY, 6);
+    expect(r.width).toBeCloseTo(10, 6);
+    expect(r.height).toBeCloseTo(4, 6);
+    expect(r.localAxisAngle).toBeCloseTo(Math.PI / 4, 6);
+  });
   it('rectangle: negative factor — NE becomes new SW (flip through base)', () => {
     // rect SW=(5,5), w=10, h=5; NE_world = (15,10). Scale by -2 about (0,0):
     //   NE scaled = (-30, -20) ← becomes new SW of the flipped rectangle.
@@ -262,6 +283,26 @@ describe('mirrorPrimitive', () => {
     expect(r.width).toBeCloseTo(10, 6);
     expect(r.height).toBeCloseTo(5, 6);
     expect(r.localAxisAngle).toBeCloseTo(0, 6);
+  });
+  it('rectangle: non-zero localAxisAngle — re-anchor uses NW_world (Codex Round-2 quality gap)', () => {
+    // SW=(0,0), localAxisAngle=π/6, w=10, h=4.
+    // NW_world = SW + R(π/6)·(0, 4) = (-4·sin(π/6), 4·cos(π/6))
+    //          = (-2, 2·√3) ≈ (-2, 3.464).
+    // Reflect across x-axis (line angle = 0): NW_world.y flips sign →
+    // new SW = (-2, -3.464). New axis = 2·0 - π/6 = -π/6.
+    const r0 = rect();
+    r0.origin = { x: 0, y: 0 };
+    r0.width = 10;
+    r0.height = 4;
+    r0.localAxisAngle = Math.PI / 6;
+    const r = mirrorPrimitive(r0, xAxisLine) as RectanglePrimitive;
+    const expectedNwX = -4 * Math.sin(Math.PI / 6);
+    const expectedNwY = 4 * Math.cos(Math.PI / 6);
+    expect(r.origin.x).toBeCloseTo(expectedNwX, 6);
+    expect(r.origin.y).toBeCloseTo(-expectedNwY, 6);
+    expect(r.width).toBeCloseTo(10, 6);
+    expect(r.height).toBeCloseTo(4, 6);
+    expect(r.localAxisAngle).toBeCloseTo(-Math.PI / 6, 6);
   });
   it('zero-length mirror line is a no-op (degenerate)', () => {
     const p = pt();
