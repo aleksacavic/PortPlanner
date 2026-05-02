@@ -64,16 +64,24 @@ export function mirrorPrimitive(p: Primitive, line: { p1: Point2D; p2: Point2D }
         bulges: p.bulges.map((b) => -b),
       };
     case 'rectangle': {
+      // Reflection flips orientation. The painter assumes a right-handed
+      // local frame (+y_local = R90(+x_local)); after reflection the
+      // y-axis would be on the wrong side. Re-anchor by using the
+      // ORIGINAL NW corner as the new SW: in the reflected rectangle
+      // that corner ends up at the bottom-left, so the painter's
+      // SW → SE → NE → NW walk reproduces the reflected geometry
+      // correctly with width/height unchanged. New axis = reflected
+      // direction of the original +x_local = (2*lineAngle - α).
       const lineAngle = Math.atan2(line.p2.y - line.p1.y, line.p2.x - line.p1.x);
-      const sw = { x: p.origin.x, y: p.origin.y };
-      const ne = { x: p.origin.x + p.width, y: p.origin.y + p.height };
-      const swR = reflectPoint(sw, line.p1, line.p2);
-      const neR = reflectPoint(ne, line.p1, line.p2);
-      const minX = Math.min(swR.x, neR.x);
-      const minY = Math.min(swR.y, neR.y);
+      const cos = Math.cos(p.localAxisAngle);
+      const sin = Math.sin(p.localAxisAngle);
+      const nwWorld: Point2D = {
+        x: p.origin.x - p.height * sin,
+        y: p.origin.y + p.height * cos,
+      };
       return {
         ...p,
-        origin: { x: minX, y: minY },
+        origin: reflectPoint(nwWorld, line.p1, line.p2),
         localAxisAngle: 2 * lineAngle - p.localAxisAngle,
       };
     }

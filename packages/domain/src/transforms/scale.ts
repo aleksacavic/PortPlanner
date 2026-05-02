@@ -60,17 +60,29 @@ export function scalePrimitive(p: Primitive, base: Point2D, factor: number): Pri
         vertices: p.vertices.map((v) => scalePoint(v, base, factor)),
       };
     case 'rectangle': {
-      // For negative factor the rect flips through base; recompute
-      // origin as min-corner of the scaled corners.
-      const sw = { x: p.origin.x, y: p.origin.y };
-      const ne = { x: p.origin.x + p.width, y: p.origin.y + p.height };
-      const swScaled = scalePoint(sw, base, factor);
-      const neScaled = scalePoint(ne, base, factor);
-      const minX = Math.min(swScaled.x, neScaled.x);
-      const minY = Math.min(swScaled.y, neScaled.y);
+      // The painter walks SW → SE → NE → NW from `origin` along
+      // R(localAxisAngle). Scale preserves orientation but a negative
+      // factor flips the rectangle through `base`: the SW corner ends
+      // up where the NE was relative to base, so we re-anchor on the
+      // original NE for negative factors. localAxisAngle is unchanged
+      // (uniform scale doesn't rotate).
+      if (factor > 0) {
+        return {
+          ...p,
+          origin: scalePoint(p.origin, base, factor),
+          width: p.width * factor,
+          height: p.height * factor,
+        };
+      }
+      const cos = Math.cos(p.localAxisAngle);
+      const sin = Math.sin(p.localAxisAngle);
+      const neWorld: Point2D = {
+        x: p.origin.x + p.width * cos - p.height * sin,
+        y: p.origin.y + p.width * sin + p.height * cos,
+      };
       return {
         ...p,
-        origin: { x: minX, y: minY },
+        origin: scalePoint(neWorld, base, factor),
         width: p.width * Math.abs(factor),
         height: p.height * Math.abs(factor),
       };

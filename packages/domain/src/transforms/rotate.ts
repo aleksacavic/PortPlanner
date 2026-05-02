@@ -52,16 +52,14 @@ export function rotatePrimitive(p: Primitive, base: Point2D, angleRad: number): 
         vertices: p.vertices.map((v) => rotatePoint(v, base, angleRad)),
       };
     case 'rectangle': {
-      const sw = { x: p.origin.x, y: p.origin.y };
-      const se = { x: p.origin.x + p.width, y: p.origin.y };
-      const ne = { x: p.origin.x + p.width, y: p.origin.y + p.height };
-      const nw = { x: p.origin.x, y: p.origin.y + p.height };
-      const corners = [sw, se, ne, nw].map((c) => rotatePoint(c, base, angleRad));
-      const minX = Math.min(...corners.map((c) => c.x));
-      const minY = Math.min(...corners.map((c) => c.y));
+      // The rectangle's `origin` IS the SW corner in world space; the
+      // painter walks from origin along the local frame
+      // (R(localAxisAngle) · (width, 0)) for SE, etc. Rotation preserves
+      // orientation, so the SW corner stays the SW corner — just rotate
+      // it directly and increment the local axis angle.
       return {
         ...p,
-        origin: { x: minX, y: minY },
+        origin: rotatePoint(p.origin, base, angleRad),
         localAxisAngle: p.localAxisAngle + angleRad,
       };
     }

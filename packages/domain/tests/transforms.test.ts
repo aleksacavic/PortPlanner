@@ -128,6 +128,18 @@ describe('rotatePrimitive', () => {
     const r = rotatePrimitive(rect(), ZERO, Math.PI / 4) as RectanglePrimitive;
     expect(r.localAxisAngle).toBeCloseTo(Math.PI / 4, 6);
   });
+  it('rectangle: SW corner (origin) rotates about base — geometry survives', () => {
+    // rect at SW=(2,3), w=10, h=5, axis=0; rotate 90° about origin.
+    const r0 = rect();
+    r0.origin = { x: 2, y: 3 };
+    const r = rotatePrimitive(r0, ZERO, Math.PI / 2) as RectanglePrimitive;
+    // Original SW (2,3) rotated 90° CCW about (0,0) → (-3, 2).
+    expect(r.origin.x).toBeCloseTo(-3, 6);
+    expect(r.origin.y).toBeCloseTo(2, 6);
+    expect(r.width).toBeCloseTo(10, 6);
+    expect(r.height).toBeCloseTo(5, 6);
+    expect(r.localAxisAngle).toBeCloseTo(Math.PI / 2, 6);
+  });
   it('arc: startAngle + endAngle increment by angleRad', () => {
     const r = rotatePrimitive(arc(), ZERO, Math.PI / 2) as ArcPrimitive;
     expect(r.startAngle).toBeCloseTo(Math.PI / 2, 6);
@@ -174,6 +186,26 @@ describe('scalePrimitive', () => {
     expect(r.width).toBeCloseTo(20, 6);
     expect(r.height).toBeCloseTo(10, 6);
   });
+  it('rectangle: positive factor — SW corner scales, axis unchanged', () => {
+    const r0 = rect();
+    r0.origin = { x: 2, y: 3 };
+    const r = scalePrimitive(r0, ZERO, 2) as RectanglePrimitive;
+    expect(r.origin.x).toBeCloseTo(4, 6);
+    expect(r.origin.y).toBeCloseTo(6, 6);
+    expect(r.localAxisAngle).toBeCloseTo(0, 6);
+  });
+  it('rectangle: negative factor — NE becomes new SW (flip through base)', () => {
+    // rect SW=(5,5), w=10, h=5; NE_world = (15,10). Scale by -2 about (0,0):
+    //   NE scaled = (-30, -20) ← becomes new SW of the flipped rectangle.
+    const r0 = rect();
+    r0.origin = { x: 5, y: 5 };
+    const r = scalePrimitive(r0, ZERO, -2) as RectanglePrimitive;
+    expect(r.origin.x).toBeCloseTo(-30, 6);
+    expect(r.origin.y).toBeCloseTo(-20, 6);
+    expect(r.width).toBeCloseTo(20, 6);
+    expect(r.height).toBeCloseTo(10, 6);
+    expect(r.localAxisAngle).toBeCloseTo(0, 6);
+  });
   it('xline pivot scales but angle unchanged (direction-invariant)', () => {
     const x = xl();
     x.pivot = { x: 5, y: 0 };
@@ -217,6 +249,19 @@ describe('mirrorPrimitive', () => {
     const r = mirrorPrimitive(c, xAxisLine) as CirclePrimitive;
     expect(r.center.y).toBeCloseTo(-3, 6);
     expect(r.radius).toBeCloseTo(5, 6);
+  });
+  it('rectangle: original NW becomes new SW after reflection (orientation flip)', () => {
+    // Axis-aligned rect: SW=(2,3), w=10, h=5 → NW_world=(2, 8).
+    // Reflect across x-axis: NW_world → (2, -8). That becomes new SW.
+    // New axis = 2*lineAngle - α = 2*0 - 0 = 0.
+    const r0 = rect();
+    r0.origin = { x: 2, y: 3 };
+    const r = mirrorPrimitive(r0, xAxisLine) as RectanglePrimitive;
+    expect(r.origin.x).toBeCloseTo(2, 6);
+    expect(r.origin.y).toBeCloseTo(-8, 6);
+    expect(r.width).toBeCloseTo(10, 6);
+    expect(r.height).toBeCloseTo(5, 6);
+    expect(r.localAxisAngle).toBeCloseTo(0, 6);
   });
   it('zero-length mirror line is a no-op (degenerate)', () => {
     const p = pt();
