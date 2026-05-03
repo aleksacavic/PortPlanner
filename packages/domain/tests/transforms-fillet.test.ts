@@ -70,22 +70,36 @@ describe('filletTwoLines', () => {
     expect(sweep).toBeCloseTo(Math.PI / 2, 9);
   });
 
-  it('60° oblique corner: trim distance = R·tan(60°) (interior angle = 120°)', () => {
+  it('30° oblique corner: trim distance = R/tan(15°) and arc is equidistant from tangent points', () => {
     // Vertical L1 going up; L2 at 60° from horizontal going up-right.
-    // The TWO kept directions (corner→K1 and corner→K2) have an angle of
-    // 60° between them — that's the interior angle θ used in d = R·tan(θ/2).
-    const l1 = makeLine(0, -5, 0, 5); // vertical
-    const l2 = makeLine(0, 0, 10, Math.tan(Math.PI / 3) * 10); // 60° above horizontal
+    // u1=(0,1), u2=(cos60°, sin60°)=(0.5, 0.866). Angle between them
+    // (interior corner angle θ) = acos(u1·u2) = acos(0.866) = 30° = π/6.
+    // Per the corrected formula d = R·cot(θ/2) = R / tan(15°) ≈ R·3.732.
+    // For R=1: d ≈ 3.732. L1 length from corner (0,0) to kept (0,5) is 5,
+    // so d=3.732 < 5 — no throw.
+    const l1 = makeLine(0, -5, 0, 5);
+    const l2 = makeLine(0, 0, 10, Math.tan(Math.PI / 3) * 10);
     const result = filletTwoLines(l1, l2, 1, {
       p1Hint: { x: 0, y: 4 },
       p2Hint: { x: 8, y: Math.tan(Math.PI / 3) * 8 },
     });
-    // θ between u1=(0,1) and u2=(cos60°, sin60°) is 30° (= π/6).
-    // d = 1 * tan(π/12) ≈ 0.2679
-    const expectedD = Math.tan(Math.PI / 12);
+    const expectedD = 1 / Math.tan(Math.PI / 12);
     expect(result.l1Updated.p1.x).toBeCloseTo(0, 9);
     expect(result.l1Updated.p1.y).toBeCloseTo(expectedD, 9);
     expect(result.l1Updated.p2).toEqual({ x: 0, y: 5 });
+    // Critical: arc must be equidistant (radius=R=1) from BOTH tangent
+    // points. This is the bug-fix anchor — the prior trimDistance formula
+    // produced an arc center NOT equidistant from the trim points, which
+    // is the root cause of the visual misalignment users saw on non-90°
+    // fillets.
+    const t1 = result.l1Updated.p1; // tangent on L1 at the trim point
+    const t2 = {
+      x: l2.p1.x + 0.5 * expectedD,
+      y: l2.p1.y + Math.sin(Math.PI / 3) * expectedD,
+    };
+    const c = result.newArc.center;
+    expect(Math.hypot(c.x - t1.x, c.y - t1.y)).toBeCloseTo(1, 9);
+    expect(Math.hypot(c.x - t2.x, c.y - t2.y)).toBeCloseTo(1, 9);
   });
 
   it('throws on parallel lines', () => {

@@ -7,10 +7,16 @@
 //   - filletPolylineCorner(p, vertexIdx, radius)
 //   - filletLineAndPolylineEndpoint(line, lineHint, polyline, polylineEndpoint, radius)
 //
-// Geometry per ADR-016 Appendix A:
-//   d = R * tan(θ/2)         trim distance from corner along each leg
-//   bulge = tan(θ/4)         polyline bulge encoding for the arc
-// where θ is the included angle at the corner (0 < θ < π).
+// Geometry per ADR-016 Appendix A (with θ measured as the INTERIOR
+// corner angle between the kept legs):
+//   d = R / tan(θ/2)         trim distance from corner along each leg
+//                            (equiv: R · cot(θ/2))
+//   bulge = tan((π−θ)/4)     polyline bulge encoding for the arc
+//                            (the arc subtends the SUPPLEMENT of θ —
+//                            a.k.a. the turn angle in ADR-016 Appendix A's
+//                            formulation; both yield identical values
+//                            at θ=90° but diverge for other angles).
+// where θ is the interior angle at the corner (0 < θ < π).
 //
 // PickHint convention (AC parity): the kept endpoint of a line is the
 // one CLOSER to its pick hint. The user clicks near the side they want
@@ -86,7 +92,15 @@ function arcGeometryFromCorner(
   if (theta < PARALLEL_EPSILON || Math.abs(theta - Math.PI) < PARALLEL_EPSILON) {
     throw new Error('fillet: parallel lines cannot be filleted');
   }
-  const trimDistance = radius * Math.tan(theta / 2);
+  // d = R · cot(θ/2) where θ is the INTERIOR corner angle between u1,u2.
+  // Derivation: in the right triangle (corner, arc center, tangent point),
+  // the angle at the corner is θ/2, the side opposite is R (perpendicular
+  // radius), and the side adjacent (along the leg) is d. So tan(θ/2)=R/d,
+  // giving d=R/tan(θ/2). At θ=90° this collapses to d=R, but for other
+  // angles the formula d=R·tan(θ/2) is inverted and produces an arc
+  // center NOT equidistant from the tangent points (visible as the
+  // arc-misalignment bug).
+  const trimDistance = radius / Math.tan(theta / 2);
   const t1New = { x: corner.x + u1.x * trimDistance, y: corner.y + u1.y * trimDistance };
   const t2New = { x: corner.x + u2.x * trimDistance, y: corner.y + u2.y * trimDistance };
 
@@ -256,7 +270,8 @@ export function filletPolylineCorner(
     throw new Error('filletPolylineCorner: adjacent segments are collinear (no corner to fillet)');
   }
 
-  const trimDistance = radius * Math.tan(theta / 2);
+  // d = R · cot(θ/2) — see arcGeometryFromCorner for derivation.
+  const trimDistance = radius / Math.tan(theta / 2);
   if (trimDistance >= distance(k, prev) || trimDistance >= distance(k, next)) {
     throw new Error('filletPolylineCorner: trim distance exceeds adjacent segment length');
   }
@@ -280,7 +295,11 @@ export function filletPolylineCorner(
   const cross = walkInX * walkOutY - walkInY * walkOutX;
   // Positive cross = CCW turn (left turn) = positive bulge.
   // Negative cross = CW turn (right turn) = negative bulge.
-  const bulgeMagnitude = Math.tan(theta / 4);
+  // bulge = tan((π−θ)/4) where θ is the interior corner angle. The arc
+  // subtends the supplement (turn angle = π−θ); ADR-016 Appendix A's
+  // formula uses the turn angle directly. At θ=90° this collapses to
+  // tan(π/8); for other angles tan(θ/4) is wrong.
+  const bulgeMagnitude = Math.tan((Math.PI - theta) / 4);
   const bulge = cross >= 0 ? bulgeMagnitude : -bulgeMagnitude;
 
   // Compose new vertices array: replace K with [P1, P2].
