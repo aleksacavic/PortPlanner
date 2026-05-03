@@ -179,8 +179,7 @@ export function filletTwoLines(
     // so the max R that fits is L · tan(θ/2) where L is the shorter
     // corner-to-kept distance.
     const cornerTheta = Math.acos(Math.max(-1, Math.min(1, u1.x * u2.x + u1.y * u2.y)));
-    const maxR =
-      Math.min(distance(corner, k1), distance(corner, k2)) * Math.tan(cornerTheta / 2);
+    const maxR = Math.min(distance(corner, k1), distance(corner, k2)) * Math.tan(cornerTheta / 2);
     throw new Error(
       `filletTwoLines: radius ${radius} too large for these lines (max ≈ ${maxR.toFixed(2)} for this angle/length); reduce radius via the R sub-option`,
     );
@@ -281,8 +280,7 @@ export function filletPolylineCorner(
   // d = R · cot(θ/2) — see arcGeometryFromCorner for derivation.
   const trimDistance = radius / Math.tan(theta / 2);
   if (trimDistance >= distance(k, prev) || trimDistance >= distance(k, next)) {
-    const maxR =
-      Math.min(distance(k, prev), distance(k, next)) * Math.tan(theta / 2);
+    const maxR = Math.min(distance(k, prev), distance(k, next)) * Math.tan(theta / 2);
     throw new Error(
       `filletPolylineCorner: radius ${radius} too large for this corner (max ≈ ${maxR.toFixed(2)} for this angle/segment lengths)`,
     );
