@@ -215,7 +215,7 @@ function commitChamfer(a: PickedEntity, b: PickedEntity, d1: number, d2: number)
         layerId: a.primitive.layerId,
         displayOverrides: {},
       });
-      return { committed: true, description: `chamfered line + line` };
+      return { committed: true, description: 'chamfered line + line' };
     } catch (err) {
       emitStatus(`Chamfer: ${(err as Error).message}`);
       return { committed: false, reason: 'aborted' };
@@ -233,7 +233,7 @@ function commitChamfer(a: PickedEntity, b: PickedEntity, d1: number, d2: number)
     try {
       const updated = chamferPolylineCorner(a.primitive, k, d1, d2);
       updatePrimitive(a.id, stripIdentity(updated));
-      return { committed: true, description: `chamfered polyline corner` };
+      return { committed: true, description: 'chamfered polyline corner' };
     } catch (err) {
       emitStatus(`Chamfer: ${(err as Error).message}`);
       return { committed: false, reason: 'aborted' };
@@ -275,7 +275,7 @@ function commitChamfer(a: PickedEntity, b: PickedEntity, d1: number, d2: number)
         layerId: linePick.primitive.layerId,
         displayOverrides: {},
       });
-      return { committed: true, description: `chamfered line + polyline-end` };
+      return { committed: true, description: 'chamfered line + polyline-end' };
     } catch (err) {
       emitStatus(`Chamfer: ${(err as Error).message}`);
       return { committed: false, reason: 'aborted' };

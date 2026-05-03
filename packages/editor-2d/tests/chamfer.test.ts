@@ -15,7 +15,7 @@ import {
   projectStore,
   resetProjectStoreForTests,
 } from '@portplanner/project-store';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { chamferTool } from '../src/tools/chamfer';
 import { startTool } from '../src/tools/runner';
@@ -215,27 +215,35 @@ describe('chamferTool', () => {
     expect(pastStatesCount() - baseCount).toBe(0);
   });
 
-  it('closed polyline + line: aborts with 0 ops', async () => {
+  it('closed polyline + line: aborts with 0 ops via the CLOSED-POLY branch (Codex Round-1 H)', async () => {
+    // Mirror of fillet's closed-polyline branch-trace fix: polyline
+    // moved off the line's hit-tolerance band so the polyline pick
+    // unambiguously routes through the closed-poly-specific reject.
     addLine({ x: -5, y: 0 }, { x: 5, y: 0 });
     addPolyline(
       [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 1, y: 1 },
-        { x: 0, y: 1 },
+        { x: 0, y: 2 },
+        { x: 1, y: 2 },
+        { x: 1, y: 3 },
+        { x: 0, y: 3 },
       ],
       [0, 0, 0, 0],
       true,
     );
     editorUiActions.setChamferDistances(0.2, 0.2);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const baseCount = pastStatesCount();
     const tool = startTool('chamfer', chamferTool);
     await tick();
     tool.feedInput({ kind: 'point', point: { x: 4, y: 0 } });
     await tick();
-    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 2.5 } });
     await tool.done();
     expect(pastStatesCount() - baseCount).toBe(0);
+    const messages = warnSpy.mock.calls.map((c) => c[0] as string);
+    expect(messages.some((m) => m.includes('closed polyline'))).toBe(true);
+    expect(messages.some((m) => m.includes('pair not supported'))).toBe(false);
+    warnSpy.mockRestore();
   });
 
   it('two different polylines: aborts with 0 ops', async () => {

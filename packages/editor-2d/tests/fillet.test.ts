@@ -16,7 +16,7 @@ import {
   projectStore,
   resetProjectStoreForTests,
 } from '@portplanner/project-store';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { filletTool } from '../src/tools/fillet';
 import { startTool } from '../src/tools/runner';
@@ -250,27 +250,47 @@ describe('filletTool', () => {
     expect(pastStatesCount() - baseCount).toBe(0);
   });
 
-  it('closed polyline + line: aborts with 0 ops', async () => {
+  it('closed polyline + line: aborts with 0 ops via the CLOSED-POLY branch (Codex Round-1 H)', async () => {
+    // Codex Round-1 H: prior test geometry placed the closed polyline's
+    // vertex 0 at (0, 0) — coincident with the line passing through
+    // (0, 0). Both entities tied at distance 0 from the polyline pick,
+    // so iteration order routed through the same-line-twice reject path
+    // ("pair not supported in V1"), NOT the closed-polyline branch.
+    // Fix: move the closed polyline up to y=2..3 (well outside the
+    // line's hit-tolerance of 0.6 metric) and pick the polyline at a
+    // point ON its left edge but OFF the line. The pair is now
+    // unambiguously line + closed-polyline → routes through the
+    // closed-polyline-specific abort message.
     addLine({ x: -5, y: 0 }, { x: 5, y: 0 });
     addPolyline(
       [
-        { x: 0, y: 0 },
-        { x: 1, y: 0 },
-        { x: 1, y: 1 },
-        { x: 0, y: 1 },
+        { x: 0, y: 2 },
+        { x: 1, y: 2 },
+        { x: 1, y: 3 },
+        { x: 0, y: 3 },
       ],
       [0, 0, 0, 0],
       true,
     );
     editorUiActions.setFilletRadius(0.2);
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const baseCount = pastStatesCount();
     const tool = startTool('fillet', filletTool);
     await tick();
     tool.feedInput({ kind: 'point', point: { x: 4, y: 0 } });
     await tick();
-    tool.feedInput({ kind: 'point', point: { x: 0, y: 0 } });
+    // Pick on the polyline's left edge (segment v3 → v0 wraps from
+    // (0, 3) to (0, 2)), at y=2.5. Far from the line.
+    tool.feedInput({ kind: 'point', point: { x: 0, y: 2.5 } });
     await tool.done();
     expect(pastStatesCount() - baseCount).toBe(0);
+    // Branch-trace assertion: the closed-polyline-specific message MUST
+    // appear in the console.warn output, NOT the generic
+    // "pair not supported" fallback.
+    const messages = warnSpy.mock.calls.map((c) => c[0] as string);
+    expect(messages.some((m) => m.includes('closed polyline'))).toBe(true);
+    expect(messages.some((m) => m.includes('pair not supported'))).toBe(false);
+    warnSpy.mockRestore();
   });
 
   it('two different polylines: aborts with 0 ops', async () => {

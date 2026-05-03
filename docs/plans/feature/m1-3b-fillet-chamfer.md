@@ -569,6 +569,24 @@ Rating: **9.3 / 10 Go (conditional-hardening recommended).** Three open items, n
 - **Gates passed:** FC-P1-DomainPurity (0 matches), FC-P1-ArcParamsSSOT (1 match in `_polylineGeometry.ts`), FC-P1-DomainTests (120 pass), FC-P1-PainterTests (paintPreview/hit-test/snap pass), FC-P1-Typecheck clean, FC-P1-Biome clean.
 - **ADR-016 §170 closure:** preview painter, hit-test, osnap MID all bulge-aware. Production bulged polylines (introduced by Phase 2/3 tools) will render / snap / hit-test correctly.
 
+### Post-commit remediation Round 1 — closed-polyline branch trace (2026-05-03)
+
+**Source:** Codex Procedure 04 Round 1 audit on commit range `a677cd6..48da141`. Verdict: Go 9.1/10 with one High-risk coverage gap.
+
+**Finding:** `fillet.test.ts` and `chamfer.test.ts` "closed polyline + line: aborts with 0 ops" cases used a closed unit-square polyline at the origin with vertex 0 at `(0, 0)` — coincident with the test line passing through `(0, 0)`. When the test fed `point: { x: 0, y: 0 }` for the polyline pick, both the line and the polyline tied at distance 0; `findEntityAtMetricPoint` iteration order routed to the line (added first), so both picks identified the SAME line → the tool dispatched through the same-line-twice reject (`"pair not supported in V1"`), NOT the closed-polyline-specific branch. Tests passed (zundo +0 either way) but didn't exercise the intended branch.
+
+**Severity:** High-risk — branch-trace coverage gap, not a runtime defect.
+
+**Fix:** Test geometry only. Both tests now place the closed polyline at `y=2..3` (well outside the line's hit-tolerance band of `0.6` metric) and pick the polyline at `(0, 2.5)` on its left edge. The pair is now unambiguously line + closed-polyline, routing through the closed-polyline-specific reject. Plus a `vi.spyOn(console, 'warn')` assertion verifies the message contains `"closed polyline"` AND does NOT contain `"pair not supported"` — locking the branch trace.
+
+**Files changed:** `packages/editor-2d/tests/{fillet,chamfer}.test.ts` (test fixtures + branch-trace assertions). No source-code changes.
+
+**How verified:** `pnpm --filter editor-2d test fillet chamfer` → 30/30 pass (was 30/30 with weaker coverage; now stronger). Full suite green: 776 tests across 6 packages. `pnpm typecheck` + `pnpm check` clean.
+
+**Binding-spec impact:** none (test-only change).
+
+Codex residual recommendations on residual quality gaps (`emitStatus` → console.warn instead of command-bar; preview no-op uses degenerate `'line'` arm) acknowledged and remain deferred per plan §10 residual risks.
+
 
 
 **Plan:** `docs/plans/feature/m1-3b-fillet-chamfer.md`
