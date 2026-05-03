@@ -175,7 +175,15 @@ export function filletTwoLines(
     arcGeometryFromCorner(corner, u1, u2, radius);
 
   if (trimDistance >= distance(corner, k1) || trimDistance >= distance(corner, k2)) {
-    throw new Error('filletTwoLines: trim distance exceeds source segment length');
+    // Tell the user the actual cap so they don't guess. d = R/tan(θ/2),
+    // so the max R that fits is L · tan(θ/2) where L is the shorter
+    // corner-to-kept distance.
+    const cornerTheta = Math.acos(Math.max(-1, Math.min(1, u1.x * u2.x + u1.y * u2.y)));
+    const maxR =
+      Math.min(distance(corner, k1), distance(corner, k2)) * Math.tan(cornerTheta / 2);
+    throw new Error(
+      `filletTwoLines: radius ${radius} too large for these lines (max ≈ ${maxR.toFixed(2)} for this angle/length); reduce radius via the R sub-option`,
+    );
   }
 
   const l1Updated: LinePrimitive = k1IsP1 ? { ...l1, p2: t1New } : { ...l1, p1: t1New };
@@ -273,7 +281,11 @@ export function filletPolylineCorner(
   // d = R · cot(θ/2) — see arcGeometryFromCorner for derivation.
   const trimDistance = radius / Math.tan(theta / 2);
   if (trimDistance >= distance(k, prev) || trimDistance >= distance(k, next)) {
-    throw new Error('filletPolylineCorner: trim distance exceeds adjacent segment length');
+    const maxR =
+      Math.min(distance(k, prev), distance(k, next)) * Math.tan(theta / 2);
+    throw new Error(
+      `filletPolylineCorner: radius ${radius} too large for this corner (max ≈ ${maxR.toFixed(2)} for this angle/segment lengths)`,
+    );
   }
 
   // New vertices replacing K.

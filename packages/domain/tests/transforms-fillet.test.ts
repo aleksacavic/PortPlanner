@@ -116,7 +116,7 @@ describe('filletTwoLines', () => {
     const l2 = makeLine(0, 0, 0, 1);
     expect(() =>
       filletTwoLines(l1, l2, 100, { p1Hint: { x: 1, y: 0 }, p2Hint: { x: 0, y: 1 } }),
-    ).toThrow(/trim distance/);
+    ).toThrow(/too large|trim distance|max/);
   });
 
   it('throws on radius ≤ 0', () => {
@@ -230,7 +230,7 @@ describe('filletPolylineCorner', () => {
       ],
       [0, 0],
     );
-    expect(() => filletPolylineCorner(p, 1, 100)).toThrow(/trim distance/);
+    expect(() => filletPolylineCorner(p, 1, 100)).toThrow(/too large|trim distance|max/);
   });
 });
 
