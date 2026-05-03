@@ -201,6 +201,16 @@ export interface OverlayState {
    */
   pointPickActive: boolean;
   /**
+   * M1.3b fillet-chamfer Phase 2 follow-up — true when the active
+   * prompt is selecting an entity (e.g., Fillet's "Select first object")
+   * even though the input kind is 'point'. Drives the `pick-entity`
+   * crosshair mode (pickbox-only, no cross arms) so the visual signals
+   * "pick an object" rather than "drop a free-form point". Mirrored
+   * from `Prompt.pickIntent === 'select-entity'` whenever `setPrompt`
+   * is called.
+   */
+  entityPickActive: boolean;
+  /**
    * Snap target highlighted under the cursor (with kind + point), or
    * `null` when no tool awaits a 'point' input or all snap toggles
    * are off (I-DTP-7). Written by EditorRoot's snap-on-cursor effect
@@ -361,6 +371,7 @@ export const createInitialEditorUiState = (): EditorUiState => ({
   overlay: {
     cursor: null,
     pointPickActive: false,
+    entityPickActive: false,
     snapTarget: null,
     guides: [],
     selectionHandles: [],
@@ -444,6 +455,7 @@ export const editorUiActions = {
     defaultValue: string | null = null,
     acceptedInputKinds: AcceptedInputKind[] = [],
     directDistanceFrom: Point2D | null = null,
+    pickIntent: 'select-entity' | null = null,
   ): void {
     editorUiStore.setState((s) => {
       s.commandBar.activePrompt = prompt;
@@ -452,8 +464,9 @@ export const editorUiActions = {
       s.commandBar.inputBuffer = '';
       s.commandBar.acceptedInputKinds = acceptedInputKinds;
       s.commandBar.directDistanceFrom = directDistanceFrom;
-      // SSOT mirror: drives the `pick-point` crosshair mode resolver.
+      // SSOT mirrors driving the crosshair mode resolver.
       s.overlay.pointPickActive = acceptedInputKinds.includes('point');
+      s.overlay.entityPickActive = pickIntent === 'select-entity';
     });
   },
   appendHistory(entry: CommandBarHistoryEntry): void {

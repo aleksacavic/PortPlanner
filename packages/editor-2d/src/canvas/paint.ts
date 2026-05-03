@@ -91,8 +91,12 @@ export function paint(ctx: CanvasRenderingContext2D, input: PaintInput): void {
     // (crosshairSizePct === 0) AND no pick-point prompt is overriding.
     // Pick-point always renders so the user gets the affordance even if
     // they previously F7'd the cursor off.
-    if (overlay.cursor && (overlay.pointPickActive || viewport.crosshairSizePct > 0)) {
+    if (
+      overlay.cursor &&
+      (overlay.pointPickActive || overlay.entityPickActive || viewport.crosshairSizePct > 0)
+    ) {
       const mode = resolveCrosshairMode({
+        entityPickActive: overlay.entityPickActive,
         pointPickActive: overlay.pointPickActive,
         userSizePct: viewport.crosshairSizePct,
       });

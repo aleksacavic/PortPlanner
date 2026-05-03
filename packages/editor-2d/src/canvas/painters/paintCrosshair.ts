@@ -5,9 +5,12 @@
 // the painter dispatches on it. No more raw `sizePct` plumbing in the
 // caller.
 //
-//   full      — long arms spanning the canvas + pickbox      (F7 default)
-//   pickbox   — short cross + pickbox                        (F7 minimum)
-//   pick-point — short cross + NO pickbox                    (point-pick prompts)
+//   full        — long arms spanning the canvas + pickbox    (F7 default)
+//   pickbox     — short cross + pickbox                      (F7 minimum)
+//   pick-point  — short cross + NO pickbox                   (free-form point-pick prompts)
+//   pick-entity — pickbox only, NO arms                      ("Select object" prompts —
+//                                                            tools opt in via Prompt.pickIntent
+//                                                            = 'select-entity')
 //
 // AutoCAD-style cursor: the pickbox doubles as the click target when no
 // tool is active and tags the cursor center with a 10×10 CSS-px square.
@@ -27,7 +30,7 @@ import { parseDashPattern, parseNumericToken } from './_tokens';
 
 /** Discriminated cursor styles. SSOT — every consumer routes through
  *  `resolveCrosshairMode` to pick one of these. */
-export type CrosshairMode = 'full' | 'pickbox' | 'pick-point';
+export type CrosshairMode = 'full' | 'pickbox' | 'pick-point' | 'pick-entity';
 
 interface CrosshairVisual {
   /** % of canvas height for cross arm length. Special: 100 → full canvas
@@ -45,18 +48,31 @@ const VISUAL_BY_MODE: Record<CrosshairMode, CrosshairVisual> = {
   // preserves that visual.
   pickbox: { sizePct: 5, showPickbox: true },
   // Pick-point: same short arms but NO pickbox so the cursor doesn't look
-  // like a hit-test selector during a point-pick prompt.
+  // like a hit-test selector during a free-form point-pick prompt.
   'pick-point': { sizePct: 5, showPickbox: false },
+  // Pick-entity: pickbox ONLY (no arms) — visual signal "click an object",
+  // distinct from pick-point's free-form-point signal. Used when a tool
+  // sets Prompt.pickIntent = 'select-entity' (Fillet, Chamfer first/second
+  // picks; future Trim/Extend/Erase/etc.).
+  'pick-entity': { sizePct: 0, showPickbox: true },
 };
 
-/** Resolve the cursor mode from the two orthogonal inputs:
+/** Resolve the cursor mode from the orthogonal inputs:
+ *    - entityPickActive: the active prompt selects an entity ("Select
+ *      object" semantics — wins over everything else)
  *    - pointPickActive: the active prompt expects a metric point
  *    - userSizePct: the user's F7 toggle (50+ → full, else → pickbox)
- *  Pick-point wins over the user toggle. SSOT for the precedence rule. */
+ *  Precedence: pick-entity > pick-point > user toggle (full / pickbox).
+ *  SSOT for the resolution rule.
+ *
+ *  `entityPickActive` is optional in the args type for back-compat with
+ *  existing callers that haven't been updated; defaults to false. */
 export function resolveCrosshairMode(args: {
+  entityPickActive?: boolean;
   pointPickActive: boolean;
   userSizePct: number;
 }): CrosshairMode {
+  if (args.entityPickActive) return 'pick-entity';
   if (args.pointPickActive) return 'pick-point';
   return args.userSizePct >= 50 ? 'full' : 'pickbox';
 }

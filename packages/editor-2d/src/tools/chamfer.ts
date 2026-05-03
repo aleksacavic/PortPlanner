@@ -92,6 +92,7 @@ export async function* chamferTool(): ToolGenerator {
       text: 'Select first object or [Distance]',
       acceptedInputKinds: ['point', 'subOption'],
       subOptions: [{ label: 'Distance', shortcut: 'd' }],
+      pickIntent: 'select-entity',
     };
     if (input.kind === 'subOption' && input.optionLabel === 'Distance') {
       const d1Input = yield {
@@ -122,6 +123,7 @@ export async function* chamferTool(): ToolGenerator {
   const secondInput = yield {
     text: 'Select second object',
     acceptedInputKinds: ['point'],
+    pickIntent: 'select-entity',
     previewBuilder: (cursor): PreviewShape => {
       const project = projectStore.getState().project;
       const { d1, d2 } = editorUiStore.getState().chamfer;

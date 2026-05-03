@@ -71,6 +71,19 @@ describe('paintCrosshair — mode dispatch (full / pickbox / pick-point)', () =>
     expect(calls.find((c) => c.method === 'strokeRect')).toBeDefined();
   });
 
+  it('renders pickbox-only (NO arms) for mode=pick-entity', () => {
+    const { ctx, calls } = makeCtxRecorder();
+    paintCrosshair(ctx, { x: 0, y: 0 }, 'pick-entity', viewport, dark);
+    // Pick-entity: pickbox without arms — visual signal "click an
+    // object". No moveTo / lineTo path commands; only the strokeRect
+    // for the pickbox.
+    const moveTos = calls.filter((c) => c.method === 'moveTo');
+    const lineTos = calls.filter((c) => c.method === 'lineTo');
+    expect(moveTos).toHaveLength(0);
+    expect(lineTos).toHaveLength(0);
+    expect(calls.find((c) => c.method === 'strokeRect')).toBeDefined();
+  });
+
   it('pickbox arm length matches pick-point arm length (parity invariant)', () => {
     const { ctx: pbCtx, calls: pbCalls } = makeCtxRecorder();
     paintCrosshair(pbCtx, { x: 0, y: 0 }, 'pickbox', viewport, dark);
@@ -194,5 +207,17 @@ describe('resolveCrosshairMode — SSOT precedence rule', () => {
   it('no point-pick + sizePct < 50 → pickbox', () => {
     expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 5 })).toBe('pickbox');
     expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 0 })).toBe('pickbox');
+  });
+  it('entity-pick wins over point-pick AND user toggle', () => {
+    expect(
+      resolveCrosshairMode({ entityPickActive: true, pointPickActive: false, userSizePct: 100 }),
+    ).toBe('pick-entity');
+    expect(
+      resolveCrosshairMode({ entityPickActive: true, pointPickActive: true, userSizePct: 5 }),
+    ).toBe('pick-entity');
+  });
+  it('entity-pick omitted (back-compat) → resolver behaves as before', () => {
+    expect(resolveCrosshairMode({ pointPickActive: true, userSizePct: 100 })).toBe('pick-point');
+    expect(resolveCrosshairMode({ pointPickActive: false, userSizePct: 100 })).toBe('full');
   });
 });

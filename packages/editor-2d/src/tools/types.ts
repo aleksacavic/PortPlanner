@@ -211,6 +211,21 @@ export interface Prompt {
   defaultValue?: string;
   acceptedInputKinds: AcceptedInputKind[];
   /**
+   * M1.3b fillet-chamfer Phase 2 follow-up — opt-in tool intent flag for
+   * prompts that semantically select an existing entity rather than
+   * dropping a free-form metric point. The runner mirrors this to
+   * `overlay.entityPickActive`, which the crosshair resolver maps to
+   * the `'pick-entity'` cursor mode (pickbox-only, no arms — visually
+   * indicates "pick an object" vs the small-cross `'pick-point'` mode
+   * used for free-form point drops). Tools that yield 'point' prompts
+   * but actually mean "click an entity" (Fillet, Chamfer) set this to
+   * `'select-entity'`.
+   *
+   * Default omitted → free-form point-pick semantics (existing
+   * pick-point cursor on prompts that accept 'point').
+   */
+  pickIntent?: 'select-entity';
+  /**
    * M1.3d Phase 4 — optional cursor-driven preview builder. When set,
    * the tool runner subscribes to `editorUiStore.overlay.cursor` and
    * re-invokes this on every cursor change, writing the result to

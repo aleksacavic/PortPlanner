@@ -117,6 +117,7 @@ export async function* filletTool(): ToolGenerator {
       text: 'Select first object or [Radius]',
       acceptedInputKinds: ['point', 'subOption'],
       subOptions: [{ label: 'Radius', shortcut: 'r' }],
+      pickIntent: 'select-entity',
     };
     if (input.kind === 'subOption' && input.optionLabel === 'Radius') {
       const radiusInput = yield {
@@ -140,6 +141,7 @@ export async function* filletTool(): ToolGenerator {
   const secondInput = yield {
     text: 'Select second object',
     acceptedInputKinds: ['point'],
+    pickIntent: 'select-entity',
     previewBuilder: (cursor): PreviewShape => {
       const project = projectStore.getState().project;
       const radius = editorUiStore.getState().fillet.radius;

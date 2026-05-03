@@ -213,6 +213,7 @@ export function startTool(toolId: string, generatorFactory: () => ToolGenerator)
           prompt.defaultValue ?? null,
           prompt.acceptedInputKinds,
           prompt.directDistanceFrom ?? null,
+          prompt.pickIntent ?? null,
         );
         // M1.3 Round 6 — Phase 1 step 3a.i: publish DI manifest sparsely
         // on prompt-yield (resets buffers + activeFieldIdx per Rev-1
