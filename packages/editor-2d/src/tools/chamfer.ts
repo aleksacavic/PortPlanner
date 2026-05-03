@@ -28,7 +28,7 @@ import { findEntityAtMetricPoint } from '../canvas/hit-test';
 import { editorUiActions, editorUiStore } from '../ui-state/store';
 import type { ChamferPreviewCase, PreviewShape, ToolGenerator, ToolResult } from './types';
 
-const HIT_TOLERANCE_METRIC = 0.6;
+const HIT_TOLERANCE_METRIC = 1.5;
 
 interface PickedEntity {
   id: PrimitiveId;
@@ -116,7 +116,10 @@ export async function* chamferTool(): ToolGenerator {
     const project = projectStore.getState().project;
     if (!project) return { committed: false, reason: 'aborted' };
     const hit = findEntityAtMetricPoint(input.point, project.primitives, HIT_TOLERANCE_METRIC);
-    if (!hit) return { committed: false, reason: 'aborted' };
+    if (!hit) {
+      emitStatus('Chamfer: no object at that point — click directly on a line or polyline');
+      return { committed: false, reason: 'aborted' };
+    }
     firstPick = { id: hit.id, primitive: hit.primitive, hint: input.point };
   }
 
@@ -145,7 +148,10 @@ export async function* chamferTool(): ToolGenerator {
   const project = projectStore.getState().project;
   if (!project) return { committed: false, reason: 'aborted' };
   const hit2 = findEntityAtMetricPoint(secondInput.point, project.primitives, HIT_TOLERANCE_METRIC);
-  if (!hit2) return { committed: false, reason: 'aborted' };
+  if (!hit2) {
+    emitStatus('Chamfer: no object at that point — click directly on a line or polyline');
+    return { committed: false, reason: 'aborted' };
+  }
   const secondPick: PickedEntity = {
     id: hit2.id,
     primitive: hit2.primitive,

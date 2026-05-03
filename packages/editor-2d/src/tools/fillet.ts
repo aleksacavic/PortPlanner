@@ -40,7 +40,11 @@ import { findEntityAtMetricPoint } from '../canvas/hit-test';
 import { editorUiActions, editorUiStore } from '../ui-state/store';
 import type { FilletPreviewCase, PreviewShape, ToolGenerator, ToolResult } from './types';
 
-const HIT_TOLERANCE_METRIC = 0.6;
+// 1.5m at zoom=10 (default) ≈ 15 CSS px — more forgiving than the canvas
+// hover hit-test's 6px tolerance because the user is in a deliberate
+// "select object" prompt (pickbox cursor is the visual cue) and AC's
+// pickbox-area tolerance widens during entity-pick prompts vs idle hover.
+const HIT_TOLERANCE_METRIC = 1.5;
 
 interface PickedEntity {
   id: PrimitiveId;
@@ -133,7 +137,10 @@ export async function* filletTool(): ToolGenerator {
     const project = projectStore.getState().project;
     if (!project) return { committed: false, reason: 'aborted' };
     const hit = findEntityAtMetricPoint(input.point, project.primitives, HIT_TOLERANCE_METRIC);
-    if (!hit) return { committed: false, reason: 'aborted' };
+    if (!hit) {
+      emitStatus('Fillet: no object at that point — click directly on a line or polyline');
+      return { committed: false, reason: 'aborted' };
+    }
     firstPick = { id: hit.id, primitive: hit.primitive, hint: input.point };
   }
 
@@ -162,7 +169,10 @@ export async function* filletTool(): ToolGenerator {
   const project = projectStore.getState().project;
   if (!project) return { committed: false, reason: 'aborted' };
   const hit2 = findEntityAtMetricPoint(secondInput.point, project.primitives, HIT_TOLERANCE_METRIC);
-  if (!hit2) return { committed: false, reason: 'aborted' };
+  if (!hit2) {
+    emitStatus('Fillet: no object at that point — click directly on a line or polyline');
+    return { committed: false, reason: 'aborted' };
+  }
   const secondPick: PickedEntity = {
     id: hit2.id,
     primitive: hit2.primitive,
